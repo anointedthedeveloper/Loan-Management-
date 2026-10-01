@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --color-brand-50: #effaf4;
+  --color-brand-100: #d7f3e3;
+  --color-brand-500: #14855c;
+  --color-brand-600: #0f6e4c;
+  --color-brand-700: #0B5A3F;
+  --color-brand-900: #0B3D2E;
+  --color-ink: #0f1a17;
+  --color-surface: #f6f8f7;
+  --animate-fade-up: fade-up .35s ease-out both;
+  --animate-fade-in: fade-in .25s ease-out both;
+  --animate-pop: pop .2s ease-out both;
+}
+@keyframes fade-up { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+@keyframes pop { from { opacity: 0; transform: scale(.97) translateY(6px) } to { opacity: 1; transform: none } }
+
+html, body, #root { height: 100%; }
+body { margin: 0; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
