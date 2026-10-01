@@ -5,13 +5,14 @@ import { ALL_PERMISSIONS, DEFAULT_ROLE_PERMISSIONS, type Permission, type Role }
 import { User } from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
 import { recordAudit } from './AuditService.js';
+import { AUDIT } from '../config/auditActions.js';
 
 const MAX_FAILED = 5;
 const LOCK_MINUTES = 15;
 // Used to keep response time constant when the account does not exist.
 const DUMMY_HASH = bcrypt.hashSync('not-a-real-password', 10);
 
-export interface TokenPayload { sub: string; role: Role }
+export interface TokenPayload { sub: string; role: Role; iat: number }
 
 export const hashPassword = (plain: string) => bcrypt.hash(plain, env.BCRYPT_ROUNDS);
 
@@ -22,7 +23,7 @@ export function signToken(userId: string, role: Role, remember: boolean): string
 
 export function verifyToken(token: string): TokenPayload {
   const p = jwt.verify(token, env.JWT_SECRET) as jwt.JwtPayload;
-  return { sub: String(p.sub), role: p.role as Role };
+  return { sub: String(p.sub), role: p.role as Role, iat: p.iat ?? 0 };
 }
 
 /** Effective permissions: CEO always has everything; others use their stored list. */
@@ -66,7 +67,7 @@ export async function login(identifier: string, password: string, remember: bool
       user.failedLoginAttempts = 0;
     }
     await user.save();
-    await recordAudit({ userId: String(user._id), userName: user.name, action: 'auth.login_failed', entity: 'User', entityId: String(user._id), ip });
+    await recordAudit({ userId: String(user._id), userName: user.name, action: AUDIT.LOGIN_FAILED, entity: 'User', entityId: String(user._id), ip });
     throw invalid();
   }
   if (!user.isActive) throw AppError.forbidden('This account has been deactivated. Contact the CEO.', 'ACCOUNT_DISABLED');
@@ -75,7 +76,7 @@ export async function login(identifier: string, password: string, remember: bool
   user.lockedUntil = undefined;
   user.lastLoginAt = new Date();
   await user.save();
-  await recordAudit({ userId: String(user._id), userName: user.name, action: 'auth.login', entity: 'User', entityId: String(user._id), ip });
+  await recordAudit({ userId: String(user._id), userName: user.name, action: AUDIT.LOGIN, entity: 'User', entityId: String(user._id), ip });
 
   const role = user.role as Role;
   return { token: signToken(String(user._id), role, remember), user: publicUser({ ...user.toObject(), role }) };

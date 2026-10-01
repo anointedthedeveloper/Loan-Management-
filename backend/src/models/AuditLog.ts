@@ -7,6 +7,7 @@ const auditLogSchema = new Schema(
     action: { type: String, required: true, index: true }, // e.g. "auth.login", "customer.created"
     entity: { type: String, index: true },
     entityId: { type: String, index: true },
+    entityLabel: String, // human-readable reference, e.g. PTC-000001
     before: Schema.Types.Mixed,
     after: Schema.Types.Mixed,
     ip: String,

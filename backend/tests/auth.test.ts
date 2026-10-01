@@ -62,8 +62,8 @@ describe('authentication', () => {
   });
 
   it('writes audit entries', async () => {
-    expect(await AuditLog.countDocuments({ action: 'auth.login' })).toBeGreaterThan(0);
-    expect(await AuditLog.countDocuments({ action: 'auth.login_failed' })).toBeGreaterThan(0);
+    expect(await AuditLog.countDocuments({ action: 'LOGIN' })).toBeGreaterThan(0);
+    expect(await AuditLog.countDocuments({ action: 'LOGIN_FAILED' })).toBeGreaterThan(0);
   });
 });
 
@@ -89,9 +89,9 @@ describe('authorization (enforced on the backend)', () => {
     expect(created.status).toBe(201);
     expect(created.body.data.user.permissions).toContain('repayments.record');
     const id = created.body.data.user.id;
-    const upd = await request(app).patch(`/api/users/${id}`).set(as(ceo)).send({ permissions: ['customers.view'] });
-    expect(upd.body.data.user.permissions).toEqual(['customers.view']);
-    expect(await AuditLog.countDocuments({ action: 'staff.permissions_changed', entityId: id })).toBe(1);
+    const upd = await request(app).patch(`/api/users/${id}`).set(as(ceo)).send({ permissions: ['customers.read'] });
+    expect(upd.body.data.user.permissions).toEqual(['customers.read']);
+    expect(await AuditLog.countDocuments({ action: 'STAFF_PERMISSION_CHANGED', entityId: id })).toBe(1);
   });
 
   it('applies permission changes and deactivation immediately', async () => {

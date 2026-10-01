@@ -24,7 +24,9 @@ export const tokenStore = {
 let onUnauthorized: (() => void) | null = null
 export const setUnauthorizedHandler = (fn: () => void) => { onUnauthorized = fn }
 
-export async function api<T>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+export interface Pagination { page: number; limit: number; total: number; pages: number }
+
+async function request(path: string, opts: { method?: string; body?: unknown }) {
   const token = tokenStore.get()
   let res: Response
   try {
@@ -41,5 +43,23 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
     if (res.status === 401 && token && json?.code === 'TOKEN_INVALID') onUnauthorized?.()
     throw new ApiError(json?.message ?? 'Request failed. Please try again.', res.status, json?.code ?? 'ERROR', json?.errors)
   }
-  return json.data as T
+  return json
+}
+
+export async function api<T>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+  return (await request(path, opts)).data as T
+}
+
+/** For list endpoints that return `{ data: [], pagination }`. */
+export async function apiPage<T>(path: string): Promise<{ data: T[]; pagination: Pagination }> {
+  const j = await request(path, {})
+  return { data: j.data as T[], pagination: j.pagination as Pagination }
+}
+
+/** Builds a query string, skipping empty values. */
+export const qs = (params: Record<string, string | number | undefined | null>) => {
+  const u = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== null && v !== '') u.set(k, String(v))
+  const s = u.toString()
+  return s ? `?${s}` : ''
 }

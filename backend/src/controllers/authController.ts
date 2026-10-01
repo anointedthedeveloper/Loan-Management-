@@ -4,6 +4,7 @@ import { User } from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
 import { recordAudit } from '../services/AuditService.js';
 import bcrypt from 'bcryptjs';
+import { AUDIT } from '../config/auditActions.js';
 
 export const login = asyncHandler(async (req, res) => {
   const { identifier, password, remember } = req.body;
@@ -17,14 +18,14 @@ export const me = asyncHandler(async (req, res) => {
 });
 
 export const logout = asyncHandler(async (req, res) => {
-  await recordAudit({ userId: req.auth!.id, userName: req.auth!.name, action: 'auth.logout', entity: 'User', entityId: req.auth!.id, ip: req.ip });
+  await recordAudit({ userId: req.auth!.id, userName: req.auth!.name, action: AUDIT.LOGOUT, entity: 'User', entityId: req.auth!.id, ip: req.ip });
   ok(res, null, 'Signed out');
 });
 
 // No email provider is configured yet; respond identically whether or not the account exists
 // so the endpoint cannot be used to enumerate users. Wire a mailer into this handler later.
 export const forgotPassword = asyncHandler(async (req, res) => {
-  await recordAudit({ action: 'auth.password_reset_requested', entity: 'User', entityId: String(req.body.identifier).toLowerCase(), ip: req.ip });
+  await recordAudit({ action: AUDIT.PASSWORD_RESET_REQUESTED, entity: 'User', entityId: String(req.body.identifier).toLowerCase(), ip: req.ip });
   ok(res, null, 'If an account matches, password reset instructions will be sent. Please also contact the CEO to reset your password.');
 });
 
@@ -35,6 +36,6 @@ export const changePassword = asyncHandler(async (req, res) => {
   user.passwordHash = await AuthService.hashPassword(req.body.newPassword);
   user.passwordChangedAt = new Date();
   await user.save();
-  await recordAudit({ userId: req.auth!.id, userName: req.auth!.name, action: 'auth.password_changed', entity: 'User', entityId: req.auth!.id, ip: req.ip });
+  await recordAudit({ userId: req.auth!.id, userName: req.auth!.name, action: AUDIT.PASSWORD_CHANGED, entity: 'User', entityId: req.auth!.id, ip: req.ip });
   ok(res, null, 'Password updated');
 });

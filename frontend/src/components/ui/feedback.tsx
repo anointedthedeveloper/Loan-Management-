@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import type { Tone } from '../../types'
 import { AlertTriangle } from 'lucide-react'
 import { LogoMark } from './Logo'
 import { Button } from './Button'
@@ -29,7 +30,7 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
   return <EmptyState icon={<AlertTriangle className="size-6 text-red-500" />} title="We couldn't load this" hint={message} action={onRetry && <Button variant="secondary" onClick={onRetry}>Try again</Button>} />
 }
 
-export function Badge({ tone = 'slate', children }: { tone?: 'green' | 'red' | 'amber' | 'slate' | 'blue'; children: ReactNode }) {
+export function Badge({ tone = 'slate', children }: { tone?: Tone; children: ReactNode }) {
   const t = { green: 'bg-brand-50 text-brand-700 ring-brand-100', red: 'bg-red-50 text-red-700 ring-red-100', amber: 'bg-amber-50 text-amber-700 ring-amber-100', slate: 'bg-slate-100 text-slate-700 ring-slate-200', blue: 'bg-sky-50 text-sky-700 ring-sky-100' }[tone]
   return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${t}`}>{children}</span>
 }

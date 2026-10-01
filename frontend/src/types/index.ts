@@ -1,4 +1,4 @@
-export type Role = 'ceo' | 'accountant'
+export type Role = 'ceo' | 'accountant' | (string & {})
 
 export interface User {
   id: string
@@ -11,5 +11,12 @@ export interface User {
   lastLoginAt: string | null
 }
 
-export interface ApiEnvelope<T> { success: boolean; message?: string; data: T }
+export type Tone = 'green' | 'red' | 'amber' | 'slate' | 'blue'
+export interface Option { value: string; label: string }
 export interface PermissionInfo { key: string; label: string }
+export interface PermissionGroup { key: string; label: string; permissions: PermissionInfo[] }
+
+export interface ActivityEntry {
+  id: string; action: string; userName: string | null; entity: string | null; entityId: string | null
+  entityLabel: string | null; before: Record<string, unknown> | null; after: Record<string, unknown> | null; createdAt: string
+}

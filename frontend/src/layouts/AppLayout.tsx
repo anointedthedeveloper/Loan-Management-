@@ -4,6 +4,7 @@ import { LayoutDashboard, Users, Landmark, Banknote, ReceiptText, ArrowUpRight, 
 import { useAuth } from '../context/AuthContext'
 import { Logo } from '../components/ui/Logo'
 import { dashboardPathFor } from '../routes/ProtectedRoute'
+import { PERM } from '../config/permissions'
 
 interface NavItem { label: string; to?: string; icon: typeof Users; permission?: string; soon?: boolean }
 
@@ -16,19 +17,20 @@ export default function AppLayout() {
 
   const items: NavItem[] = [
     { label: 'Dashboard', to: dashboardPathFor(user.role), icon: LayoutDashboard },
-    { label: 'Customers', icon: Users, permission: 'customers.view', soon: true },
-    { label: 'Loans', icon: Landmark, permission: 'loans.view', soon: true },
-    { label: 'Repayments', icon: Banknote, permission: 'repayments.view', soon: true },
-    { label: 'Transactions', icon: ReceiptText, permission: 'transactions.view', soon: true },
-    { label: 'Top-ups', icon: ArrowUpRight, permission: 'topups.view', soon: true },
-    { label: 'Reports', icon: BarChart3, permission: 'reports.view', soon: true },
-    { label: 'Staff & Permissions', to: '/staff', icon: UserCog, permission: 'staff.manage' },
-    { label: 'Audit Log', icon: ScrollText, permission: 'audit.view', soon: true },
-    { label: 'Settings', icon: Settings, permission: 'settings.manage', soon: true },
+    { label: 'Customers', to: '/customers', icon: Users, permission: PERM.customers.read },
+    { label: 'Loans', icon: Landmark, permission: PERM.loans.view, soon: true },
+    { label: 'Repayments', icon: Banknote, permission: PERM.repayments.view, soon: true },
+    { label: 'Transactions', icon: ReceiptText, permission: PERM.transactions.view, soon: true },
+    { label: 'Top-ups', icon: ArrowUpRight, permission: PERM.topups.view, soon: true },
+    { label: 'Reports', icon: BarChart3, permission: PERM.reports.view, soon: true },
+    { label: 'Staff & Permissions', to: '/staff', icon: UserCog, permission: PERM.staff.manage },
+    { label: 'Audit Log', icon: ScrollText, permission: PERM.audit.view, soon: true },
+    { label: 'Settings', icon: Settings, permission: PERM.settings.manage, soon: true },
   ]
   const visible = items.filter((i) => !i.permission || can(i.permission))
   const crumbs = loc.pathname.split('/').filter(Boolean)
-  const titleOf = (seg: string) => ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions' } as Record<string, string>)[seg] ?? seg
+  const titleOf = (seg: string) =>
+    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', new: 'Add customer', edit: 'Edit' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
 
   const sidebar = (
     <div className="flex h-full flex-col bg-brand-900 text-white">

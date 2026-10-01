@@ -1,0 +1,20 @@
+import { Router } from 'express';
+import { authenticate, requirePermission } from '../middleware/auth.js';
+import { validateBody, validateQuery } from '../middleware/validate.js';
+import { createCustomerSchema, listCustomersSchema, updateCustomerSchema } from '../validators/customers.js';
+import * as c from '../controllers/customerController.js';
+
+const r = Router();
+r.use(authenticate);
+r.get('/meta', requirePermission('customers.read'), c.meta);
+r.get('/', requirePermission('customers.read'), validateQuery(listCustomersSchema), c.list);
+r.post('/', requirePermission('customers.create'), validateBody(createCustomerSchema), c.create);
+r.get('/:id', requirePermission('customers.read'), c.get);
+r.patch('/:id', requirePermission('customers.update'), validateBody(updateCustomerSchema), c.update);
+r.delete('/:id', requirePermission('customers.delete'), c.remove);
+r.get('/:id/summary', requirePermission('customers.viewFinancials'), c.summary);
+r.get('/:id/loans', requirePermission('customers.viewFinancials'), c.loans);
+r.get('/:id/repayments', requirePermission('customers.viewFinancials'), c.repayments);
+r.get('/:id/transactions', requirePermission('customers.viewFinancials'), c.transactions);
+r.get('/:id/activity', requirePermission('audit.view'), c.activity);
+export default r;
