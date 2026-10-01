@@ -14,6 +14,7 @@ export function createApp() {
   app.use(cors({ origin: env.corsOrigins, credentials: true }));
   app.use(express.json({ limit: '100kb' }));
   if (env.NODE_ENV !== 'test') app.use(morgan(env.isProd ? 'combined' : 'dev'));
+  app.get('/', (_req, res) => res.json({ success: true, data: { service: 'protech-loan-api', status: 'ok', docs: 'Endpoints live under /api (try /api/health)' } }));
   app.use('/api', api);
   app.use(notFoundHandler);
   app.use(errorHandler);

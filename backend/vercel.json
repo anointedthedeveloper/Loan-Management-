@@ -1,0 +1,7 @@
+{
+  "version": 2,
+  "installCommand": "npm install",
+  "buildCommand": "npm run build",
+  "functions": { "api/index.js": { "maxDuration": 30, "includeFiles": "dist/**" } },
+  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+}

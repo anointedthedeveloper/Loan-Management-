@@ -46,3 +46,15 @@ As published on the page: `Gross payment = Bank payment / (1 - deduction)` (defa
 - **Audit**: action names are constants in `config/auditActions.ts` (`CUSTOMER_CREATED`, `STAFF_PERMISSION_CHANGED`, ...); entries carry before/after diffs and never include secrets. Phase 1 action names were migrated to the same style (`LOGIN`, `LOGIN_FAILED`, ...).
 - **Finance contracts**: `services/finance/contracts.ts` declares (interfaces only) the services that will hold Protech's rules. No financial rule is implemented.
 - Limitations: staff changes (e.g. last-CEO check) are check-then-write, not transactional; PATCH of the nested `employment` / `emergencyContact` objects replaces the whole object.
+
+## Deploying to Vercel (two separate projects)
+**Backend** (project root directory: `backend`) — uses `backend/vercel.json` + `backend/api/index.js` (serverless entry that serves the compiled app from `dist/`; build command `npm run build`).
+Set these environment variables in Vercel, then redeploy:
+- `MONGODB_URI` — e.g. a MongoDB Atlas string. In Atlas > Network Access allow `0.0.0.0/0` (Vercel IPs are dynamic) and use a least-privilege DB user.
+- `JWT_SECRET` — 32+ random characters.
+- `CORS_ORIGINS` — your frontend URL(s), comma-separated, e.g. `https://protech-portal.vercel.app` (no trailing slash).
+- `NODE_ENV=production`; optional: `JWT_EXPIRES_IN`, `JWT_REMEMBER_EXPIRES_IN`, `BCRYPT_ROUNDS`.
+Check: `https://<backend>.vercel.app/api/health`. A JSON 500 now says what is wrong (missing variable names, or DB unreachable — see function logs).
+Seed the first users once from your machine: `MONGODB_URI=<atlas uri> npm run seed` (demo data; change or delete these accounts before real use).
+
+**Frontend** (root directory: `frontend`) — set `VITE_API_URL=https://<backend>.vercel.app/api` at build time. `frontend/vercel.json` adds the SPA rewrite so page refreshes don't 404.
