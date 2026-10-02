@@ -78,17 +78,21 @@ export function calculateLoan(input: LoanTermsInput): LoanTerms {
   };
 }
 
-/** Builds the repayment schedule: principal and interest are each split evenly across installments. */
+/**
+ * Builds the repayment schedule. Each installment equals total / tenor (the calculator's EMI), with the
+ * kobo remainder on the last one, so the quoted installment always matches the schedule exactly.
+ * The interest slice is split evenly and principal is the remainder of each installment.
+ */
 export function generateSchedule(terms: LoanTerms, frequency: Frequency, customIntervalDays?: number): ScheduleInstallment[] {
   const n = terms.numberOfInstallments;
-  const principal = splitEvenly(toKobo(terms.principal), n);
+  const expected = splitEvenly(toKobo(terms.totalRepayment), n);
   const interest = splitEvenly(toKobo(terms.interestAmount), n);
   return Array.from({ length: n }, (_, i) => ({
     number: i + 1,
     dueDate: installmentDueDate(terms.startDate, frequency, i + 1, customIntervalDays),
-    principalComponent: fromKobo(principal[i]!),
+    principalComponent: fromKobo(expected[i]! - interest[i]!),
     interestComponent: fromKobo(interest[i]!),
-    expectedAmount: fromKobo(principal[i]! + interest[i]!),
+    expectedAmount: fromKobo(expected[i]!),
   }));
 }
 

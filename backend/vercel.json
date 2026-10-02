@@ -14,5 +14,11 @@
       "destination": "/api"
     }
   ],
-  "outputDirectory": "public"
+  "outputDirectory": "public",
+  "crons": [
+    {
+      "path": "/api/jobs/refresh-overdue",
+      "schedule": "0 2 * * *"
+    }
+  ]
 }

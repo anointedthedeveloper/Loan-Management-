@@ -18,19 +18,19 @@ export default function AppLayout() {
   const items: NavItem[] = [
     { label: 'Dashboard', to: dashboardPathFor(user.role), icon: LayoutDashboard },
     { label: 'Customers', to: '/customers', icon: Users, permission: PERM.customers.read },
-    { label: 'Loans', icon: Landmark, permission: PERM.loans.view, soon: true },
-    { label: 'Repayments', icon: Banknote, permission: PERM.repayments.view, soon: true },
-    { label: 'Transactions', icon: ReceiptText, permission: PERM.transactions.view, soon: true },
-    { label: 'Top-ups', icon: ArrowUpRight, permission: PERM.topups.view, soon: true },
-    { label: 'Reports', icon: BarChart3, permission: PERM.reports.view, soon: true },
+    { label: 'Loans', to: '/loans', icon: Landmark, permission: PERM.loans.view },
+    { label: 'Repayments', to: '/repayments', icon: Banknote, permission: PERM.repayments.view },
+    { label: 'Transactions', to: '/transactions', icon: ReceiptText, permission: PERM.transactions.view },
+    { label: 'Top-ups', to: '/topups', icon: ArrowUpRight, permission: PERM.topups.view },
+    { label: 'Reports', to: '/reports', icon: BarChart3, permission: PERM.reports.view },
     { label: 'Staff & Permissions', to: '/staff', icon: UserCog, permission: PERM.staff.manage },
-    { label: 'Audit Log', icon: ScrollText, permission: PERM.audit.view, soon: true },
-    { label: 'Settings', icon: Settings, permission: PERM.settings.manage, soon: true },
+    { label: 'Audit Log', to: '/audit', icon: ScrollText, permission: PERM.audit.view },
+    { label: 'Settings', to: '/settings', icon: Settings, permission: PERM.settings.manage },
   ]
   const visible = items.filter((i) => !i.permission || can(i.permission))
   const crumbs = loc.pathname.split('/').filter(Boolean)
   const titleOf = (seg: string) =>
-    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', new: 'Add customer', edit: 'Edit' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
+    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', loans: 'Loans', repayments: 'Repayments', transactions: 'Transactions', topups: 'Top-ups', reports: 'Reports', audit: 'Audit log', settings: 'Settings', new: 'New', edit: 'Edit' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
 
   const sidebar = (
     <div className="flex h-full flex-col bg-brand-900 text-white">

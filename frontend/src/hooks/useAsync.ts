@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ApiError } from '../../../services/api'
+import { ApiError } from '../services/api'
 
 /** Small loader with loading / error / reload state. */
 export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]) {

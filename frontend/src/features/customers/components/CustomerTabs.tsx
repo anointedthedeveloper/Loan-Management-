@@ -1,9 +1,13 @@
+import { useNavigate } from 'react-router-dom'
 import { Banknote, Landmark, ReceiptText } from 'lucide-react'
 import { FinancialMetricCard, ActivityList } from '../../../components/dashboard'
+import { LoanStatusBadge } from '../../../components/ui/StatusBadge'
+import { TransactionsTable } from '../../transactions/components/TransactionsTable'
+import type { Loan, Transaction } from '../../../types/finance'
 import { EmptyState, ErrorState } from '../../../components/ui/feedback'
-import { formatDate } from '../../../utils/format'
+import { formatDate, formatMoney } from '../../../utils/format'
 import { customerService } from '../services/customerService'
-import { useAsync } from '../hooks/useAsync'
+import { useAsync } from '../../../hooks/useAsync'
 import { useCustomerMeta } from '../hooks/useCustomerMeta'
 import type { Customer } from '../types'
 
@@ -68,21 +72,23 @@ export function FinancialSummaryTab({ id }: { id: string }) {
   )
 }
 
-const modules = {
-  loans: { icon: Landmark, title: 'No loans yet', hint: 'Loans issued to this customer will be listed here once the loan module is available.', load: customerService.loans },
-  repayments: { icon: Banknote, title: 'No repayments yet', hint: 'Repayment history will appear here once repayments are recorded.', load: customerService.repayments },
-  transactions: { icon: ReceiptText, title: 'No transactions yet', hint: 'The customer ledger will appear here once transactions are recorded.', load: customerService.transactions },
-} as const
-
-/** Placeholder-aware list: shows real rows when a module returns them, an empty state otherwise. */
-export function FinancialListTab({ id, kind }: { id: string; kind: keyof typeof modules }) {
-  const m = modules[kind]
-  const { data, error, loading, reload } = useAsync(() => m.load(id), [id, kind])
-  if (error) return <ErrorState message={error} onRetry={reload} />
-  const Icon = m.icon
+/** Real, ledger-derived history for this customer. */
+export function FinancialListTab({ id, kind }: { id: string; kind: 'loans' | 'repayments' | 'transactions' }) {
+  const nav = useNavigate()
+  const loans = useAsync(() => (kind === 'loans' ? customerService.loans(id) : Promise.resolve(null)), [id, kind])
+  const tx = useAsync(() => (kind === 'loans' ? Promise.resolve(null) : kind === 'repayments' ? customerService.repayments(id) : customerService.transactions(id)), [id, kind])
+  const state = kind === 'loans' ? loans : tx
+  if (state.error) return <ErrorState message={state.error} onRetry={state.reload} />
+  const empty = { loans: { icon: Landmark, title: 'No loans yet', hint: 'Loans issued to this customer will be listed here.' }, repayments: { icon: Banknote, title: 'No repayments yet', hint: 'Repayment history will appear here once payments are recorded.' }, transactions: { icon: ReceiptText, title: 'No transactions yet', hint: 'The customer ledger will appear here once transactions are recorded.' } }[kind]
+  const Icon = empty.icon
   return (
-    <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      {loading ? <div className="p-6 text-sm text-slate-400">Loading…</div> : data?.data.length ? <p className="p-6 text-sm">{data.pagination.total} records</p> : <EmptyState icon={<Icon className="size-6" />} title={m.title} hint={m.hint} />}
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      {state.loading ? <div className="p-6 text-sm text-slate-400">Loading…</div>
+        : kind === 'loans' && loans.data?.data.length ? (
+          <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Loan</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-right">Outstanding</th><th className="px-4 py-3">Status</th><th className="hidden px-4 py-3 md:table-cell">Start</th></tr></thead>
+            <tbody className="divide-y divide-slate-100">{(loans.data.data as Loan[]).map((l) => <tr key={l.id} onClick={() => nav(`/loans/${l.id}`)} className="cursor-pointer hover:bg-slate-50"><td className="px-4 py-3 font-mono text-xs">{l.loanId}</td><td className="px-4 py-3 text-right tabular-nums">{formatMoney(l.amount)}</td><td className="px-4 py-3 text-right tabular-nums">{formatMoney(l.outstandingBalance)}</td><td className="px-4 py-3"><LoanStatusBadge status={l.status} /></td><td className="hidden px-4 py-3 md:table-cell">{formatDate(l.startDate)}</td></tr>)}</tbody></table></div>)
+        : kind !== 'loans' && tx.data?.data.length ? <TransactionsTable rows={tx.data.data as Transaction[]} onChanged={tx.reload} />
+        : <EmptyState icon={<Icon className="size-6" />} title={empty.title} hint={empty.hint} />}
     </div>
   )
 }

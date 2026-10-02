@@ -7,7 +7,7 @@ import { Button } from '../../../components/ui/Button'
 import { ErrorState, Skeleton } from '../../../components/ui/feedback'
 import { Tabs, type TabDef } from '../../../components/ui/Tabs'
 import { customerService } from '../services/customerService'
-import { useAsync } from '../hooks/useAsync'
+import { useAsync } from '../../../hooks/useAsync'
 import { CustomerStatusBadge } from '../components/CustomerStatusBadge'
 import { ActivityTab, FinancialListTab, FinancialSummaryTab, OverviewTab } from '../components/CustomerTabs'
 
@@ -41,6 +41,7 @@ export default function CustomerDetailPage() {
         </div>
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => nav('/customers')}>Back</Button>
+          {can(PERM.loans.create) && c.status === 'active' && <Link to={`/loans/new?customer=${c.id}`}><Button variant="secondary">New loan</Button></Link>}
           {can(PERM.customers.update) && <Link to={`/customers/${c.id}/edit`}><Button><Pencil className="size-4" />Edit</Button></Link>}
         </div>
       </div>

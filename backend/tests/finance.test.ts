@@ -52,6 +52,21 @@ describe('installments and rounding', () => {
   });
 });
 
+describe('quoted installment equals the schedule', () => {
+  it('every installment but the last equals installmentAmount; the last equals finalInstallmentAmount', () => {
+    for (const [amount, months, rate] of [[960_000, 6, 5], [50_000, 7, 10], [333_333.33, 5, 3.7], [1_234_567.89, 9, 4.25]] as const) {
+      const t = calculateLoan({ ...base, amount, bankDeductionRate: 0, interestRate: rate, duration: { value: months, unit: 'months' } });
+      const s = generateSchedule(t, 'monthly');
+      expect(s.slice(0, -1).every((i) => i.expectedAmount === t.installmentAmount)).toBe(true);
+      expect(s[s.length - 1]!.expectedAmount).toBe(t.finalInstallmentAmount);
+      const cents = (xs: number[]) => Math.round(xs.reduce((a, b) => a + b, 0) * 100);
+      expect(cents(s.map((i) => i.expectedAmount))).toBe(Math.round(t.totalRepayment * 100));
+      expect(cents(s.map((i) => i.principalComponent))).toBe(Math.round(t.principal * 100));
+      expect(cents(s.map((i) => i.interestComponent))).toBe(Math.round(t.interestAmount * 100));
+    }
+  });
+});
+
 describe('repayment schedule generation', () => {
   it('monthly: clamps month ends and numbers installments', () => {
     const s = generateSchedule(calculateLoan(base), 'monthly');

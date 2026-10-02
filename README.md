@@ -20,7 +20,13 @@ Demo users (development data only, `isDemoData: true`): `ceo` / `accountant`; pa
 |---|---|
 | 1 Setup, auth, roles/permissions, layouts, DB | **Done** |
 | 2 Customers & full staff management | **Done** |
-| 3–9 | Pending; extension points exist (see below) |
+| 3 Loan products, loan creation, approval | **Done** |
+| 4 Calculation engine, repayment schedules | **Done** (defaults mirror the reference calculator — see assumptions) |
+| 5 Transactions, repayments, balance engine | **Done** |
+| 6 Top-ups | **Done** (consolidate / new-loan modes; `extend` not implemented) |
+| 7 Reports, dashboards | **Done** (CSV / Excel / PDF export) |
+| 8 Audit log, settings, automation | **Done** |
+| 9 Security hardening, tests, deployment | **Done** (118 backend tests) |
 
 ## Architecture notes
 - **Permissions** live in `backend/src/config/permissions.ts` (single catalogue). Routes guard with `requirePermission()`; CEO always has all. The user is re-read from the DB on every request, so deactivation and permission changes apply immediately. The frontend `can()` is cosmetic only.
@@ -58,3 +64,21 @@ Check: `https://<backend>.vercel.app/api/health`. A JSON 500 now says what is wr
 Seed the first users once from your machine: `MONGODB_URI=<atlas uri> npm run seed` (demo data; change or delete these accounts before real use).
 
 **Frontend** (root directory: `frontend`) — set `VITE_API_URL=https://<backend>.vercel.app/api` at build time. `frontend/vercel.json` adds the SPA rewrite so page refreshes don't 404.
+
+## Phases 3-9: how it works
+- **Ledger first.** `Transaction` is an append-only ledger. A loan's paid amount, principal/interest balances, schedule statuses and loan status are *replayed* from the ledger (`finance/BalanceService.ts` + `loanLedger.service.ts`), so a reversal is just "replay without that payment". Customer totals and dashboards are aggregated from loans and the ledger — nothing is typed in by hand.
+- **Engine** (`backend/src/services/finance/`, pure and unit-tested): `LoanCalculationService` (flat interest), `ScheduleService` logic inside it, `RepaymentAllocationService`, `BalanceService`, `LoanStatusService`, `TopUpCalculationService`. The frontend only displays server results (`/loans/preview`, `/topups/preview`).
+- **Configurable rules** live in the database (`Settings` screen, `config/defaultSettings.ts`): approval flow, allocation order, overpayment policy, grace/default days, top-up mode and bases, reference requirements.
+- **Automation**: loans created -> terms + schedule; approval -> disbursement entry + activation; repayment -> ledger + replay + audit. Overdue/completed/defaulted are refreshed hourly on long-running hosts and by `GET /api/jobs/refresh-overdue` (Vercel Cron daily at 02:00 UTC, enabled by setting `CRON_SECRET`).
+- **Demo data**: `npm run dev:memory` (or `npm run seed`) builds users, products, customers and loans *through the real services* (active, overdue, completed, pending and a top-up). Flagged `isDemoData`.
+
+## Assumptions that need Protech confirmation (all isolated and configurable)
+1. **Flat interest as in the reference calculator**: gross = net / (1 - bank deduction); interest = principal x rate x months; installment = total / tenor, kobo remainder on the last installment. Rate basis (per month / per annum / per loan), the 30-day month used for days/weeks, and rounding are single functions in `LoanCalculationService.ts`.
+2. **Repayment allocation** default: oldest installment first, interest before principal; overpayments rejected. Change in Settings.
+3. **Top-up** default: outstanding balance + new funds become one new loan (calculator "Balance B/Fwd"), old loan closed by a non-cash settlement entry, interest recalculated on the whole new principal. Alternatives (principal-only carry, interest on new funds only, separate loan, minimum % repaid) are settings.
+4. **Late penalties are NOT implemented** (no rule supplied). Grace days and auto-default days are. Fees/adjustments/refunds are recorded in the ledger but do not change loan balances until a rule exists.
+5. The **Excel file was never supplied**; once provided, compare its figures with `backend/tests/finance.test.ts` and adjust the engine functions if it differs.
+6. Known advisory: `npm audit` reports 2 moderate issues via `exceljs -> uuid` (only exploitable when callers pass a buffer to uuid; this app does not). Revisit when exceljs releases a fix.
+
+## Deployment environment variables (backend)
+`MONGODB_URI`, `JWT_SECRET` (32+ chars), `CORS_ORIGINS`, `NODE_ENV=production`, optional `CRON_SECRET`, `JWT_EXPIRES_IN`, `BCRYPT_ROUNDS`. Frontend: `VITE_API_URL=https://<backend>/api`.

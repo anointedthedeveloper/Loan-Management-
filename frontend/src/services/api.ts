@@ -63,3 +63,14 @@ export const qs = (params: Record<string, string | number | undefined | null>) =
   const s = u.toString()
   return s ? `?${s}` : ''
 }
+
+/** Downloads a file response (CSV / Excel / PDF) using the signed-in user's token. */
+export async function download(path: string, fallbackName: string): Promise<void> {
+  const token = tokenStore.get()
+  let res: Response
+  try { res = await fetch(`${BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }) } catch { throw new ApiError('Cannot reach the server. Check your connection and try again.', 0, 'NETWORK') }
+  if (!res.ok) { const j = await res.json().catch(() => null); throw new ApiError(j?.message ?? 'Download failed', res.status, j?.code ?? 'ERROR') }
+  const name = /filename="?([^"]+)"?/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? fallbackName
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+}
