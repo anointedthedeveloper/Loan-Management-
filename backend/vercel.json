@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "installCommand": "MONGOMS_DISABLE_POSTINSTALL=1 npm install",
+  "installCommand": "MONGOMS_DISABLE_POSTINSTALL=1 npm install --include=dev",
   "buildCommand": "npm run build",
   "functions": {
     "api/index.js": {
