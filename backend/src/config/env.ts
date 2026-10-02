@@ -10,6 +10,7 @@ const schema = z.object({
   JWT_REMEMBER_EXPIRES_IN: z.string().default('30d'),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   BCRYPT_ROUNDS: z.coerce.number().min(4).max(15).default(12),
+  CRON_SECRET: z.string().min(16).optional(),
   SEED_CEO_PASSWORD: z.string().default('Protech@CEO2026'),
   SEED_ACCOUNTANT_PASSWORD: z.string().default('Protech@Acct2026'),
 });

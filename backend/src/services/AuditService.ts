@@ -41,3 +41,14 @@ export async function listAudit(filter: Record<string, unknown>, q: PageQuery) {
     })),
   };
 }
+
+/** Filter builder for the audit-log screen (CEO). */
+export function auditFilter(q: { q?: string; action?: string[]; entity?: string; user?: string; from?: Date; to?: Date }) {
+  const f: Record<string, any> = {};
+  if (q.action?.length) f.action = { $in: q.action };
+  if (q.entity) f.entity = q.entity;
+  if (q.user) f.user = q.user;
+  if (q.from || q.to) f.createdAt = { ...(q.from && { $gte: q.from }), ...(q.to && { $lt: new Date(q.to.getTime() + 86_400_000) }) };
+  if (q.q) { const re = new RegExp(q.q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'); f.$or = [{ entityLabel: re }, { userName: re }, { entityId: re }]; }
+  return f;
+}
