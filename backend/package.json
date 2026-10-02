@@ -10,6 +10,7 @@
     "start": "node dist/src/server.js",
     "typecheck": "tsc --noEmit",
     "seed": "tsx src/scripts/seed.ts",
+    "seed:users": "tsx src/scripts/seedUsersOnly.ts",
     "test": "vitest run"
   },
   "dependencies": {
