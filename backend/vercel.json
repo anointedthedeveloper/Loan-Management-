@@ -2,6 +2,17 @@
   "version": 2,
   "installCommand": "MONGOMS_DISABLE_POSTINSTALL=1 npm install",
   "buildCommand": "npm run build",
-  "functions": { "api/index.js": { "maxDuration": 30, "includeFiles": "dist/**" } },
-  "rewrites": [{ "source": "/(.*)", "destination": "/api" }]
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 30,
+      "includeFiles": "dist/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api"
+    }
+  ],
+  "outputDirectory": "public"
 }
