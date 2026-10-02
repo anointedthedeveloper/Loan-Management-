@@ -6,14 +6,14 @@ export interface CustomerFormValues {
   address: string; state: string; lga: string
   dateOfBirth: string; gender: string
   idType: string; idNumber: string
-  employmentType: string; employerName: string; occupation: string
+  employmentType: string; employerName: string; occupation: string; ippisNumber: string; ministry: string; legacyId: string
   ecName: string; ecRelationship: string; ecPhone: string
   status: string; notes: string
 }
 
 export const emptyForm: CustomerFormValues = {
   firstName: '', middleName: '', lastName: '', phone: '', altPhone: '', email: '', address: '', state: '', lga: '',
-  dateOfBirth: '', gender: '', idType: '', idNumber: '', employmentType: '', employerName: '', occupation: '',
+  dateOfBirth: '', gender: '', idType: '', idNumber: '', employmentType: '', employerName: '', occupation: '', ippisNumber: '', ministry: '', legacyId: '',
   ecName: '', ecRelationship: '', ecPhone: '', status: 'active', notes: '',
 }
 
@@ -21,7 +21,7 @@ export const fromCustomer = (c: Customer): CustomerFormValues => ({
   firstName: c.firstName, middleName: c.middleName ?? '', lastName: c.lastName, phone: c.phone, altPhone: c.altPhone ?? '', email: c.email ?? '',
   address: c.address, state: c.state ?? '', lga: c.lga ?? '', dateOfBirth: c.dateOfBirth ? c.dateOfBirth.slice(0, 10) : '', gender: c.gender ?? '',
   idType: c.idType ?? '', idNumber: c.idNumber ?? '', employmentType: c.employment?.employmentType ?? '', employerName: c.employment?.employerName ?? '',
-  occupation: c.employment?.occupation ?? '', ecName: c.emergencyContact?.name ?? '', ecRelationship: c.emergencyContact?.relationship ?? '',
+  occupation: c.employment?.occupation ?? '', ippisNumber: c.employment?.ippisNumber ?? '', ministry: c.employment?.ministry ?? '', legacyId: c.legacyId ?? '', ecName: c.emergencyContact?.name ?? '', ecRelationship: c.emergencyContact?.relationship ?? '',
   ecPhone: c.emergencyContact?.phone ?? '', status: c.status, notes: c.notes ?? '',
 })
 
@@ -29,7 +29,8 @@ export const fromCustomer = (c: Customer): CustomerFormValues => ({
 export const toPayload = (v: CustomerFormValues) => ({
   firstName: v.firstName, middleName: v.middleName, lastName: v.lastName, phone: v.phone, altPhone: v.altPhone, email: v.email,
   address: v.address, state: v.state, lga: v.lga, dateOfBirth: v.dateOfBirth, gender: v.gender, idType: v.idType, idNumber: v.idNumber,
-  employment: { employmentType: v.employmentType, employerName: v.employerName, occupation: v.occupation },
+  employment: { employmentType: v.employmentType, employerName: v.employerName, occupation: v.occupation, ippisNumber: v.ippisNumber, ministry: v.ministry },
+  legacyId: v.legacyId,
   emergencyContact: { name: v.ecName, relationship: v.ecRelationship, phone: v.ecPhone },
   status: v.status, notes: v.notes,
 })
@@ -48,4 +49,4 @@ export function quickValidate(v: CustomerFormValues): Record<string, string> {
 }
 
 /** Server error keys (e.g. "employment.occupation", "emergencyContact.phone") -> form field names. */
-export const serverKeyToField = (k: string) => ({ 'emergencyContact.phone': 'ecPhone', 'emergencyContact.name': 'ecName', 'emergencyContact.relationship': 'ecRelationship', 'employment.employmentType': 'employmentType', 'employment.employerName': 'employerName', 'employment.occupation': 'occupation' } as Record<string, string>)[k] ?? k
+export const serverKeyToField = (k: string) => ({ 'emergencyContact.phone': 'ecPhone', 'emergencyContact.name': 'ecName', 'emergencyContact.relationship': 'ecRelationship', 'employment.employmentType': 'employmentType', 'employment.employerName': 'employerName', 'employment.occupation': 'occupation', 'employment.ippisNumber': 'ippisNumber', 'employment.ministry': 'ministry' } as Record<string, string>)[k] ?? k

@@ -66,6 +66,15 @@ describe('customer creation', () => {
   });
 });
 
+describe('payroll details from the loan book', () => {
+  it('stores IPPIS number, ministry and the legacy client number', async () => {
+    const r = await create(customerPayload({ legacyId: '473', employment: { ippisNumber: '437602', ministry: 'OSGF', occupation: 'Clerk' } }));
+    expect(r.status).toBe(201);
+    expect(r.body.data.customer.employment).toMatchObject({ ippisNumber: '437602', ministry: 'OSGF' });
+    expect(r.body.data.customer.legacyId).toBe('473');
+  });
+});
+
 describe('customer retrieval and update', () => {
   it('gets a customer and 404s for unknown/invalid ids', async () => {
     const c = (await create()).body.data.customer;

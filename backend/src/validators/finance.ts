@@ -49,6 +49,7 @@ const pricing = {
   customIntervalDays: z.preprocess(blank, z.coerce.number().int().min(1).max(365).optional()),
   numberOfInstallments: z.preprocess(blank, z.coerce.number().int().min(1).max(1000).optional()),
   startDate: date,
+  firstPaymentDate: optDate,
 };
 export const previewLoanSchema = z.object({ ...pricing, customerId: objectId.optional() });
 export const createLoanSchema = z.object({ ...pricing, customerId: objectId, notes: text(1000) });

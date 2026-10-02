@@ -41,7 +41,7 @@ const populateLoan = [{ path: 'customer', select: 'customerId fullName phone' },
 /* ---------------- pricing ---------------- */
 export interface PricingInput {
   productId: string; amount: number; duration?: { value: number; unit: string }; frequency?: string; customIntervalDays?: number;
-  numberOfInstallments?: number; startDate: Date;
+  numberOfInstallments?: number; startDate: Date; firstPaymentDate?: Date;
 }
 type ProductDoc = Awaited<ReturnType<typeof getProduct>>;
 
@@ -56,7 +56,7 @@ export function assertWithinProduct(p: ProductDoc, i: { amount: number; duration
   if (!p.allowedFrequencies.includes(i.frequency)) throw err('frequency', `${p.name} does not allow ${i.frequency} repayments`);
 }
 
-export interface Draft { product: ProductDoc; terms: LoanTerms; frequency: Frequency; duration: { value: number; unit: string }; customIntervalDays?: number; interestBasis: string; schedule: ReturnType<typeof generateSchedule> }
+export interface Draft { firstPaymentDate?: Date; product: ProductDoc; terms: LoanTerms; frequency: Frequency; duration: { value: number; unit: string }; customIntervalDays?: number; interestBasis: string; schedule: ReturnType<typeof generateSchedule> }
 
 /** Prices a loan from a product + request using the central engine. Used by preview, create and edit. */
 export async function buildDraft(input: PricingInput, extra: { carriedBalance?: number; interestBasis?: LoanTermsInput['interestBasis']; skipLimits?: boolean } = {}): Promise<Draft> {
@@ -66,6 +66,7 @@ export async function buildDraft(input: PricingInput, extra: { carriedBalance?: 
   if (!extra.skipLimits) assertWithinProduct(product, { amount: input.amount, duration, frequency });
   if (frequency === 'custom' && !input.customIntervalDays) throw AppError.badRequest('Enter the repayment interval in days', 'VALIDATION_ERROR', { customIntervalDays: 'Required for custom frequency' });
   const rules = await getFinanceRules();
+  if (input.firstPaymentDate && input.firstPaymentDate < input.startDate) throw AppError.badRequest('The first payment cannot be before the start date', 'VALIDATION_ERROR', { firstPaymentDate: 'Cannot be before the start date' });
   if (!rules.loans.allowBackdatedStart && input.startDate < todayLagos()) throw AppError.badRequest('Start date cannot be in the past', 'VALIDATION_ERROR', { startDate: 'Cannot be in the past' });
   const interestBasis = extra.interestBasis ?? 'full_principal';
   let terms: LoanTerms;
@@ -73,10 +74,10 @@ export async function buildDraft(input: PricingInput, extra: { carriedBalance?: 
     terms = calculateLoan({
       amount: input.amount, carriedBalance: extra.carriedBalance, bankDeductionRate: product.bankDeductionRate, interestRate: product.interestRate,
       rateBasis: product.rateBasis as any, duration: duration as any, frequency, customIntervalDays: input.customIntervalDays,
-      numberOfInstallments: input.numberOfInstallments, interestBasis, startDate: input.startDate,
+      numberOfInstallments: input.numberOfInstallments, interestBasis, startDate: input.startDate, firstPaymentDate: input.firstPaymentDate,
     });
   } catch (e) { throw AppError.badRequest((e as Error).message, 'CALCULATION_ERROR'); }
-  return { product, terms, frequency, duration, customIntervalDays: input.customIntervalDays, interestBasis, schedule: generateSchedule(terms, frequency, input.customIntervalDays) };
+  return { product, terms, frequency, duration, customIntervalDays: input.customIntervalDays, interestBasis, firstPaymentDate: input.firstPaymentDate, schedule: generateSchedule(terms, frequency, input.customIntervalDays) };
 }
 
 export const draftView = (d: Draft) => ({
@@ -107,13 +108,14 @@ export async function previewLoan(input: PricingInput & { customerId?: string })
 /* ---------------- create / update ---------------- */
 export async function createLoanRecord(d: Draft, opts: { customerId: Types.ObjectId | string; status: string; actorId?: string; notes?: string; extra?: Record<string, unknown> }) {
   const t = d.terms;
+  const loanType = (opts.extra as { loanType?: string } | undefined)?.loanType ?? ((await Loan.exists({ customer: opts.customerId, status: { $in: ['active', 'overdue', 'defaulted', 'completed'] } })) ? 'renewal' : 'new');
   const loan = await Loan.create({
     loanId: await nextLoanId(), customer: opts.customerId, product: d.product._id, productName: d.product.name, status: opts.status,
     amount: t.amount, carriedBalance: t.carriedBalance, bankDeductionRate: t.bankDeductionRate, grossAmount: t.grossAmount, principal: t.principal,
     interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestBasis: d.interestBasis, interestAmount: t.interestAmount, totalRepayment: t.totalRepayment,
     duration: d.duration, frequency: d.frequency, customIntervalDays: d.customIntervalDays, numberOfInstallments: t.numberOfInstallments, installmentAmount: t.installmentAmount,
-    startDate: t.startDate, dueDate: t.dueDate, outstandingBalance: t.totalRepayment, principalBalance: t.principal, interestBalance: t.interestAmount,
-    notes: opts.notes, createdBy: opts.actorId, updatedBy: opts.actorId, ...(opts.extra ?? {}),
+    startDate: t.startDate, firstPaymentDate: t.firstDueDate, firstPaymentDateIsCustom: !!d.firstPaymentDate, dueDate: t.dueDate, outstandingBalance: t.totalRepayment, principalBalance: t.principal, interestBalance: t.interestAmount,
+    notes: opts.notes, createdBy: opts.actorId, updatedBy: opts.actorId, ...(opts.extra ?? {}), loanType,
   } as any);
   await RepaymentSchedule.create({ loan: loan._id, installments: d.schedule.map((s) => ({ ...s, paidPrincipal: 0, paidInterest: 0, amountPaid: 0, remaining: s.expectedAmount, status: 'upcoming' })) });
   return loan;
@@ -143,12 +145,13 @@ export async function updateLoan(id: string, input: Partial<PricingInput> & { no
     productId: input.productId ?? String(loan.product), amount: input.amount ?? loan.amount, duration: input.duration ?? { value: loan.duration!.value!, unit: loan.duration!.unit! },
     frequency: input.frequency ?? loan.frequency, customIntervalDays: input.customIntervalDays ?? loan.customIntervalDays ?? undefined,
     numberOfInstallments: input.numberOfInstallments, startDate: input.startDate ?? loan.startDate,
+    firstPaymentDate: input.firstPaymentDate ?? (loan.firstPaymentDateIsCustom ? loan.firstPaymentDate ?? undefined : undefined),
   };
   const d = await buildDraft(merged);
   const t = d.terms;
   loan.set({ product: d.product._id, productName: d.product.name, amount: t.amount, carriedBalance: t.carriedBalance, bankDeductionRate: t.bankDeductionRate, grossAmount: t.grossAmount, principal: t.principal,
     interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestAmount: t.interestAmount, totalRepayment: t.totalRepayment, duration: d.duration, frequency: d.frequency,
-    customIntervalDays: d.customIntervalDays, numberOfInstallments: t.numberOfInstallments, installmentAmount: t.installmentAmount, startDate: t.startDate, dueDate: t.dueDate,
+    customIntervalDays: d.customIntervalDays, numberOfInstallments: t.numberOfInstallments, installmentAmount: t.installmentAmount, startDate: t.startDate, firstPaymentDate: t.firstDueDate, firstPaymentDateIsCustom: !!d.firstPaymentDate, dueDate: t.dueDate,
     outstandingBalance: t.totalRepayment, principalBalance: t.principal, interestBalance: t.interestAmount, ...(input.notes !== undefined && { notes: input.notes }), updatedBy: actor.id });
   await loan.save();
   await RepaymentSchedule.updateOne({ loan: loan._id }, { $set: { installments: d.schedule.map((s) => ({ ...s, paidPrincipal: 0, paidInterest: 0, amountPaid: 0, remaining: s.expectedAmount, status: 'upcoming' })) } });

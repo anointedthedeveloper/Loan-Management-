@@ -10,7 +10,7 @@ import { Button } from '../../../components/ui/Button'
 import { ConfirmDialog } from '../../../components/ui/Modal'
 import { ReasonDialog } from '../../../components/ui/ReasonDialog'
 import { Badge, EmptyState, ErrorState, Skeleton } from '../../../components/ui/feedback'
-import { LoanStatusBadge } from '../../../components/ui/StatusBadge'
+import { LoanStatusBadge, LoanTypeBadge } from '../../../components/ui/StatusBadge'
 import { Tabs } from '../../../components/ui/Tabs'
 import { formatDate, formatMoney, titleCase } from '../../../utils/format'
 import { loanService } from '../services/loanService'
@@ -54,7 +54,7 @@ export default function LoanDetailPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div>
-          <div className="flex flex-wrap items-center gap-2"><h1 className="font-mono text-xl font-bold">{l.loanId}</h1><LoanStatusBadge status={l.status} />{l.topUpOf && <Badge tone="blue">Top-up loan</Badge>}{l.settledByTopUp && <Badge>Settled by top-up</Badge>}</div>
+          <div className="flex flex-wrap items-center gap-2"><h1 className="font-mono text-xl font-bold">{l.loanId}</h1><LoanStatusBadge status={l.status} /><LoanTypeBadge type={l.loanType} />{l.settledByTopUp && <Badge>Settled by top-up</Badge>}</div>
           <p className="mt-1 text-sm"><Link to={`/customers/${l.customer.id}`} className="font-medium text-brand-700 hover:underline">{l.customer.fullName}</Link> <span className="text-slate-500">· {l.customer.customerId} · {l.productName}</span></p>
           {l.statusReason && <p className="mt-1 text-sm text-slate-600">Reason: {l.statusReason}</p>}
           {live && l.overdueAmount > 0 && <p className="mt-2 text-sm font-medium text-red-600">{formatMoney(l.overdueAmount)} overdue · {l.daysOverdue} day(s)</p>}
@@ -85,7 +85,7 @@ export default function LoanDetailPage() {
               ['Interest', `${l.interestRate}% ${titleCase(l.rateBasis)} (flat)`], ['Interest amount', formatMoney(l.interestAmount)], ['Bank deduction', `${l.bankDeductionRate}%`],
               ['Gross principal', formatMoney(l.principal)], ['Carried balance', formatMoney(l.carriedBalance)], ['Duration', `${l.duration.value} ${l.duration.unit}`],
               ['Frequency', titleCase(l.frequency)], ['Installments', `${l.numberOfInstallments} × ${formatMoney(l.installmentAmount)}`], ['Start date', formatDate(l.startDate)],
-              ['Final due date', formatDate(l.dueDate)], ['Created by', l.createdBy?.name ?? '—'], ['Approved by', l.approvedBy?.name ?? '—'],
+              ['First payment due', formatDate(l.firstPaymentDate)], ['Final due date', formatDate(l.dueDate)], ['Created by', l.createdBy?.name ?? '—'], ['Approved by', l.approvedBy?.name ?? '—'],
             ] as [string, string][]).map(([k, v]) => <div key={k}><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">{k}</dt><dd className="mt-0.5 text-sm">{v}</dd></div>)}
             {l.topUpOf && <div><dt className="text-xs font-medium uppercase text-slate-500">Top-up of</dt><dd className="text-sm"><Link className="text-brand-700 hover:underline" to={`/loans/${l.topUpOf}`}>Original loan</Link></dd></div>}
             {l.notes && <div className="sm:col-span-2 lg:col-span-3"><dt className="text-xs font-medium uppercase tracking-wide text-slate-500">Notes</dt><dd className="mt-0.5 text-sm">{l.notes}</dd></div>}

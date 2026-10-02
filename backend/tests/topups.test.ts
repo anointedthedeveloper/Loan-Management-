@@ -82,6 +82,7 @@ describe('top-up approval', () => {
     expect(String(oldLoan.settledByTopUp)).toBe(t.id);
     expect(newLoan).toMatchObject({ status: 'active', principal: 450000, carriedBalance: 300000, amount: 150000, totalRepayment: 450000 });
     expect(String(newLoan.topUpOf)).toBe(loanId);
+    expect(newLoan.loanType).toBe('topup');
 
     const newFunds = await Transaction.find({ loan: newLoan._id, type: 'topup' });
     expect(newFunds).toHaveLength(1);

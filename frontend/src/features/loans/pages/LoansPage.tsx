@@ -8,7 +8,7 @@ import { Button } from '../../../components/ui/Button'
 import { DataTable, type Column } from '../../../components/ui/DataTable'
 import { EmptyState } from '../../../components/ui/feedback'
 import { FilterBar, type FilterDef } from '../../../components/ui/FilterBar'
-import { LoanStatusBadge } from '../../../components/ui/StatusBadge'
+import { LoanStatusBadge, LoanTypeBadge } from '../../../components/ui/StatusBadge'
 import { formatDate, formatMoney } from '../../../utils/format'
 import type { Loan } from '../../../types/finance'
 import { loanService } from '../services/loanService'
@@ -29,7 +29,7 @@ export default function LoansPage() {
   ]
   const cols: Column<Loan>[] = [
     { key: 'loanId', label: 'Loan', sortKey: 'loanId', render: (l) => <span className="font-mono text-xs">{l.loanId}</span> },
-    { key: 'customer', label: 'Customer', render: (l) => <><p className="font-medium">{l.customer.fullName}</p><p className="text-xs text-slate-500">{l.productName}</p></> },
+    { key: 'customer', label: 'Customer', render: (l) => <><p className="font-medium">{l.customer.fullName}</p><p className="text-xs text-slate-500">{l.productName} <LoanTypeBadge type={l.loanType} /></p></> },
     { key: 'amount', label: 'Amount', sortKey: 'amount', align: 'right', hideBelow: 'md', render: (l) => formatMoney(l.amount) },
     { key: 'out', label: 'Outstanding', sortKey: 'outstandingBalance', align: 'right', render: (l) => formatMoney(l.outstandingBalance) },
     { key: 'next', label: 'Next due', hideBelow: 'lg', render: (l) => (l.nextDueDate && ['active', 'overdue', 'defaulted'].includes(l.status) ? formatDate(l.nextDueDate) : '—') },

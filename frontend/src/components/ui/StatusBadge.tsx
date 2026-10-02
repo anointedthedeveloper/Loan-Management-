@@ -16,3 +16,5 @@ const topUpTone: Record<string, Tone> = { pending: 'amber', approved: 'green', r
 export const TopUpStatusBadge = ({ status }: { status: string }) => <Badge tone={topUpTone[status] ?? 'slate'}>{titleCase(status)}</Badge>
 
 export const TxStateBadge = ({ state }: { state: string }) => <Badge tone={state === 'reversed' ? 'red' : 'green'}>{titleCase(state)}</Badge>
+
+export const LoanTypeBadge = ({ type }: { type?: string }) => (type === 'renewal' ? <Badge tone="blue">Renewal</Badge> : type === 'topup' ? <Badge tone="blue">Top-up</Badge> : null)

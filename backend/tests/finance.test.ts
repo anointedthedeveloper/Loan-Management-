@@ -39,9 +39,9 @@ describe('flat interest calculation (matches the reference calculator)', () => {
 describe('installments and rounding', () => {
   it('splits evenly and puts the kobo remainder on the last installment', () => {
     const t = calculateLoan(base);
-    expect(t.installmentAmount).toBe(216_666.66);
-    expect(t.finalInstallmentAmount).toBe(216_666.7);
-    expect(calculateInstallment(130_000_000, 6)).toEqual({ regular: 21_666_666, last: 21_666_670 });
+    expect(t.installmentAmount).toBe(216_666.67); // 1,300,000 / 6 rounded to the nearest kobo
+    expect(t.finalInstallmentAmount).toBe(216_666.65); // absorbs the difference so the total is exact
+    expect(calculateInstallment(130_000_000, 6)).toEqual({ regular: 21_666_667, last: 21_666_665 });
     expect(splitEvenly(10, 3)).toEqual([3, 3, 4]);
   });
   it('schedule components sum exactly to principal, interest and total', () => {
@@ -108,9 +108,9 @@ describe('balance engine: partial, full and over-payment', () => {
     expect(s.amountPaid).toBe(100_000);
     expect(s.outstandingBalance).toBe(1_200_000);
     expect(s.installments[0]).toMatchObject({ paidInterest: 50_000, paidPrincipal: 50_000, status: 'partially_paid' });
-    expect(s.installments[0]!.remaining).toBeCloseTo(116_666.66, 2);
+    expect(s.installments[0]!.remaining).toBeCloseTo(116_666.67, 2);
     expect(s.nextInstallmentNumber).toBe(1);
-    expect(s.nextInstallmentAmount).toBeCloseTo(116_666.66, 2);
+    expect(s.nextInstallmentAmount).toBeCloseTo(116_666.67, 2);
   });
 
   it('a payment that spans installments settles the first and part of the second', () => {
@@ -160,13 +160,13 @@ describe('overdue and completed loans', () => {
     const s = computeLoanState(p, [], today, rules);
     expect(s.installments.slice(0, 2).every((i) => i.status === 'overdue')).toBe(true);
     expect(s.installments[2]!.status).toBe('upcoming');
-    expect(s.overdueAmount).toBeCloseTo(433_333.32, 2);
+    expect(s.overdueAmount).toBeCloseTo(433_333.34, 2);
     expect(s.daysOverdue).toBe(46); // since 28 Feb
     expect(resolveStatus('active', s)).toBe('overdue');
   });
   it('paying the overdue amount returns the loan to active', () => {
     const today = utcDate(2026, 3, 15);
-    const s = computeLoanState(p, [{ id: 'a', amountKobo: toKobo(433_333.32) }], today, rules);
+    const s = computeLoanState(p, [{ id: 'a', amountKobo: toKobo(433_333.34) }], today, rules);
     expect(s.overdueAmount).toBe(0);
     expect(resolveStatus('overdue', s)).toBe('active');
   });
@@ -220,5 +220,43 @@ describe('top-up calculation (configurable, not a fixed formula)', () => {
     const r = calculateTopUp(existing, 150_000, pricing, { ...rule, minimumPercentRepaid: 50 });
     expect(r.eligible).toBe(false);
     expect(r.ineligibleReason).toMatch(/50%/);
+  });
+});
+
+/**
+ * Real rows from Protech's "complete loan book" spreadsheet (5% per month flat, 4% bank deduction, 12 months).
+ * Every calculated column of the sheet must be reproduced exactly by the engine.
+ */
+describe("matches Protech's loan book", () => {
+  const sheet = [
+    { client: 'OMOLORO (top-up)', bf: 165_375, bank: 144_000, gross: 150_000, principal: 315_375, interest: 189_225, loan: 504_600, emi: 42_050 },
+    { client: 'RAFIU (top-up)', bf: 218_754.9, bank: 268_000, gross: 279_166.67, principal: 497_921.57, interest: 298_752.94, loan: 796_674.51, emi: 66_389.54 },
+    { client: 'INYANG (renewal)', bf: 0, bank: 192_000, gross: 200_000, principal: 200_000, interest: 120_000, loan: 320_000, emi: 26_666.67 },
+  ];
+  for (const r of sheet) {
+    it(`${r.client}: gross payment, principal, interest, gross loan and EMI`, () => {
+      const t = calculateLoan({ ...base, amount: r.bank, carriedBalance: r.bf, duration: { value: 12, unit: 'months' }, startDate: utcDate(2026, 0, 1) });
+      expect(t.grossAmount).toBe(r.gross);
+      expect(t.principal).toBe(r.principal);
+      expect(t.interestAmount).toBe(r.interest);
+      expect(t.totalRepayment).toBe(r.loan);
+      expect(t.installmentAmount).toBe(r.emi);
+      expect(t.numberOfInstallments).toBe(12);
+      // the schedule repays the loan exactly, with the sheet's EMI on every installment but the last
+      const s = generateSchedule(t, 'monthly');
+      expect(Math.round(s.reduce((a, i) => a + i.expectedAmount * 100, 0))).toBe(Math.round(r.loan * 100));
+      expect(s.slice(0, 11).every((i) => i.expectedAmount === r.emi)).toBe(true);
+    });
+  }
+  it('repayments begin on a chosen first-payment date (sheet: payout 4 Dec 2025, first repayment 1 Jan 2026)', () => {
+    const t = calculateLoan({ ...base, amount: 144_000, duration: { value: 12, unit: 'months' }, startDate: utcDate(2025, 11, 4), firstPaymentDate: utcDate(2026, 0, 1) });
+    const s = generateSchedule(t, 'monthly');
+    expect(s[0]!.dueDate.toISOString().slice(0, 10)).toBe('2026-01-01');
+    expect(s[11]!.dueDate.toISOString().slice(0, 10)).toBe('2026-12-01');
+    expect(t.dueDate.toISOString().slice(0, 10)).toBe('2026-12-01');
+  });
+  it('month-end first payments keep their anchor day instead of drifting', () => {
+    const t = calculateLoan({ ...base, duration: { value: 4, unit: 'months' }, startDate: utcDate(2026, 0, 1), firstPaymentDate: utcDate(2026, 0, 31) });
+    expect(generateSchedule(t, 'monthly').map((i) => i.dueDate.toISOString().slice(0, 10))).toEqual(['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30']);
   });
 });

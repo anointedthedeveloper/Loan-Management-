@@ -59,12 +59,18 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, o
         <SelectField label="Employment type" options={meta.employmentTypes} value={v.employmentType} onChange={set('employmentType')} error={err('employmentType')} />
         {text('occupation', 'Occupation')}
         <div className="sm:col-span-2">{text('employerName', 'Employer / business name')}</div>
+        {text('ippisNumber', 'IPPIS number')}
+        {text('ministry', 'Ministry / department')}
       </FormSection>
 
       <FormSection title="Emergency contact">
         {text('ecName', 'Contact name')}
         {text('ecRelationship', 'Relationship')}
         {text('ecPhone', 'Contact phone', { type: 'tel' })}
+      </FormSection>
+
+      <FormSection title="Records" description="Client number from Protech's previous loan book, if this customer already existed there.">
+        {text('legacyId', 'Previous client number')}
       </FormSection>
 
       <FormSection title="Notes">

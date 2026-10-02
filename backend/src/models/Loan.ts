@@ -33,8 +33,12 @@ const schema = new Schema(
     customIntervalDays: Number,
     numberOfInstallments: { type: Number, required: true },
     installmentAmount: { type: Number, required: true },
-    startDate: { type: Date, required: true },
+    startDate: { type: Date, required: true }, // payout / loan start
+    firstPaymentDate: Date,                    // when the first installment falls due
+    firstPaymentDateIsCustom: { type: Boolean, default: false },
     dueDate: { type: Date, required: true },
+    /** new = first loan, renewal = customer has had a loan before, topup = created by a top-up (see the loan book's Status column). */
+    loanType: { type: String, enum: ['new', 'renewal', 'topup'], default: 'new' },
 
     // derived from the ledger
     amountPaid: money, principalPaid: money, interestPaid: money,

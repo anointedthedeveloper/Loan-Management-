@@ -96,6 +96,30 @@ describe('loan creation and calculation (done by the backend)', () => {
   });
 });
 
+describe("loan-book conventions (first payment date, loan type)", () => {
+  it('repayments can start on a chosen date, and edits keep it', async () => {
+    const c = await newCustomer();
+    const body = loanBody({ customerId: c, amount: 144000, duration: { value: 12, unit: 'months' }, startDate: '2025-12-04', firstPaymentDate: '2026-01-01' });
+    const pv = await api('post', '/api/loans/preview').send(body);
+    expect(pv.body.data.schedule[0].dueDate.slice(0, 10)).toBe('2026-01-01');
+    expect(pv.body.data.schedule[11].dueDate.slice(0, 10)).toBe('2026-12-01');
+    const made = await api('post', '/api/loans').send(body);
+    expect(made.body.data.loan).toMatchObject({ loanType: 'new', firstPaymentDateIsCustom: true });
+    const edited = await api('patch', `/api/loans/${made.body.data.loan.id}`).send({ amount: 192000 });
+    expect(edited.body.data.schedule[0].dueDate.slice(0, 10)).toBe('2026-01-01');
+    expect(edited.body.data.loan.totalRepayment).toBe(320000); // 192,000 net -> 200,000 gross + 120,000 interest (sheet row 3)
+    expect(edited.body.data.loan.installmentAmount).toBe(26666.67);
+    expect((await api('post', '/api/loans').send({ ...body, firstPaymentDate: '2025-11-01' })).body.errors.firstPaymentDate).toBeTruthy();
+  });
+  it('tags a customer\'s next loan as a renewal', async () => {
+    const c = await newCustomer();
+    const first = await activeLoan({ customerId: c, amount: 96000 });
+    expect(first.loanType).toBe('new');
+    const second = (await api('post', '/api/loans').send(loanBody({ customerId: c }))).body.data.loan;
+    expect(second.loanType).toBe('renewal');
+  });
+});
+
 describe('approval workflow and disbursement', () => {
   it('approving activates the loan and writes the disbursement to the ledger', async () => {
     const l = await activeLoan();
@@ -197,7 +221,7 @@ describe('overdue detection and automation', () => {
     expect(g.body.data.loan.daysOverdue).toBeGreaterThan(0);
     expect(g.body.data.schedule.slice(0, 3).every((i: any) => i.status === 'overdue' || i.status === 'due')).toBe(true);
     expect(await AuditLog.countDocuments({ action: 'LOAN_STATUS_CHANGED', entityId: l.id })).toBeGreaterThanOrEqual(1);
-    const paid = await pay(l.id, 649999.98);
+    const paid = await pay(l.id, 650000.01);
     expect(paid.body.data.loan.status).toBe('active');
   });
   it('the scheduled job refreshes statuses and is protected by CRON_SECRET', async () => {

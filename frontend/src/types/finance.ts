@@ -21,7 +21,7 @@ export interface Loan {
   amount: number; carriedBalance: number; bankDeductionRate: number; grossAmount: number; principal: number
   interestRate: number; rateBasis: string; interestAmount: number; totalRepayment: number
   duration: { value: number; unit: string }; frequency: string; customIntervalDays?: number; numberOfInstallments: number; installmentAmount: number
-  startDate: string; dueDate: string
+  startDate: string; firstPaymentDate?: string | null; firstPaymentDateIsCustom?: boolean; dueDate: string; loanType?: 'new' | 'renewal' | 'topup'
   amountPaid: number; principalPaid: number; interestPaid: number; principalBalance: number; interestBalance: number; outstandingBalance: number; creditBalance: number
   nextInstallmentNumber?: number | null; nextDueDate?: string | null; nextInstallmentAmount: number; daysOverdue: number; overdueAmount: number
   notes?: string; statusReason?: string; createdBy?: { id: string; name?: string } | null; approvedBy?: { id: string; name?: string } | null

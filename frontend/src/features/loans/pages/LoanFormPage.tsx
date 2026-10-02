@@ -30,7 +30,7 @@ export default function LoanFormPage() {
   const products = useAsync(() => loanService.products(), [])
   const existing = useAsync(async () => (id ? loanService.get(id) : null), [id])
   const [customer, setCustomer] = useState<Hit | null>(null)
-  const [f, setF] = useState({ productId: '', amount: '', durationValue: '', durationUnit: 'months', frequency: '', customIntervalDays: '', numberOfInstallments: '', startDate: todayStr(), notes: '' })
+  const [f, setF] = useState({ productId: '', amount: '', durationValue: '', durationUnit: 'months', frequency: '', customIntervalDays: '', numberOfInstallments: '', startDate: todayStr(), firstPaymentDate: '', notes: '' })
   const [errs, setErrs] = useState<Record<string, string>>({})
   const [preview, setPreview] = useState<LoanPreview | null>(null)
   const [previewErr, setPreviewErr] = useState('')
@@ -46,7 +46,7 @@ export default function LoanFormPage() {
     const l = existing.data?.loan
     if (!l) return
     setCustomer({ id: l.customer.id, title: l.customer.fullName ?? '', sub: l.customer.customerId ?? '' })
-    setF({ productId: l.product ?? '', amount: String(l.amount), durationValue: String(l.duration.value), durationUnit: l.duration.unit, frequency: l.frequency, customIntervalDays: l.customIntervalDays ? String(l.customIntervalDays) : '', numberOfInstallments: '', startDate: l.startDate.slice(0, 10), notes: l.notes ?? '' })
+    setF({ productId: l.product ?? '', amount: String(l.amount), durationValue: String(l.duration.value), durationUnit: l.duration.unit, frequency: l.frequency, customIntervalDays: l.customIntervalDays ? String(l.customIntervalDays) : '', numberOfInstallments: '', startDate: l.startDate.slice(0, 10), firstPaymentDate: l.firstPaymentDateIsCustom && l.firstPaymentDate ? l.firstPaymentDate.slice(0, 10) : '', notes: l.notes ?? '' })
   }, [existing.data])
   useEffect(() => { // product defaults when a product is chosen
     if (!product || editing) return
@@ -54,7 +54,7 @@ export default function LoanFormPage() {
   }, [product?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const body = useMemo(() => ({
-    productId: f.productId, amount: Number(f.amount), startDate: f.startDate, frequency: f.frequency || undefined,
+    productId: f.productId, amount: Number(f.amount), startDate: f.startDate, firstPaymentDate: f.firstPaymentDate || undefined, frequency: f.frequency || undefined,
     duration: f.durationValue ? { value: Number(f.durationValue), unit: f.durationUnit } : undefined,
     customIntervalDays: f.customIntervalDays ? Number(f.customIntervalDays) : undefined, numberOfInstallments: f.numberOfInstallments ? Number(f.numberOfInstallments) : undefined,
   }), [f])
@@ -104,6 +104,7 @@ export default function LoanFormPage() {
             <SelectField label="Duration unit" options={meta?.durationUnits ?? []} value={f.durationUnit} onChange={set('durationUnit')} placeholder="Unit" />
             <SelectField label="Repayment frequency" options={freqOptions} value={f.frequency} onChange={set('frequency')} error={errs.frequency} placeholder="Product default" />
             {f.frequency === 'custom' && <Field label="Interval (days)" type="number" min="1" value={f.customIntervalDays} onChange={set('customIntervalDays')} error={errs.customIntervalDays} />}
+            <Field label="First payment date (optional)" type="date" value={f.firstPaymentDate} onChange={set('firstPaymentDate')} error={errs.firstPaymentDate} />
             <Field label="Number of installments (optional override)" type="number" min="1" value={f.numberOfInstallments} onChange={set('numberOfInstallments')} error={errs.numberOfInstallments} />
             {product && <p className="self-end text-xs text-slate-500 sm:col-span-2">Product limits: {product.minAmount ? formatMoney(product.minAmount) : '₦0'} – {product.maxAmount ? formatMoney(product.maxAmount) : 'no maximum'}, {product.minDuration}–{product.maxDuration ?? '∞'} {product.durationUnit}.</p>}
           </FormSection>

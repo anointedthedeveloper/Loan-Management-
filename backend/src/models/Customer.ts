@@ -20,7 +20,8 @@ const customerSchema = new Schema(
     gender: str,
     idType: str,
     idNumber: str,
-    employment: { employmentType: str, employerName: str, occupation: str },
+    employment: { employmentType: str, employerName: str, occupation: str, ippisNumber: str, ministry: str }, // IPPIS no. / ministry as used in the loan book
+    legacyId: str, // client number from the previous loan book
     emergencyContact: { name: str, relationship: str, phone: str },
     registrationDate: { type: Date, default: Date.now },
     status: { ...str, default: DEFAULT_CUSTOMER_STATUS, validate: { validator: isCustomerStatus, message: 'Unknown customer status' } },

@@ -77,7 +77,7 @@ Seed the first users once from your machine: `MONGODB_URI=<atlas uri> npm run se
 2. **Repayment allocation** default: oldest installment first, interest before principal; overpayments rejected. Change in Settings.
 3. **Top-up** default: outstanding balance + new funds become one new loan (calculator "Balance B/Fwd"), old loan closed by a non-cash settlement entry, interest recalculated on the whole new principal. Alternatives (principal-only carry, interest on new funds only, separate loan, minimum % repaid) are settings.
 4. **Late penalties are NOT implemented** (no rule supplied). Grace days and auto-default days are. Fees/adjustments/refunds are recorded in the ledger but do not change loan balances until a rule exists.
-5. The **Excel file was never supplied**; once provided, compare its figures with `backend/tests/finance.test.ts` and adjust the engine functions if it differs.
+5. **Verified against Protech's own loan book** (`complete_loan_book.xlsx`): gross payment, principal, interest, gross loan and EMI for its rows are reproduced exactly (see the "matches Protech's loan book" tests). Findings applied: 5% per month flat, 4% bank deduction, interest on balance b/fwd + new money, EMI rounded to the nearest kobo (last installment absorbs the difference), repayments starting on a chosen first-payment date, loan type new / renewal / top-up, IPPIS number and ministry on customers. Still unknown from the sheet: whether a top-up carries the outstanding *total* or *principal* (default: total, configurable).
 6. Known advisory: `npm audit` reports 2 moderate issues via `exceljs -> uuid` (only exploitable when callers pass a buffer to uuid; this app does not). Revisit when exceljs releases a fix.
 
 ## Deployment environment variables (backend)

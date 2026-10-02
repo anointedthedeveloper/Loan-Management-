@@ -20,6 +20,8 @@ export interface LoanTermsInput {
   numberOfInstallments?: number;
   interestBasis?: 'full_principal' | 'new_funds_only';
   startDate: Date;
+  /** Optional explicit date of the first installment (otherwise one period after startDate). */
+  firstPaymentDate?: Date;
 }
 
 export interface LoanTerms {
@@ -36,6 +38,9 @@ export interface LoanTerms {
   finalInstallmentAmount: number;
   durationMonths: number;
   startDate: Date;
+  /** The explicit first-payment date if one was supplied (kept so dates are always derived from the original anchor). */
+  firstPaymentDate?: Date;
+  firstDueDate: Date;
   dueDate: Date;
 }
 

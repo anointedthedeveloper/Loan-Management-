@@ -34,9 +34,10 @@ const body = {
   gender: oneOf(GENDERS, 'gender'),
   idType: oneOf(ID_TYPES, 'identification type'),
   idNumber: z.preprocess(blank, z.string().trim().toUpperCase().regex(/^[A-Z0-9\-/]{4,30}$/, 'Enter a valid identification number').optional()),
-  employment: z.object({ employmentType: oneOf(EMPLOYMENT_TYPES, 'employment type'), employerName: text(120), occupation: text(120) }).optional(),
+  employment: z.object({ employmentType: oneOf(EMPLOYMENT_TYPES, 'employment type'), employerName: text(120), occupation: text(120), ippisNumber: text(40), ministry: text(120) }).optional(),
   emergencyContact: z.object({ name: text(100), relationship: text(60), phone: phone(false) }).optional(),
   status: z.preprocess(blank, z.string().refine(isCustomerStatus, 'Choose a valid status').optional()),
+  legacyId: text(40),
   notes: text(2000),
   registrationDate: z.preprocess(blank, z.coerce.date().optional()),
 };

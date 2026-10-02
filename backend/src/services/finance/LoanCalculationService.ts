@@ -29,10 +29,15 @@ export function calculateInterest(principalKobo: number, ratePercent: number, ba
 
 export const calculateTotalPayable = (principalKobo: number, interestKobo: number) => principalKobo + interestKobo;
 
-/** Equal installments; any kobo remainder lands on the final installment. */
+/**
+ * Equal installments rounded to the nearest kobo (as in Protech's loan book: 320,000 / 12 = 26,666.67).
+ * The final installment absorbs the difference so the total is repaid exactly, never over or under.
+ */
 export function calculateInstallment(totalKobo: number, n: number): { regular: number; last: number } {
-  const parts = splitEvenly(totalKobo, n);
-  return { regular: parts[0] ?? 0, last: parts[n - 1] ?? 0 };
+  let regular = Math.round(totalKobo / n);
+  let last = totalKobo - regular * (n - 1);
+  if (last < 0) { regular = Math.floor(totalKobo / n); last = totalKobo - regular * (n - 1); } // tiny totals only
+  return { regular, last };
 }
 
 export const stepDays = (f: Frequency, custom?: number) => ({ daily: 1, weekly: 7, biweekly: 14, monthly: 0, custom: custom ?? 0 })[f];
@@ -50,7 +55,9 @@ export function deriveInstallmentCount(input: LoanTermsInput): number {
   return Math.max(1, Math.floor(days / step));
 }
 
-export function installmentDueDate(start: Date, frequency: Frequency, k: number, customDays?: number): Date {
+/** Due date of installment k. By default the first falls one period after `start`; `firstPaymentDate` overrides that (as in the loan book, where repayments begin on a set date). */
+export function installmentDueDate(start: Date, frequency: Frequency, k: number, customDays?: number, firstPaymentDate?: Date): Date {
+  if (firstPaymentDate) return frequency === 'monthly' ? addMonths(firstPaymentDate, k - 1) : addDays(firstPaymentDate, (k - 1) * stepDays(frequency, customDays));
   return frequency === 'monthly' ? addMonths(start, k) : addDays(start, k * stepDays(frequency, customDays));
 }
 
@@ -74,7 +81,9 @@ export function calculateLoan(input: LoanTermsInput): LoanTerms {
     interestAmount: fromKobo(interestKobo), totalRepayment: fromKobo(totalKobo), numberOfInstallments: n,
     installmentAmount: fromKobo(inst.regular), finalInstallmentAmount: fromKobo(inst.last), durationMonths: months,
     startDate: input.startDate,
-    dueDate: installmentDueDate(input.startDate, input.frequency, n, input.customIntervalDays),
+    firstPaymentDate: input.firstPaymentDate,
+    firstDueDate: installmentDueDate(input.startDate, input.frequency, 1, input.customIntervalDays, input.firstPaymentDate),
+    dueDate: installmentDueDate(input.startDate, input.frequency, n, input.customIntervalDays, input.firstPaymentDate),
   };
 }
 
@@ -85,11 +94,12 @@ export function calculateLoan(input: LoanTermsInput): LoanTerms {
  */
 export function generateSchedule(terms: LoanTerms, frequency: Frequency, customIntervalDays?: number): ScheduleInstallment[] {
   const n = terms.numberOfInstallments;
-  const expected = splitEvenly(toKobo(terms.totalRepayment), n);
+  const inst = calculateInstallment(toKobo(terms.totalRepayment), n);
+  const expected = Array.from({ length: n }, (_, i) => (i === n - 1 ? inst.last : inst.regular));
   const interest = splitEvenly(toKobo(terms.interestAmount), n);
   return Array.from({ length: n }, (_, i) => ({
     number: i + 1,
-    dueDate: installmentDueDate(terms.startDate, frequency, i + 1, customIntervalDays),
+    dueDate: installmentDueDate(terms.startDate, frequency, i + 1, customIntervalDays, terms.firstPaymentDate),
     principalComponent: fromKobo(expected[i]! - interest[i]!),
     interestComponent: fromKobo(interest[i]!),
     expectedAmount: fromKobo(expected[i]!),

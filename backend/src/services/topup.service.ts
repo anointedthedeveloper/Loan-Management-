@@ -118,7 +118,7 @@ export async function approveTopUp(id: string, actor: Actor, opts: { system?: bo
   }
   const newLoan = await createLoanRecord(draft, {
     customerId: loan.customer, status: 'active', actorId: actor.id, notes: `Top-up ${t.topUpId} on ${loan.loanId}`,
-    extra: { topUpOf: loan._id, topUp: t._id, interestRate: t.interestRate ?? loan.interestRate, approvedBy: actor.id, approvedAt: new Date(), disbursedAt: new Date() },
+    extra: { loanType: 'topup', topUpOf: loan._id, topUp: t._id, interestRate: t.interestRate ?? loan.interestRate, approvedBy: actor.id, approvedAt: new Date(), disbursedAt: new Date() },
   });
   await postTransaction({ customer: loan.customer, loan: newLoan._id, topUp: t._id, type: 'topup', amount: t.requestedAmount, description: `Top-up ${t.topUpId} disbursement`, createdBy: actor.id });
 

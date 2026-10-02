@@ -39,6 +39,7 @@ export function OverviewTab({ c }: { c: Customer }) {
       <Panel title="Employment / business">
         <Item label="Employment type" value={label(meta?.employmentTypes, c.employment?.employmentType)} /><Item label="Occupation" value={c.employment?.occupation} />
         <div className="sm:col-span-2"><Item label="Employer / business" value={c.employment?.employerName} /></div>
+        <Item label="IPPIS number" value={c.employment?.ippisNumber} /><Item label="Ministry / department" value={c.employment?.ministry} />
       </Panel>
       <Panel title="Emergency contact">
         <Item label="Name" value={c.emergencyContact?.name} /><Item label="Relationship" value={c.emergencyContact?.relationship} /><Item label="Phone" value={c.emergencyContact?.phone} />
@@ -46,6 +47,7 @@ export function OverviewTab({ c }: { c: Customer }) {
       <Panel title="Record">
         <Item label="Created by" value={by(c.createdBy)} /><Item label="Created" value={formatDate(c.createdAt)} />
         <Item label="Last updated by" value={by(c.updatedBy)} /><Item label="Last updated" value={formatDate(c.updatedAt)} />
+        {c.legacyId && <Item label="Previous client number" value={c.legacyId} />}
         {c.notes && <div className="sm:col-span-2"><Item label="Notes" value={c.notes} /></div>}
       </Panel>
     </div>
