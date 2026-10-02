@@ -36,7 +36,7 @@ export interface LoanPreview {
 export interface Product {
   id: string; name: string; code: string; description?: string; interestRate: number; rateBasis: string; bankDeductionRate: number
   minAmount: number; maxAmount?: number; minDuration: number; maxDuration?: number; durationUnit: string
-  allowedFrequencies: string[]; defaultFrequency: string; isActive: boolean
+  allowedFrequencies: string[]; defaultFrequency: string; isActive: boolean; category?: string
 }
 
 export interface Transaction {

@@ -5,6 +5,9 @@ import { useDebounce } from '../../../hooks/useDebounce'
 import { useLoanMeta } from '../../../hooks/useLoanMeta'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
+import { MoneyField } from '../../../components/ui/MoneyField'
+import { useAuth } from '../../../context/AuthContext'
+import { PERM } from '../../../config/permissions'
 import { SelectField, TextareaField } from '../../../components/ui/FormControls'
 import { Modal } from '../../../components/ui/Modal'
 import { LoanPicker, type Hit } from '../../../components/ui/Pickers'
@@ -33,6 +36,8 @@ export function TopUpCalculation({ c }: { c: TopUpCalc }) {
 
 export function TopUpRequestModal({ loan, onClose, onDone }: { loan?: { id: string; loanId: string; outstandingBalance: number; frequency?: string; duration?: { value: number; unit: string } }; onClose: () => void; onDone: () => void }) {
   const toast = useToast()
+  const { can } = useAuth()
+  const approver = can(PERM.topups.approve) // approvers (CEO) skip the approval step
   const meta = useLoanMeta()
   const [picked, setPicked] = useState<Hit | null>(loan ? { id: loan.id, title: loan.loanId, sub: `Outstanding ${formatMoney(loan.outstandingBalance)}` } : null)
   const [f, setF] = useState({ amount: '', durationValue: String(loan?.duration?.value ?? 6), durationUnit: loan?.duration?.unit ?? 'months', frequency: loan?.frequency ?? 'monthly', customIntervalDays: '', interestRate: '', notes: '' })
@@ -55,16 +60,16 @@ export function TopUpRequestModal({ loan, onClose, onDone }: { loan?: { id: stri
     e.preventDefault()
     if (!picked) return setErrs({ loanId: 'Choose a loan' })
     setBusy(true)
-    try { await topupService.request({ ...body(), notes: f.notes || undefined }); toast('success', 'Top-up requested'); onDone() }
+    try { await topupService.request({ ...body(), notes: f.notes || undefined }); toast('success', approver ? 'Top-up created and approved' : 'Top-up submitted for approval'); onDone() }
     catch (err) { if (err instanceof ApiError && err.fields) setErrs(err.fields); toast('error', err instanceof ApiError ? err.message : 'Could not request top-up') }
     finally { setBusy(false) }
   }
   return (
-    <Modal open onClose={onClose} title="Request top-up" wide>
+    <Modal open onClose={onClose} title="Top-up" wide>
       <form onSubmit={submit} className="space-y-4" noValidate>
         {loan ? <div className="rounded-lg bg-slate-50 p-3 text-sm"><b>{loan.loanId}</b> · Outstanding {formatMoney(loan.outstandingBalance)}</div> : <LoanPicker value={picked} onChange={setPicked} error={errs.loanId} />}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="New funds requested (₦)" type="number" step="0.01" min="0" value={f.amount} onChange={set('amount')} error={errs.amount} />
+          <MoneyField label="New funds requested" value={f.amount} onChange={(v) => { setF((s) => ({ ...s, amount: v })); setErrs((x) => ({ ...x, amount: '' })) }} error={errs.amount} placeholder="0.00" />
           <SelectField label="Repayment frequency" options={meta?.frequencies ?? []} value={f.frequency} onChange={set('frequency')} placeholder="Frequency" />
           <Field label="Duration" type="number" min="1" value={f.durationValue} onChange={set('durationValue')} />
           <SelectField label="Duration unit" options={meta?.durationUnits ?? []} value={f.durationUnit} onChange={set('durationUnit')} placeholder="Unit" />
@@ -73,7 +78,7 @@ export function TopUpRequestModal({ loan, onClose, onDone }: { loan?: { id: stri
         </div>
         {calcErr ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{calcErr}</p> : calc ? <TopUpCalculation c={calc} /> : <p className="text-sm text-slate-500">Enter the amount to see how the top-up is calculated.</p>}
         <TextareaField label="Notes" value={f.notes} onChange={set('notes')} />
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} disabled={!!calc && !calc.eligible}>Submit request</Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…" disabled={!!calc && !calc.eligible}>{approver ? 'Create top-up' : 'Submit for approval'}</Button></div>
       </form>
     </Modal>
   )

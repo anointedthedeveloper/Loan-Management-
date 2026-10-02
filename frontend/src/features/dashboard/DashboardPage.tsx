@@ -59,7 +59,7 @@ export default function DashboardPage({ variant }: { variant: 'ceo' | 'accountan
       <div><h1 className="text-2xl font-bold tracking-tight">{greet}, {greetingName(user.name)}</h1><p className="mt-1 text-sm text-slate-500">{ceo ? 'Executive overview' : 'Daily operations'} · figures are calculated live from the ledger</p></div>
       {error ? <ErrorState message={error} onRetry={() => setKey((k) => k + 1)} /> : (
         <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {(loading || data?.customers) && <MetricCard label="Total customers" value={formatNumber(data?.customers?.total)} loading={loading} icon={<Users className="size-5" />} />}
             {(loading || fin) && <MetricCard label="Active loans" value={formatNumber(fin?.activeLoans)} loading={loading} icon={<Landmark className="size-5" />} />}
             {ceo && fin && <>
@@ -88,7 +88,7 @@ export default function DashboardPage({ variant }: { variant: 'ceo' | 'accountan
           )}
           {!fin && data?.customers && <StatusBreakdown title="Customers by status" items={data.customers.byStatus} loading={loading} />}
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="stagger grid gap-6 lg:grid-cols-2">
             {data?.recentRepayments && <Card title="Recent repayments" action={<Link to="/repayments" className="text-sm font-medium text-brand-700 hover:underline">View all</Link>}>
               {data.recentRepayments.length ? <ul className="divide-y divide-slate-100">{data.recentRepayments.map((t) => <Row key={t.id} to={t.loan ? `/loans/${t.loan.id}` : undefined} left={t.customer?.fullName} sub={`${t.loan?.loanId ?? ''} · ${formatDate(t.date)}`} right={formatMoney(t.amount)} />)}</ul> : <Empty text="No repayments recorded yet." />}</Card>}
             {data?.recentLoans && <Card title="Recent loans" action={<Link to="/loans" className="text-sm font-medium text-brand-700 hover:underline">View all</Link>}>

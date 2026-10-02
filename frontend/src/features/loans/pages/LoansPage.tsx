@@ -25,7 +25,7 @@ export default function LoansPage() {
     { key: 'status', type: 'select', label: 'Status', options: meta?.statuses ?? [], all: 'All statuses' },
     { key: 'repaymentStatus', type: 'select', label: 'Repayment', options: repaymentStatuses, all: 'Any' },
     { key: 'from', type: 'date', label: 'Start from' }, { key: 'to', type: 'date', label: 'Start to' },
-    { key: 'minAmount', type: 'number', label: 'Min amount', placeholder: '0' }, { key: 'maxAmount', type: 'number', label: 'Max amount' },
+    { key: 'minAmount', type: 'money', label: 'Min amount', placeholder: '0' }, { key: 'maxAmount', type: 'money', label: 'Max amount' },
   ]
   const cols: Column<Loan>[] = [
     { key: 'loanId', label: 'Loan', sortKey: 'loanId', render: (l) => <span className="font-mono text-xs">{l.loanId}</span> },

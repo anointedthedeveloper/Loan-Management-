@@ -72,7 +72,7 @@ export function serializeTopUp(t: any) {
 }
 const populateTopUp = [{ path: 'customer', select: 'customerId fullName' }, { path: 'loan', select: 'loanId' }, { path: 'resultingLoan', select: 'loanId' }, { path: 'requestedBy', select: 'name' }, { path: 'approvedBy', select: 'name' }];
 
-export async function requestTopUp(input: TopUpInput, actor: Actor) {
+export async function requestTopUp(input: TopUpInput, actor: Actor, opts: { autoApprove?: boolean } = {}) {
   const { loan, calc, rules, state } = await price(input);
   if (!calc.eligible) throw AppError.badRequest(calc.ineligibleReason ?? 'Not eligible for a top-up', 'TOPUP_NOT_ELIGIBLE');
   if (await TopUp.exists({ loan: loan._id, status: 'pending' })) throw AppError.conflict('There is already a pending top-up request for this loan', 'TOPUP_PENDING_EXISTS');
@@ -82,7 +82,7 @@ export async function requestTopUp(input: TopUpInput, actor: Actor) {
     calculation: calcView(calc, loan, state), notes: input.notes, requestedBy: actor.id,
   } as any);
   await auditAs(actor, { action: AUDIT.TOPUP_REQUESTED, entity: 'TopUp', entityId: String(t._id), entityLabel: t.topUpId, after: { loan: loan.loanId, amount: input.amount, totalRepayment: calc.terms.totalRepayment, mode: calc.mode } });
-  if (!rules.topup.requireApproval) return approveTopUp(String(t._id), actor, { system: true });
+  if (!rules.topup.requireApproval || opts.autoApprove) return approveTopUp(String(t._id), actor, { system: true });
   return getTopUp(String(t._id));
 }
 

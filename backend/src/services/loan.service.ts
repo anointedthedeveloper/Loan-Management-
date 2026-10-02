@@ -121,13 +121,14 @@ export async function createLoanRecord(d: Draft, opts: { customerId: Types.Objec
   return loan;
 }
 
-export async function createLoan(input: PricingInput & { customerId: string; notes?: string }, actor: Actor) {
+/** `autoApprove`: set by the API when the creator holds loans.approve (e.g. the CEO), so approvers never approve their own work. */
+export async function createLoan(input: PricingInput & { customerId: string; notes?: string }, actor: Actor, opts: { autoApprove?: boolean } = {}) {
   await assertEligible(input.customerId);
   const draft = await buildDraft(input);
   const loan = await createLoanRecord(draft, { customerId: input.customerId, status: 'pending', actorId: actor.id, notes: input.notes });
   await auditAs(actor, { action: AUDIT.LOAN_CREATED, entity: 'Loan', entityId: String(loan._id), entityLabel: loan.loanId, after: { customer: input.customerId, product: draft.product.code, amount: draft.terms.amount, totalRepayment: draft.terms.totalRepayment, installments: draft.terms.numberOfInstallments } });
   const { loans } = await getFinanceRules();
-  if (!loans.requireApproval) return approveLoan(String(loan._id), actor, { system: true });
+  if (!loans.requireApproval || opts.autoApprove) return approveLoan(String(loan._id), actor, { system: true });
   return getLoan(String(loan._id));
 }
 

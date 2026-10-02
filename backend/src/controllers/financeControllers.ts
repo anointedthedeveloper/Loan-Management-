@@ -34,7 +34,10 @@ export const productDelete = asyncHandler(async (req, res) => { await products.d
 /* loans */
 export const loanList = asyncHandler(async (_req, res) => { const f = q(res); const r = await loans.listLoans(f); sendPage(res, r.items, f, r.total); });
 export const loanPreview = asyncHandler(async (req, res) => ok(res, await loans.previewLoan(req.body)));
-export const loanCreate = asyncHandler(async (req, res) => ok(res, await loans.createLoan(req.body, actorOf(req)), 'Loan created', 201));
+export const loanCreate = asyncHandler(async (req, res) => {
+  const autoApprove = req.auth!.permissions.includes('loans.approve'); // approvers (CEO) skip the approval step
+  ok(res, await loans.createLoan(req.body, actorOf(req), { autoApprove }), autoApprove ? 'Loan created and approved' : 'Loan submitted for approval', 201);
+});
 export const loanGet = asyncHandler(async (req, res) => ok(res, await loans.getLoan(id(req))));
 export const loanUpdate = asyncHandler(async (req, res) => ok(res, await loans.updateLoan(id(req), req.body, actorOf(req)), 'Loan updated'));
 export const loanApprove = asyncHandler(async (req, res) => ok(res, await loans.approveLoan(id(req), actorOf(req)), 'Loan approved'));
@@ -56,7 +59,10 @@ export const txReverse = asyncHandler(async (req, res) => ok(res, { transaction:
 /* top-ups */
 export const topupList = asyncHandler(async (_req, res) => { const f = q(res); const r = await topups.listTopUps(f); sendPage(res, r.items, f, r.total); });
 export const topupPreview = asyncHandler(async (req, res) => ok(res, { calculation: await topups.previewTopUp(req.body) }));
-export const topupRequest = asyncHandler(async (req, res) => ok(res, { topUp: await topups.requestTopUp(req.body, actorOf(req)) }, 'Top-up requested', 201));
+export const topupRequest = asyncHandler(async (req, res) => {
+  const autoApprove = req.auth!.permissions.includes('topups.approve');
+  ok(res, { topUp: await topups.requestTopUp(req.body, actorOf(req), { autoApprove }) }, autoApprove ? 'Top-up created and approved' : 'Top-up submitted for approval', 201);
+});
 export const topupGet = asyncHandler(async (req, res) => ok(res, { topUp: await topups.getTopUp(id(req)) }));
 export const topupApprove = asyncHandler(async (req, res) => ok(res, { topUp: await topups.approveTopUp(id(req), actorOf(req)) }, 'Top-up approved'));
 export const topupReject = asyncHandler(async (req, res) => ok(res, { topUp: await topups.rejectTopUp(id(req), req.body.reason, actorOf(req)) }, 'Top-up rejected'));

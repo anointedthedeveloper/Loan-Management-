@@ -20,6 +20,7 @@ import TopUpsPage from './features/topups/pages/TopUpsPage'
 import ReportsPage from './features/reports/pages/ReportsPage'
 import AuditLogPage from './features/audit/pages/AuditLogPage'
 import SettingsPage from './features/settings/pages/SettingsPage'
+import ProductsPage from './features/products/pages/ProductsPage'
 import NotFound from './pages/NotFound'
 import { LoadingScreen } from './components/ui/feedback'
 import { GlobalLoader } from './components/ui/GlobalLoader'
@@ -53,6 +54,7 @@ export default function App() {
                 </Route>
                 <Route element={<ProtectedRoute permission={PERM.loans.create} />}><Route path="/loans/new" element={<LoanFormPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.loans.edit} />}><Route path="/loans/:id/edit" element={<LoanFormPage />} /></Route>
+                <Route element={<ProtectedRoute permission={PERM.products.manage} />}><Route path="/products" element={<ProductsPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.repayments.view} />}><Route path="/repayments" element={<RepaymentsPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.transactions.view} />}><Route path="/transactions" element={<TransactionsPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.topups.view} />}><Route path="/topups" element={<TopUpsPage />} /></Route>

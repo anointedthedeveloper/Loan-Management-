@@ -43,7 +43,7 @@ export function CreateStaffModal({ cat, onClose, onDone }: { cat: PermissionCata
           {isCeo && <p className="mb-2 rounded-lg bg-slate-50 p-3 text-sm text-slate-600">CEO accounts always hold every permission.</p>}
           <PermissionPicker groups={cat.groups} value={isCeo ? cat.groups.flatMap((g) => g.permissions.map((p) => p.key)) : perms} onChange={setPerms} disabled={isCeo} />
         </div>
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy}>Create account</Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Creating…">Create account</Button></div>
       </form>
     </Modal>
   )
@@ -69,7 +69,7 @@ export function EditProfileModal({ user, cat, isSelf, onClose, onDone }: { user:
         <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} error={errs.email} />
         <SelectField label="Role" options={cat.roles} value={role} placeholder="Choose role" disabled={isSelf} onChange={(e) => setRole(e.target.value)} />
         {role !== user.role && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Changing the role resets this person's permissions to the new role's defaults.</p>}
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy}>Save</Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">Save</Button></div>
       </form>
     </Modal>
   )
@@ -111,7 +111,7 @@ export function ResetPasswordModal({ user, onClose, onDone }: { user: User; onCl
         {mode === 'set' && <Field label="New password" type="password" autoComplete="new-password" value={pw} onChange={(e) => setPw(e.target.value)} error={err} />}
         {mode === 'generate' && err && <p className="text-sm text-red-600">{err}</p>}
         <p className="text-xs text-slate-500">All of this person's current sessions will be signed out. This action is recorded in the audit log.</p>
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy}>Reset password</Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Resetting…">Reset password</Button></div>
       </form>
     </Modal>
   )

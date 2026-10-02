@@ -1,4 +1,6 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Check, FileClock } from 'lucide-react'
+import { useDraft } from '../../../hooks/useDraft'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
 import { FormSection, SelectField, TextareaField } from '../../../components/ui/FormControls'
@@ -11,12 +13,16 @@ interface Props {
   submitLabel: string
   busy: boolean
   serverErrors: Record<string, string>
+  /** When set, unsaved input is autosaved in this browser under this key (new customers only). */
+  draftKey?: string | null
   onSubmit: (v: CustomerFormValues) => void
   onCancel: () => void
 }
 
-export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, onSubmit, onCancel }: Props) {
+export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, draftKey = null, onSubmit, onCancel }: Props) {
   const [v, setV] = useState(initial)
+  const draft = useDraft<CustomerFormValues>(draftKey, v, (x) => JSON.stringify(x) === JSON.stringify(initial))
+  useEffect(() => { const d = draft.load(); if (d) { setV({ ...initial, ...d.data }); draft.markRestored(d.savedAt) } }, []) // eslint-disable-line react-hooks/exhaustive-deps
   const [local, setLocal] = useState<Record<string, string>>({})
   const err = (k: string) => local[k] ?? serverErrors[k]
   const set = (k: keyof CustomerFormValues) => (e: { target: { value: string } }) => { setV((s) => ({ ...s, [k]: e.target.value })); setLocal((l) => ({ ...l, [k]: '' })) }
@@ -32,6 +38,12 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, o
 
   return (
     <form id="customer-form" onSubmit={submit} noValidate className="space-y-5">
+      {draft.restoredAt && (
+        <div className="flex animate-fade-in flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span className="flex items-center gap-2"><FileClock className="size-4" />Restored your unsaved draft from {new Date(draft.restoredAt).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })}.</span>
+          <button type="button" className="font-medium underline" onClick={() => { draft.discard(); setV(initial); setLocal({}) }}>Discard draft</button>
+        </div>
+      )}
       <FormSection title="Personal details">
         {text('firstName', 'First name *', { autoFocus: true })}
         {text('middleName', 'Middle name')}
@@ -78,8 +90,9 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, o
       </FormSection>
 
       <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t border-slate-200 bg-surface/95 px-4 py-3 sm:-mx-6 sm:px-6">
+        {draftKey && draft.savedAt && <span className="mr-auto flex animate-fade-in items-center gap-1.5 text-xs text-slate-500"><Check className="size-3.5 text-brand-600" />Draft saved</span>}
         <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" loading={busy}>{submitLabel}</Button>
+        <Button type="submit" loading={busy} loadingText={draftKey ? 'Registering…' : 'Saving…'}>{submitLabel}</Button>
       </div>
     </form>
   )

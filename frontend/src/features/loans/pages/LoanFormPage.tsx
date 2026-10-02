@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { Calculator } from 'lucide-react'
+import { Calculator, Check, FileClock } from 'lucide-react'
+import { useDraft } from '../../../hooks/useDraft'
+import { clearDraft } from '../../../utils/draft'
 import { ApiError } from '../../../services/api'
 import { useToast } from '../../../context/ToastContext'
 import { useAsync } from '../../../hooks/useAsync'
@@ -8,6 +10,9 @@ import { useDebounce } from '../../../hooks/useDebounce'
 import { useLoanMeta } from '../../../hooks/useLoanMeta'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
+import { MoneyField } from '../../../components/ui/MoneyField'
+import { useAuth } from '../../../context/AuthContext'
+import { PERM } from '../../../config/permissions'
 import { FormSection, SelectField, TextareaField } from '../../../components/ui/FormControls'
 import { ErrorState, Skeleton } from '../../../components/ui/feedback'
 import { CustomerPicker, type Hit } from '../../../components/ui/Pickers'
@@ -26,6 +31,8 @@ export default function LoanFormPage() {
   const nav = useNavigate()
   const [search] = useSearchParams()
   const toast = useToast()
+  const { can } = useAuth()
+  const approver = can(PERM.loans.approve) // approvers (CEO) skip the approval step
   const meta = useLoanMeta()
   const products = useAsync(() => loanService.products(), [])
   const existing = useAsync(async () => (id ? loanService.get(id) : null), [id])
@@ -37,6 +44,12 @@ export default function LoanFormPage() {
   const [busy, setBusy] = useState(false)
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => { setF((s) => ({ ...s, [k]: e.target.value })); setErrs((x) => ({ ...x, [k]: '' })) }
   const product = products.data?.find((p) => p.id === f.productId)
+  const draft = useDraft(editing ? null : 'loan-new', { f, customer }, (x) => !x.customer && !x.f.amount && !x.f.productId)
+  useEffect(() => { // bring back an unsaved draft (a ?customer= link still wins for the customer)
+    if (editing) return
+    const d = draft.load()
+    if (d) { setF(d.data.f); setCustomer(d.data.customer); draft.markRestored(d.savedAt) }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => { // arriving from a customer page: preselect that customer
     const cid = search.get('customer')
@@ -77,7 +90,8 @@ export default function LoanFormPage() {
     setBusy(true)
     try {
       const d = editing ? await loanService.update(id!, body) : await loanService.create({ ...body, customerId: customer!.id, notes: f.notes || undefined })
-      toast('success', editing ? 'Loan updated' : `Loan ${d.loan.loanId} created`); nav(`/loans/${d.loan.id}`)
+      if (!editing) clearDraft('loan-new')
+      toast('success', editing ? 'Loan updated' : d.loan.status === 'pending' ? `Loan ${d.loan.loanId} submitted for approval` : `Loan ${d.loan.loanId} created and approved`); nav(`/loans/${d.loan.id}`)
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrs(err.fields)
       toast('error', err instanceof ApiError ? err.message : 'Could not save loan')
@@ -90,7 +104,13 @@ export default function LoanFormPage() {
   return (
     <div className="space-y-5">
       <div><h1 className="text-2xl font-bold tracking-tight">{editing ? `Edit ${existing.data?.loan.loanId}` : 'New loan'}</h1>
-        <p className="text-sm text-slate-500">New loans are submitted for approval. Interest, totals and the schedule are calculated by the server.</p></div>
+        <p className="text-sm text-slate-500">{approver ? 'Loans you create are approved and disbursed straight away.' : 'New loans are submitted to the CEO for approval.'} Interest, totals and the schedule are calculated by the server.</p></div>
+      {draft.restoredAt && !editing && (
+        <div className="flex animate-fade-in flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <span className="flex items-center gap-2"><FileClock className="size-4" />Restored your unsaved draft from {new Date(draft.restoredAt).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })}.</span>
+          <button type="button" className="font-medium underline" onClick={() => { draft.discard(); setCustomer(null); setF({ productId: '', amount: '', durationValue: '', durationUnit: 'months', frequency: '', customIntervalDays: '', numberOfInstallments: '', startDate: todayStr(), firstPaymentDate: '', notes: '' }) }}>Discard draft</button>
+        </div>
+      )}
       <form onSubmit={submit} noValidate className="grid gap-5 lg:grid-cols-5">
         <div className="space-y-5 lg:col-span-3">
           <FormSection title="Borrower and product">
@@ -98,7 +118,7 @@ export default function LoanFormPage() {
             <div className="sm:col-span-2"><SelectField label="Loan product" options={(products.data ?? []).filter((p) => p.isActive).map((p) => ({ value: p.id, label: `${p.name} — ${p.interestRate}% ${p.rateBasis === 'per_month' ? 'per month' : p.rateBasis === 'per_annum' ? 'per annum' : 'flat'}` }))} value={f.productId} onChange={set('productId')} error={errs.productId} placeholder="Choose product" /></div>
           </FormSection>
           <FormSection title="Terms">
-            <Field label="Loan amount received by customer (₦)" type="number" inputMode="decimal" step="0.01" min="0" value={f.amount} onChange={set('amount')} error={errs.amount} />
+            <MoneyField label="Loan amount received by customer" value={f.amount} onChange={(v) => { setF((s) => ({ ...s, amount: v })); setErrs((x) => ({ ...x, amount: '' })) }} error={errs.amount} placeholder="0.00" />
             <Field label="Start date" type="date" value={f.startDate} onChange={set('startDate')} error={errs.startDate} />
             <Field label="Duration" type="number" min="1" value={f.durationValue} onChange={set('durationValue')} error={errs.duration} />
             <SelectField label="Duration unit" options={meta?.durationUnits ?? []} value={f.durationUnit} onChange={set('durationUnit')} placeholder="Unit" />
@@ -128,7 +148,8 @@ export default function LoanFormPage() {
           </div>
         </aside>
         <div className="sticky bottom-0 -mx-4 flex justify-end gap-2 border-t border-slate-200 bg-surface/95 px-4 py-3 sm:-mx-6 sm:px-6 lg:col-span-5">
-          <Button type="button" variant="secondary" onClick={() => nav(-1)}>Cancel</Button><Button type="submit" loading={busy}>{editing ? 'Save changes' : 'Submit for approval'}</Button>
+          {!editing && draft.savedAt && <span className="mr-auto flex animate-fade-in items-center gap-1.5 text-xs text-slate-500"><Check className="size-3.5 text-brand-600" />Draft saved</span>}
+          <Button type="button" variant="secondary" onClick={() => nav(-1)}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">{editing ? 'Save changes' : approver ? 'Create loan' : 'Submit for approval'}</Button>
         </div>
       </form>
     </div>

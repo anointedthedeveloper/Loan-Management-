@@ -4,7 +4,7 @@ import type { ActivityEntry, Tone } from '../../types'
 import { Skeleton, EmptyState, Badge } from '../ui/feedback'
 import { formatDateTime, humanizeAction } from '../../utils/format'
 
-const card = 'rounded-xl border border-slate-200 bg-white p-5 shadow-sm'
+const card = 'lift rounded-xl border border-slate-200 bg-white p-5 shadow-sm'
 
 /** A single real number from the API. */
 export function MetricCard({ label, value, hint, icon, loading }: { label: string; value?: ReactNode; hint?: string; icon?: ReactNode; loading?: boolean }) {

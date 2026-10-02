@@ -21,13 +21,19 @@ afterAll(teardownDb);
 
 const newCustomer = async () => { n++; return (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id as string; };
 const loanBody = (over: Record<string, unknown> = {}) => ({ customerId: customer, productId: salary, amount: 960000, duration: { value: 6, unit: 'months' }, startDate: isoDate(today), ...over });
-/** Creates and activates a loan. */
+/** The CEO creates a loan: approvers skip the approval step, so it is approved and disbursed immediately. */
 async function activeLoan(over: Record<string, unknown> = {}) {
   const c = await api('post', '/api/loans').send(loanBody(over));
   expect(c.status).toBe(201);
-  const a = await api('post', `/api/loans/${c.body.data.loan.id}/approve`);
-  expect(a.status).toBe(200);
-  return a.body.data.loan;
+  expect(['active', 'overdue', 'defaulted']).toContain(c.body.data.loan.status); // live (back-dated loans are already overdue)
+  return c.body.data.loan;
+}
+/** An accountant creates a loan: it waits for approval. */
+async function pendingLoan(over: Record<string, unknown> = {}) {
+  const c = await api('post', '/api/loans', acct).send(loanBody(over));
+  expect(c.status).toBe(201);
+  expect(c.body.data.loan.status).toBe('pending');
+  return c.body.data;
 }
 const pay = (loanId: string, amount: number, over: Record<string, unknown> = {}, t = ceo) => api('post', '/api/repayments', t).send({ loanId, amount, ...over });
 
@@ -57,9 +63,10 @@ describe('loan creation and calculation (done by the backend)', () => {
     expect(r.body.data.terms).toMatchObject({ grossAmount: 1_000_000, interestAmount: 300_000, totalRepayment: 1_300_000, numberOfInstallments: 6 });
     expect(r.body.data.schedule).toHaveLength(6);
   });
-  it('creates a pending loan with a schedule, and audits it', async () => {
-    const r = await api('post', '/api/loans').send(loanBody());
+  it('an accountant creates a pending loan with a schedule, and audits it', async () => {
+    const r = await api('post', '/api/loans', acct).send(loanBody());
     expect(r.status).toBe(201);
+    expect(r.body.message).toMatch(/submitted for approval/i);
     const { loan, schedule } = r.body.data;
     expect(loan.loanId).toMatch(/^LN-\d{6}$/);
     expect(loan.status).toBe('pending');
@@ -78,14 +85,21 @@ describe('loan creation and calculation (done by the backend)', () => {
     await Customer.updateOne({ _id: c }, { status: 'blacklisted' });
     expect((await api('post', '/api/loans').send(loanBody({ customerId: c }))).body.code).toBe('LOAN_NOT_ELIGIBLE');
   });
-  it('requires permissions: accountants cannot create or approve', async () => {
-    expect((await api('post', '/api/loans', acct).send(loanBody())).status).toBe(403);
-    const c = await api('post', '/api/loans').send(loanBody());
-    expect((await api('post', `/api/loans/${c.body.data.loan.id}/approve`, acct)).status).toBe(403);
+  it('the CEO skips approval; accountants submit for approval and cannot approve', async () => {
+    const ceoLoan = await api('post', '/api/loans').send(loanBody());
+    expect(ceoLoan.body.message).toMatch(/created and approved/i);
+    expect(ceoLoan.body.data.loan).toMatchObject({ status: 'active', outstandingBalance: 1_300_000 });
+    expect(await Transaction.countDocuments({ loan: ceoLoan.body.data.loan.id, type: 'disbursement' })).toBe(1);
+    const mine = await pendingLoan();
+    expect((await api('post', `/api/loans/${mine.loan.id}/approve`, acct)).status).toBe(403);
+    expect((await api('post', `/api/loans/${mine.loan.id}/approve`)).body.data.loan.status).toBe('active'); // the CEO approves it
+    await User.updateOne({ username: 'accountant' }, { permissions: ['loans.view'] });
+    expect((await api('post', '/api/loans', acct).send(loanBody())).status).toBe(403); // creating still needs loans.create
+    await User.updateOne({ username: 'accountant' }, { permissions: [] });
     expect((await api('get', '/api/loans', acct)).status).toBe(200);
   });
   it('edits a pending loan (recomputing terms) but not an active one', async () => {
-    const c = await api('post', '/api/loans').send(loanBody());
+    const c = { body: { data: await pendingLoan() } };
     const e = await api('patch', `/api/loans/${c.body.data.loan.id}`).send({ amount: 480000, duration: { value: 3, unit: 'months' } });
     expect(e.status).toBe(200);
     expect(e.body.data.loan).toMatchObject({ amount: 480000, principal: 500000, interestAmount: 75000, numberOfInstallments: 3 });
@@ -103,7 +117,7 @@ describe("loan-book conventions (first payment date, loan type)", () => {
     const pv = await api('post', '/api/loans/preview').send(body);
     expect(pv.body.data.schedule[0].dueDate.slice(0, 10)).toBe('2026-01-01');
     expect(pv.body.data.schedule[11].dueDate.slice(0, 10)).toBe('2026-12-01');
-    const made = await api('post', '/api/loans').send(body);
+    const made = await api('post', '/api/loans', acct).send(body);
     expect(made.body.data.loan).toMatchObject({ loanType: 'new', firstPaymentDateIsCustom: true });
     const edited = await api('patch', `/api/loans/${made.body.data.loan.id}`).send({ amount: 192000 });
     expect(edited.body.data.schedule[0].dueDate.slice(0, 10)).toBe('2026-01-01');
@@ -121,7 +135,7 @@ describe("loan-book conventions (first payment date, loan type)", () => {
 });
 
 describe('approval workflow and disbursement', () => {
-  it('approving activates the loan and writes the disbursement to the ledger', async () => {
+  it('approval activates the loan and writes the disbursement to the ledger', async () => {
     const l = await activeLoan();
     expect(l.status).toBe('active');
     const tx = await Transaction.find({ loan: l.id });
@@ -132,25 +146,27 @@ describe('approval workflow and disbursement', () => {
     expect((await api('post', `/api/loans/${l.id}/approve`)).status).toBe(409);
   });
   it('rejection and cancellation need a reason and are final', async () => {
-    const a = (await api('post', '/api/loans').send(loanBody())).body.data.loan;
+    const a = (await pendingLoan()).loan;
     expect((await api('post', `/api/loans/${a.id}/reject`).send({})).status).toBe(400);
     const rej = await api('post', `/api/loans/${a.id}/reject`).send({ reason: 'Insufficient income evidence' });
     expect(rej.body.data.loan.status).toBe('rejected');
     expect((await api('post', `/api/loans/${a.id}/approve`)).status).toBe(409);
-    const b = (await api('post', '/api/loans').send(loanBody())).body.data.loan;
+    const b = (await pendingLoan()).loan;
     expect((await api('post', `/api/loans/${b.id}/cancel`).send({ reason: 'Customer withdrew' })).body.data.loan.status).toBe('cancelled');
     expect(await Transaction.countDocuments({ loan: { $in: [a.id, b.id] } })).toBe(0);
   });
-  it('can block self-approval through settings', async () => {
+  it('can block someone approving a loan they submitted (setting)', async () => {
     await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: true, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: '', allowBackdatedStart: true });
-    const l = (await api('post', '/api/loans').send(loanBody())).body.data.loan;
-    expect((await api('post', `/api/loans/${l.id}/approve`)).body.code).toBe('SELF_APPROVAL_BLOCKED');
+    const l = (await pendingLoan()).loan; // submitted by the accountant while she had no approval right
+    await User.updateOne({ username: 'accountant' }, { permissions: ['loans.view', 'loans.approve'] });
+    expect((await api('post', `/api/loans/${l.id}/approve`, acct)).body.code).toBe('SELF_APPROVAL_BLOCKED');
+    await User.updateOne({ username: 'accountant' }, { permissions: [] });
     await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: '', allowBackdatedStart: true });
   });
   it('supports approval without auto-disbursement (separate disburse step)', async () => {
     await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: false, maxActiveLoansPerCustomer: '', allowBackdatedStart: true });
-    const l = (await api('post', '/api/loans').send(loanBody())).body.data.loan;
-    const ap = await api('post', `/api/loans/${l.id}/approve`);
+    const l = (await api('post', '/api/loans').send(loanBody())).body.data.loan; // CEO: auto-approved, awaiting disbursement
+    const ap = { body: { data: { loan: l } } };
     expect(ap.body.data.loan.status).toBe('approved');
     expect((await api('post', `/api/loans/${l.id}/disburse`)).body.data.loan.status).toBe('active');
     await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: '', allowBackdatedStart: true });

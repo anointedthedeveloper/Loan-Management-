@@ -43,7 +43,7 @@ export function SettingsForm({ section, initial, onSaved }: { section: SettingSe
           return <div key={f.key}><Field label={f.label} type={f.type === 'number' ? 'number' : 'text'} min={f.type === 'number' ? 0 : undefined} value={val === null || val === undefined ? '' : String(val)} onChange={(e) => set(f.key, f.type === 'number' ? (e.target.value === '' ? (f.nullable ? null : '') : Number(e.target.value)) : e.target.value)} error={errs[f.key]} />{f.help && <p className="mt-1 text-xs text-slate-500">{f.help}</p>}</div>
         })}
       </div>
-      <div className="flex justify-end"><Button onClick={save} loading={busy} disabled={!dirty}>Save changes</Button></div>
+      <div className="flex justify-end"><Button onClick={save} loading={busy} loadingText="Saving…" disabled={!dirty}>Save changes</Button></div>
     </div>
   )
 }

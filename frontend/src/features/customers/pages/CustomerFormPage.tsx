@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useToast } from '../../../context/ToastContext'
 import { ApiError } from '../../../services/api'
 import { ErrorState, Skeleton } from '../../../components/ui/feedback'
+import { clearDraft } from '../../../utils/draft'
 import { customerService } from '../services/customerService'
 import { useAsync } from '../../../hooks/useAsync'
 import { useCustomerMeta } from '../hooks/useCustomerMeta'
@@ -25,6 +26,7 @@ export default function CustomerFormPage() {
     try {
       const body = toPayload(v)
       const c = editing ? await customerService.update(id!, body) : await customerService.create(body)
+      if (!editing) clearDraft('customer-new')
       toast('success', editing ? 'Customer updated' : `${c.fullName} registered as ${c.customerId}`)
       nav(`/customers/${c.id}`)
     } catch (e) {
@@ -39,7 +41,7 @@ export default function CustomerFormPage() {
         <p className="text-sm text-slate-500">{editing ? existing?.customerId : 'A customer ID (PTC-######) is generated automatically.'} Fields marked * are required.</p></div>
       {error ? <ErrorState message={error} onRetry={reload} /> : !meta || loading ? <div className="space-y-4">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-40 w-full" />)}</div> : (
         <CustomerForm meta={meta} initial={existing ? fromCustomer(existing) : emptyForm} submitLabel={editing ? 'Save changes' : 'Register customer'}
-          busy={busy} serverErrors={serverErrors} onSubmit={submit} onCancel={() => nav(editing ? `/customers/${id}` : '/customers')} />
+          busy={busy} serverErrors={serverErrors} draftKey={editing ? null : 'customer-new'} onSubmit={submit} onCancel={() => nav(editing ? `/customers/${id}` : '/customers')} />
       )}
     </div>
   )

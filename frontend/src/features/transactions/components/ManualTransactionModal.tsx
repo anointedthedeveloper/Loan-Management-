@@ -4,6 +4,7 @@ import { useToast } from '../../../context/ToastContext'
 import { useLoanMeta } from '../../../hooks/useLoanMeta'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
+import { MoneyField } from '../../../components/ui/MoneyField'
 import { SelectField } from '../../../components/ui/FormControls'
 import { Modal } from '../../../components/ui/Modal'
 import { CustomerPicker, LoanPicker, type Hit } from '../../../components/ui/Pickers'
@@ -32,12 +33,12 @@ export function ManualTransactionModal({ onClose, onDone }: { onClose: () => voi
         <SelectField label="Type" options={(meta?.transactionTypes ?? []).filter((t) => t.manual)} value={f.type} onChange={set('type')} placeholder="Choose type" error={errs.type} />
         <LoanPicker value={loan} onChange={setLoan} statuses="active,overdue,defaulted,completed" />
         {!loan && <CustomerPicker value={customer} onChange={setCustomer} error={errs.customerId} />}
-        <Field label="Amount (₦)" type="number" step="0.01" min="0" value={f.amount} onChange={set('amount')} error={errs.amount} />
+        <MoneyField label="Amount" value={f.amount} onChange={(v) => { setF((s) => ({ ...s, amount: v })); setErrs((x) => ({ ...x, amount: '' })) }} error={errs.amount} placeholder="0.00" />
         <div className="grid gap-4 sm:grid-cols-2"><Field label="Date" type="date" value={f.date} onChange={set('date')} error={errs.date} /><SelectField label="Method" options={meta?.paymentMethods ?? []} value={f.method} onChange={set('method')} /></div>
         <Field label="Reference" value={f.reference} onChange={set('reference')} error={errs.reference} />
         <Field label="Description" value={f.description} onChange={set('description')} />
         <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Fees, adjustments, refunds and other entries are recorded in the ledger but do not change loan balances. Use <b>Record repayment</b> for loan payments.</p>
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy}>Record entry</Button></div>
+        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">Record entry</Button></div>
       </form>
     </Modal>
   )

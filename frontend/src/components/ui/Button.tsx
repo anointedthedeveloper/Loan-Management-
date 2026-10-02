@@ -9,15 +9,15 @@ const variants: Record<Variant, string> = {
   ghost: 'text-slate-700 hover:bg-slate-100',
 }
 
-export function Button({ variant = 'primary', loading, children, className = '', disabled, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean }) {
+export function Button({ variant = 'primary', loading, loadingText, children, className = '', disabled, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; loading?: boolean; /** Replaces the label while loading, e.g. "Saving…" */ loadingText?: string }) {
   return (
     <button
       {...rest}
       disabled={disabled || loading}
-      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-60 ${variants[variant]} ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition duration-150 hover:-translate-y-px active:translate-y-0 active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 ${variants[variant]} ${className}`}
     >
       {loading && <Loader2 className="size-4 animate-spin" />}
-      {children}
+      {loading && loadingText ? loadingText : children}
     </button>
   )
 }

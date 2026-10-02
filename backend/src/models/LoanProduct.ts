@@ -8,6 +8,7 @@ const schema = new Schema(
     name: { type: String, required: true, trim: true },
     code: { type: String, required: true, unique: true, uppercase: true, trim: true },
     description: { type: String, trim: true },
+    category: { type: String, trim: true, default: 'General' }, // e.g. Salary advance, SME / Business, Daily trader
     interestType: { type: String, enum: ['flat'], default: 'flat' }, // extend when other interest types are introduced
     interestRate: { type: Number, required: true, min: 0 },
     rateBasis: { type: String, enum: opt(RATE_BASES), default: 'per_month' },
@@ -26,5 +27,5 @@ const schema = new Schema(
   },
   { timestamps: true },
 );
-schema.index({ isActive: 1, name: 1 });
+schema.index({ isActive: 1, category: 1, name: 1 });
 export const LoanProduct = model('LoanProduct', schema);

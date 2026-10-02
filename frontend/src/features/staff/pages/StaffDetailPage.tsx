@@ -70,7 +70,7 @@ export default function StaffDetailPage() {
       <div className="grid gap-5 lg:grid-cols-5">
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-3">
           <div className="flex items-center justify-between"><h2 className="font-semibold">Permissions</h2>
-            {dirty && <Button loading={busy} onClick={() => run(() => staffService.update(user.id, { permissions: perms }), 'Permissions updated')}><Save className="size-4" />Save permissions</Button>}</div>
+            {dirty && <Button loading={busy} loadingText="Saving…" onClick={() => run(() => staffService.update(user.id, { permissions: perms }), 'Permissions updated')}><Save className="size-4" />Save permissions</Button>}</div>
           <p className="mb-4 mt-1 text-sm text-slate-500">{isCeo ? 'CEO accounts always hold every permission.' : 'Changes apply on the person’s next request and are recorded in the audit log.'}</p>
           <PermissionPicker groups={cat.groups} value={isCeo ? cat.groups.flatMap((g) => g.permissions.map((p) => p.key)) : perms} onChange={setPerms} disabled={isCeo} />
         </section>

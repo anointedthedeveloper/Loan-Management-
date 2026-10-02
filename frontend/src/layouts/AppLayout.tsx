@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Landmark, Banknote, ReceiptText, ArrowUpRight, BarChart3, ScrollText, Settings, UserCog, LogOut, Menu, X, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, Users, Landmark, Package, Banknote, ReceiptText, ArrowUpRight, BarChart3, ScrollText, Settings, UserCog, LogOut, Menu, X, ChevronRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { Logo } from '../components/ui/Logo'
 import { dashboardPathFor } from '../routes/ProtectedRoute'
@@ -19,6 +19,7 @@ export default function AppLayout() {
     { label: 'Dashboard', to: dashboardPathFor(user.role), icon: LayoutDashboard },
     { label: 'Customers', to: '/customers', icon: Users, permission: PERM.customers.read },
     { label: 'Loans', to: '/loans', icon: Landmark, permission: PERM.loans.view },
+    { label: 'Loan products', to: '/products', icon: Package, permission: PERM.products.manage },
     { label: 'Repayments', to: '/repayments', icon: Banknote, permission: PERM.repayments.view },
     { label: 'Transactions', to: '/transactions', icon: ReceiptText, permission: PERM.transactions.view },
     { label: 'Top-ups', to: '/topups', icon: ArrowUpRight, permission: PERM.topups.view },
@@ -30,7 +31,7 @@ export default function AppLayout() {
   const visible = items.filter((i) => !i.permission || can(i.permission))
   const crumbs = loc.pathname.split('/').filter(Boolean)
   const titleOf = (seg: string) =>
-    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', loans: 'Loans', repayments: 'Repayments', transactions: 'Transactions', topups: 'Top-ups', reports: 'Reports', audit: 'Audit log', settings: 'Settings', new: 'New', edit: 'Edit' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
+    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', loans: 'Loans', repayments: 'Repayments', transactions: 'Transactions', topups: 'Top-ups', reports: 'Reports', audit: 'Audit log', settings: 'Settings', products: 'Loan products', new: 'New', edit: 'Edit' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
 
   const sidebar = (
     <div className="flex h-full flex-col bg-brand-900 text-white">
@@ -38,8 +39,8 @@ export default function AppLayout() {
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {visible.map((i) => i.to ? (
           <NavLink key={i.label} to={i.to} onClick={() => setOpen(false)}
-            className={({ isActive }) => `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${isActive ? 'bg-white/15 text-white' : 'text-brand-100/80 hover:bg-white/10 hover:text-white'}`}>
-            <i.icon className="size-[18px]" />{i.label}
+            className={({ isActive }) => `group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition duration-200 hover:translate-x-0.5 ${isActive ? 'bg-white/15 text-white' : 'text-brand-100/80 hover:bg-white/10 hover:text-white'}`}>
+            <i.icon className="size-[18px] transition-transform duration-200 group-hover:scale-110" />{i.label}
           </NavLink>
         ) : (
           <div key={i.label} className="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-brand-100/40" title="Arrives in an upcoming phase">

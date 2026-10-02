@@ -55,6 +55,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'customers.create',
     'customers.viewFinancials',
     'loans.view',
+    'loans.create',
     'repayments.view',
     'repayments.record',
     'transactions.view',

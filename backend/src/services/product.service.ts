@@ -10,7 +10,7 @@ import type { Actor } from '../types/index.js';
 export const serializeProduct = (p: any) => { const o = typeof p.toObject === 'function' ? p.toObject() : p; const { __v, ...r } = o; return { ...r, id: String(o._id), _id: undefined }; };
 
 export async function listProducts(opts: { activeOnly?: boolean } = {}) {
-  return (await LoanProduct.find(opts.activeOnly ? { isActive: true } : {}).sort({ isActive: -1, name: 1 })).map(serializeProduct);
+  return (await LoanProduct.find(opts.activeOnly ? { isActive: true } : {}).sort({ isActive: -1, category: 1, name: 1 })).map(serializeProduct);
 }
 export async function getProduct(id: string) {
   const p = Types.ObjectId.isValid(id) ? await LoanProduct.findById(id) : null;

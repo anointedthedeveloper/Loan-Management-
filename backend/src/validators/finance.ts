@@ -18,6 +18,7 @@ const productBody = (create: boolean) => ({
   name: z.string().trim().min(2, 'Enter product name').max(80),
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9_-]{2,20}$/, '2-20 letters, numbers, - _'),
   description: text(300),
+  category: dflt(z.string().trim().min(1, 'Enter a category').max(60), 'General', create),
   interestRate: z.coerce.number().min(0, 'Rate cannot be negative').max(100),
   rateBasis: dflt(z.enum(vals(RATE_BASES)), 'per_month', create),
   bankDeductionRate: dflt(z.coerce.number().min(0).max(99), 0, create),

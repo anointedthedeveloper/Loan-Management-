@@ -20,8 +20,7 @@ async function exampleLoan(rate = 0) {
   const cust = (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id;
   const p = await request(app).patch(`/api/loan-products/${product}`).set(as(ceo)).send({ interestRate: rate });
   expect(p.status).toBe(200);
-  const loan = (await api('post', '/api/loans').send({ customerId: cust, productId: product, amount: 500000, duration: { value: 5, unit: 'months' }, startDate: today })).body.data.loan;
-  await api('post', `/api/loans/${loan.id}/approve`);
+  const loan = (await api('post', '/api/loans').send({ customerId: cust, productId: product, amount: 500000, duration: { value: 5, unit: 'months' }, startDate: today })).body.data.loan; // CEO: approved immediately
   const r = await api('post', '/api/repayments').send({ loanId: loan.id, amount: 200000 });
   if (rate === 0) expect(r.body.data.loan.outstandingBalance).toBe(300000);
   return { cust, loanId: loan.id as string };
@@ -41,18 +40,19 @@ describe('top-up preview and request', () => {
 
   it('records a request, blocks a second pending one, and is audited', async () => {
     const { loanId } = await exampleLoan(0);
-    const r = await api('post', '/api/topups').send(topBody(loanId, { notes: 'Needs stock' }));
+    const r = await api('post', '/api/topups', acct).send(topBody(loanId, { notes: 'Needs stock' }));
+    expect(r.body.message).toMatch(/submitted for approval/i);
     expect(r.status).toBe(201);
     expect(r.body.data.topUp).toMatchObject({ status: 'pending', requestedAmount: 150000 });
     expect(r.body.data.topUp.topUpId).toMatch(/^TUP-\d{6}$/);
-    expect((await api('post', '/api/topups').send(topBody(loanId))).body.code).toBe('TOPUP_PENDING_EXISTS');
+    expect((await api('post', '/api/topups', acct).send(topBody(loanId))).body.code).toBe('TOPUP_PENDING_EXISTS');
     expect(await AuditLog.countDocuments({ action: 'TOPUP_REQUESTED', entityId: r.body.data.topUp.id })).toBe(1);
     expect((await api('post', '/api/topups').send(topBody('64b000000000000000000000'))).status).toBe(404);
   });
 
   it('is only available on live loans and respects repayment-history eligibility', async () => {
     const cust = (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id;
-    const pending = (await api('post', '/api/loans').send({ customerId: cust, productId: product, amount: 100000, duration: { value: 3, unit: 'months' }, startDate: today })).body.data.loan;
+    const pending = (await api('post', '/api/loans', acct).send({ customerId: cust, productId: product, amount: 100000, duration: { value: 3, unit: 'months' }, startDate: today })).body.data.loan;
     expect((await api('post', '/api/topups').send(topBody(pending.id))).body.code).toBe('TOPUP_NOT_ALLOWED');
     const { loanId } = await exampleLoan(0);
     await setTopUp({ minimumPercentRepaid: 50 }); // only 40% repaid
@@ -63,10 +63,21 @@ describe('top-up preview and request', () => {
   });
 });
 
+describe('top-up by the CEO needs no approval', () => {
+  it('is approved and issued immediately', async () => {
+    const { loanId } = await exampleLoan(0);
+    const r = await api('post', '/api/topups').send(topBody(loanId));
+    expect(r.status).toBe(201);
+    expect(r.body.message).toMatch(/created and approved/i);
+    expect(r.body.data.topUp.status).toBe('approved');
+    expect((await Loan.findById(loanId))!.status).toBe('completed'); // consolidated into the new loan
+  });
+});
+
 describe('top-up approval', () => {
   it('consolidate: creates a NEW loan, settles the old one with a non-cash entry, keeps the ledger honest', async () => {
     const { cust, loanId } = await exampleLoan(0);
-    const t = (await api('post', '/api/topups').send(topBody(loanId))).body.data.topUp;
+    const t = (await api('post', '/api/topups', acct).send(topBody(loanId))).body.data.topUp;
     expect((await api('post', `/api/topups/${t.id}/approve`, acct)).status).toBe(403); // accountants cannot approve
     const ap = await api('post', `/api/topups/${t.id}/approve`);
     expect(ap.status).toBe(200);
@@ -100,7 +111,7 @@ describe('top-up approval', () => {
 
   it('re-prices at approval using the latest balance (payments made after the request count)', async () => {
     const { loanId } = await exampleLoan(0);
-    const t = (await api('post', '/api/topups').send(topBody(loanId))).body.data.topUp;
+    const t = (await api('post', '/api/topups', acct).send(topBody(loanId))).body.data.topUp;
     await api('post', '/api/repayments').send({ loanId, amount: 100000 });
     const ap = await api('post', `/api/topups/${t.id}/approve`);
     expect(ap.body.data.topUp.calculation.carriedBalance).toBe(200000);
@@ -121,7 +132,7 @@ describe('top-up approval', () => {
   it('new_loan mode: leaves the original loan open and creates a separate loan for the new funds', async () => {
     await setTopUp({ mode: 'new_loan' });
     const { loanId } = await exampleLoan(0);
-    const t = (await api('post', '/api/topups').send(topBody(loanId))).body.data.topUp;
+    const t = (await api('post', '/api/topups', acct).send(topBody(loanId))).body.data.topUp;
     const ap = await api('post', `/api/topups/${t.id}/approve`);
     expect(ap.body.data.topUp.settlement).toBeNull();
     expect((await Loan.findById(loanId))).toMatchObject({ status: 'active', outstandingBalance: 300000 });
@@ -131,10 +142,10 @@ describe('top-up approval', () => {
 
   it('rejection and cancellation leave everything unchanged', async () => {
     const { loanId } = await exampleLoan(0);
-    const t = (await api('post', '/api/topups').send(topBody(loanId))).body.data.topUp;
+    const t = (await api('post', '/api/topups', acct).send(topBody(loanId))).body.data.topUp;
     expect((await api('post', `/api/topups/${t.id}/reject`).send({})).status).toBe(400);
     expect((await api('post', `/api/topups/${t.id}/reject`).send({ reason: 'Existing arrears' })).body.data.topUp.status).toBe('rejected');
-    const t2 = (await api('post', '/api/topups').send(topBody(loanId))).body.data.topUp;
+    const t2 = (await api('post', '/api/topups', acct).send(topBody(loanId))).body.data.topUp;
     expect((await api('post', `/api/topups/${t2.id}/cancel`).send({})).body.data.topUp.status).toBe('cancelled');
     expect((await Loan.findById(loanId))!.outstandingBalance).toBe(300000);
     expect(await Loan.countDocuments({ topUpOf: loanId })).toBe(0);

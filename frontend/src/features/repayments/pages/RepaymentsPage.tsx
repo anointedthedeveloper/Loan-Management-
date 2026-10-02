@@ -20,7 +20,7 @@ export default function RepaymentsPage() {
   const defs: FilterDef[] = [
     { key: 'q', type: 'search', placeholder: 'Search transaction ID, reference or customer' }, { key: 'method', type: 'select', label: 'Method', options: meta?.paymentMethods ?? [] },
     { key: 'state', type: 'select', label: 'State', options: [{ value: 'posted', label: 'Posted' }, { value: 'reversed', label: 'Reversed' }] },
-    { key: 'from', type: 'date', label: 'From' }, { key: 'to', type: 'date', label: 'To' }, { key: 'minAmount', type: 'number', label: 'Min ₦' }, { key: 'maxAmount', type: 'number', label: 'Max ₦' },
+    { key: 'from', type: 'date', label: 'From' }, { key: 'to', type: 'date', label: 'To' }, { key: 'minAmount', type: 'money', label: 'Min ₦' }, { key: 'maxAmount', type: 'money', label: 'Max ₦' },
   ]
   return (
     <div className="space-y-5">

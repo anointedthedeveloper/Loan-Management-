@@ -33,7 +33,7 @@ export function DataTable<T extends { id: string }>({ columns, rows, pg, error, 
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="rows-in divide-y divide-slate-100">
               {rows.map((r) => (
                 <tr key={r.id} onClick={onRowClick ? () => onRowClick(r) : undefined} className={onRowClick ? 'cursor-pointer hover:bg-slate-50' : ''}>
                   {columns.map((c) => <td key={c.key} className={`px-4 py-3 ${c.align === 'right' ? 'text-right tabular-nums' : ''} ${hide(c)}`}>{c.render(r)}</td>)}

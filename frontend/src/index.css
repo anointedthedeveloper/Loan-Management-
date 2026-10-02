@@ -13,13 +13,26 @@
   --animate-fade-up: fade-up .35s ease-out both;
   --animate-fade-in: fade-in .25s ease-out both;
   --animate-pop: pop .2s ease-out both;
+  --animate-slide-in: slide-in .25s ease-out both;
 }
 @keyframes fade-up { from { opacity: 0; transform: translateY(10px) } to { opacity: 1; transform: none } }
 @keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
 @keyframes loader { 0% { transform: translateX(-100%) } 100% { transform: translateX(300%) } }
+@keyframes slide-in { from { opacity: 0; transform: translateX(24px) } to { opacity: 1; transform: none } }
+@keyframes row-in { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
 @keyframes pop { from { opacity: 0; transform: scale(.97) translateY(6px) } to { opacity: 1; transform: none } }
 
 html, body, #root { height: 100%; }
 body { margin: 0; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
 :focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+/* Staggered entrance for card grids and table rows (kept short and subtle). */
+.stagger > * { animation: fade-up .4s ease-out both; }
+.stagger > *:nth-child(1) { animation-delay: .00s } .stagger > *:nth-child(2) { animation-delay: .05s } .stagger > *:nth-child(3) { animation-delay: .10s }
+.stagger > *:nth-child(4) { animation-delay: .15s } .stagger > *:nth-child(5) { animation-delay: .20s } .stagger > *:nth-child(6) { animation-delay: .25s }
+.stagger > *:nth-child(7) { animation-delay: .30s } .stagger > *:nth-child(8) { animation-delay: .35s } .stagger > *:nth-child(n+9) { animation-delay: .40s }
+.rows-in > tr { animation: row-in .3s ease-out both; }
+.rows-in > tr:nth-child(2) { animation-delay: .03s } .rows-in > tr:nth-child(3) { animation-delay: .06s } .rows-in > tr:nth-child(4) { animation-delay: .09s }
+.rows-in > tr:nth-child(5) { animation-delay: .12s } .rows-in > tr:nth-child(6) { animation-delay: .15s } .rows-in > tr:nth-child(n+7) { animation-delay: .18s }
+.lift { transition: transform .2s ease, box-shadow .2s ease; } .lift:hover { transform: translateY(-2px); box-shadow: 0 8px 20px -10px rgb(15 26 23 / .25); }

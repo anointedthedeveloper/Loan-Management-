@@ -7,6 +7,7 @@ import { ApiError } from '../../services/api'
 import { authService } from '../../services/authService'
 import { Logo } from '../../components/ui/Logo'
 import { Button } from '../../components/ui/Button'
+import { LoadingScreen } from '../../components/ui/feedback'
 import { Field } from '../../components/ui/Field'
 import { Modal } from '../../components/ui/Modal'
 import { dashboardPathFor } from '../../routes/ProtectedRoute'
@@ -18,7 +19,7 @@ const SLIDES = [
 ]
 
 export default function LoginPage() {
-  const { user, login } = useAuth()
+  const { user, login, loading } = useAuth()
   const toast = useToast()
   const navigate = useNavigate()
   const [slide, setSlide] = useState(0)
@@ -38,6 +39,7 @@ export default function LoginPage() {
     return () => clearInterval(t)
   }, [])
 
+  if (loading) return <LoadingScreen /> // a saved session is being checked: don't flash the form
   if (user) return <Navigate to={dashboardPathFor(user.role)} replace />
 
   async function submit(e: FormEvent) {
@@ -92,7 +94,7 @@ export default function LoginPage() {
             <label className="flex cursor-pointer items-center gap-2 text-slate-700"><input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} className="size-4 rounded border-slate-300 accent-brand-700" />Remember me</label>
             <button type="button" onClick={() => { setForgotId(identifier); setForgot(true) }} className="font-medium text-brand-600 hover:underline">Forgot password?</button>
           </div>
-          <Button type="submit" loading={busy} className="w-full">{busy ? 'Signing in…' : 'Sign in'}</Button>
+          <Button type="submit" loading={busy} loadingText="Signing in…" className="w-full">Sign in</Button>
         </form>
         <p className="mt-6 flex items-center justify-center gap-1.5 text-xs text-slate-500"><ShieldCheck className="size-4" />Activity on this system is monitored and logged.</p>
       </div>

@@ -92,3 +92,7 @@ curl -X POST https://<backend>/api/jobs/bootstrap \
   -d '{"name":"Your Name","email":"you@company.com","username":"ceo","password":"<10+ chars, upper, lower, number>"}'
 ```
 It only works while the database has no users. Create the accountant afterwards from Staff & Permissions.
+
+## Approval flow (who approves what)
+- **CEO / anyone holding `loans.approve`** creating a loan (or `topups.approve` requesting a top-up): approved and disbursed immediately; the approval and disbursement are still written to the ledger and audit log.
+- **Accountants** (default permission `loans.create`) submit loans and top-ups for approval; the CEO approves or rejects them. The settings `requireApproval` / `autoDisburseOnApproval` still apply.
