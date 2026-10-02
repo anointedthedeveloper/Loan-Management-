@@ -2,7 +2,9 @@ import { Router } from 'express';
 import { authenticate, requirePermission } from '../middleware/auth.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import { createCustomerSchema, listCustomersSchema, updateCustomerSchema } from '../validators/customers.js';
+import { statementQuerySchema } from '../validators/finance.js';
 import * as c from '../controllers/customerController.js';
+import { clientStatement } from '../controllers/financeControllers.js';
 
 const r = Router();
 r.use(authenticate);
@@ -16,5 +18,6 @@ r.get('/:id/summary', requirePermission('customers.viewFinancials'), c.summary);
 r.get('/:id/loans', requirePermission('customers.viewFinancials'), c.loans);
 r.get('/:id/repayments', requirePermission('customers.viewFinancials'), c.repayments);
 r.get('/:id/transactions', requirePermission('customers.viewFinancials'), c.transactions);
+r.get('/:id/statement', requirePermission('customers.viewFinancials'), validateQuery(statementQuerySchema), clientStatement);
 r.get('/:id/activity', requirePermission('audit.view'), c.activity);
 export default r;

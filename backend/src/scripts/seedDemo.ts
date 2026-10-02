@@ -41,7 +41,7 @@ export async function seedDemoData() {
   ] as const;
   const cs: string[] = [];
   for (const [i, [f, l, ph, state, occ, emp]] of people.entries()) {
-    const c = await createCustomer({ firstName: f, lastName: l, phone: ph, email: `${f.toLowerCase()}.${l.toLowerCase()}@example.com`, address: `${10 + i} Demo Street`, state, idType: 'nin', idNumber: `7000000000${i}`, employment: { occupation: occ, employerName: emp, employmentType: 'employed' }, emergencyContact: { name: 'Next of kin', relationship: 'Sibling', phone: '08099990000' } } as any, actor);
+    const c = await createCustomer({ firstName: f, lastName: l, phone: ph, email: `${f.toLowerCase()}.${l.toLowerCase()}@example.com`, address: `${10 + i} Demo Street`, state, idType: 'nin', idNumber: `7000000000${i}`, employment: { occupation: occ, employerName: emp, employmentType: 'employed', ippisNumber: `43760${i}`, ministry: ['OSGF', 'Salaries', 'Education', 'Health', 'Works', 'Trade'][i] }, emergencyContact: { name: 'Next of kin', relationship: 'Sibling', phone: '08099990000' } } as any, actor);
     cs.push(c.id);
   }
 

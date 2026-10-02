@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowUpRight, Ban, Banknote, Check, FileX, Flag, Pencil, Send, ShieldAlert, X } from 'lucide-react'
+import { ArrowUpRight, Ban, Banknote, Check, FileText, FileX, Flag, Pencil, Send, ShieldAlert, X } from 'lucide-react'
 import { PERM } from '../../../config/permissions'
 import { ApiError } from '../../../services/api'
 import { useAuth } from '../../../context/AuthContext'
@@ -68,10 +68,26 @@ export default function LoanDetailPage() {
           {l.status === 'approved' && can(PERM.loans.approve) && <Button onClick={() => setModal('disburse')}><Send className="size-4" />Disburse</Button>}
           {['pending', 'approved'].includes(l.status) && (can(PERM.loans.edit) || can(PERM.loans.approve)) && <Button variant="ghost" onClick={() => setModal('cancel')}><Ban className="size-4" />Cancel loan</Button>}
           {live && can(PERM.repayments.record) && <Button onClick={() => setModal('repay')}><Banknote className="size-4" />Record repayment</Button>}
+          {!['pending', 'rejected', 'cancelled'].includes(l.status) && <Link to={`/loans/${l.id}/statement`}><Button variant="secondary"><FileText className="size-4" />Generate statement</Button></Link>}
           {live && (can(PERM.repayments.record) || can(PERM.loans.approve)) && <Button variant="secondary" onClick={() => setModal('settle')}><Flag className="size-4" />Settle loan</Button>}
           {live && can(PERM.topups.request) && <Button variant="secondary" onClick={() => setModal('topup')}><ArrowUpRight className="size-4" />Top-up</Button>}
           {['active', 'overdue'].includes(l.status) && can(PERM.loans.approve) && <Button variant="ghost" className="text-red-600" onClick={() => setModal('default')}><ShieldAlert className="size-4" />Mark defaulted</Button>}
         </div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-5">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-brand-700">Client information</h2>
+          <dl className="mt-3 space-y-3">
+            {([['IPPIS Number', l.customer.ippisNumber], ['Client Name', l.customer.fullName], ['Ministry / Organization', l.customer.ministry]] as [string, string | null | undefined][]).map(([k, v]) => <div key={k}><dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{k}</dt><dd className="mt-0.5 text-sm font-semibold">{v || <span className="font-normal text-slate-400">Not provided</span>}</dd></div>)}
+          </dl>
+        </section>
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-brand-700">Loan information</h2>
+          <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+            {([['Amount Taken', formatMoney(l.amount)], ['Principal', formatMoney(l.principal)], ['Interest', formatMoney(l.interestAmount)], ['Total Loan', formatMoney(l.totalRepayment)], [`EMI (${titleCase(l.frequency)})`, `${formatMoney(l.installmentAmount)} × ${l.numberOfInstallments}`], ['Payment Date', formatDate(l.startDate)], ['First Repayment', formatDate(l.firstPaymentDate)], ['Final Due Date', formatDate(l.dueDate)]] as [string, string][]).map(([k, v]) => <div key={k}><dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{k}</dt><dd className="mt-0.5 text-sm font-semibold tabular-nums">{v}</dd></div>)}
+          </dl>
+        </section>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">

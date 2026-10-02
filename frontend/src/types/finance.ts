@@ -6,7 +6,19 @@ export interface LoanMeta {
   transactionTypes: (Option & { direction: string; manual: boolean; reversible: boolean })[]
 }
 
-export interface CustomerRef { id: string; customerId?: string; fullName?: string; phone?: string }
+export interface CustomerRef { id: string; customerId?: string; fullName?: string; phone?: string; ippisNumber?: string | null; ministry?: string | null }
+
+export interface StatementRow { date: string; reference: string; description: string; debit: number; credit: number; balance: number }
+export interface LoanStatement {
+  loan: { id: string; loanId: string; status: string; productName: string | null; loanType: string; amountTaken: number; principal: number; interest: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string; paymentDate: string; firstRepaymentDate: string | null; finalDueDate: string; currentOutstanding: number }
+  rows: StatementRow[]; totals: { debit: number; credit: number; closingBalance: number }
+}
+export interface Statement {
+  generatedAt: string; period: { from: string | null; to: string | null }
+  company: { name: string; address: string; phone: string; email: string; rcNumber: string }
+  client: { id: string; customerId: string; name: string; phone: string; email: string | null; ippisNumber: string | null; ministry: string | null }
+  loans: LoanStatement[]; summary: { totalDebit: number; totalCredit: number; closingBalance: number }
+}
 export interface Installment {
   number: number; dueDate: string; expectedAmount: number; principalComponent: number; interestComponent: number
   paidPrincipal: number; paidInterest: number; amountPaid: number; remaining: number; status: string

@@ -36,6 +36,7 @@ loansRouter.post('/:id/recalculate', perm('loans.edit', 'loans.approve'), c.loan
 loansRouter.post('/:id/installments/:number/pay', perm('repayments.record'), body(v.markPaidSchema), c.installmentPay);
 loansRouter.get('/:id/settlement-quote', perm('repayments.record', 'loans.approve'), query(v.settlementQuerySchema), c.settlementQuote);
 loansRouter.post('/:id/settle', perm('repayments.record', 'loans.approve'), body(v.settleSchema), c.loanSettle);
+loansRouter.get('/:id/statement', perm('loans.view'), query(v.statementQuerySchema), c.loanStatement);
 loansRouter.get('/:id/transactions', perm('transactions.view', 'loans.view'), c.loanTransactions);
 
 export const repaymentsRouter = mk();
@@ -60,6 +61,10 @@ topupsRouter.post('/:id/approve', perm('topups.approve'), c.topupApprove);
 topupsRouter.post('/:id/reject', perm('topups.approve'), body(v.reasonSchema), c.topupReject);
 topupsRouter.post('/:id/cancel', perm('topups.request', 'topups.approve'), body(v.optionalReasonSchema), c.topupCancel);
 
+/** Any signed-in user may log that they opened a page. */
+export const activityRouter = mk();
+activityRouter.post('/page-view', authenticate, body(v.pageViewSchema), c.pageView);
+
 export const reportsRouter = mk();
 reportsRouter.use(authenticate, perm('reports.view'));
 reportsRouter.get('/', c.reportCatalog);
@@ -78,6 +83,7 @@ settingsRouter.put('/:section', perm('settings.manage'), (req, _res, next) => {
 export const auditRouter = mk();
 auditRouter.use(authenticate, perm('audit.view'));
 auditRouter.get('/meta', c.auditMeta);
+auditRouter.get('/export', query(v.listAuditSchema), c.auditExport);
 auditRouter.get('/', query(v.listAuditSchema), c.auditList);
 
 /** Called by a scheduler (e.g. Vercel Cron sends `Authorization: Bearer $CRON_SECRET`). Disabled unless CRON_SECRET is set. */

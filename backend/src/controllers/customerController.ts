@@ -6,7 +6,7 @@ import * as svc from '../services/customer.service.js';
 import { CUSTOMER_STATUSES, GENDERS, ID_TYPES, EMPLOYMENT_TYPES } from '../config/customerOptions.js';
 import type { Actor } from '../types/index.js';
 
-export const actorOf = (req: Request): Actor => ({ id: req.auth!.id, name: req.auth!.name, ip: req.ip });
+export const actorOf = (req: Request): Actor => ({ id: req.auth!.id, name: req.auth!.name, ip: req.ip, role: req.auth!.role });
 const id = (req: Request) => String(req.params.id);
 const paging = (req: Request) => paginationSchema.parse(req.query);
 

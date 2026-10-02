@@ -1,5 +1,7 @@
 /** Every audit action name lives here so the log stays consistent and searchable. */
 export const AUDIT = {
+  PAGE_VIEW: 'PAGE_VIEW',
+  STATEMENT_GENERATED: 'STATEMENT_GENERATED',
   LOGIN: 'LOGIN',
   LOGIN_FAILED: 'LOGIN_FAILED',
   LOGOUT: 'LOGOUT',

@@ -21,6 +21,7 @@ import ReportsPage from './features/reports/pages/ReportsPage'
 import AuditLogPage from './features/audit/pages/AuditLogPage'
 import SettingsPage from './features/settings/pages/SettingsPage'
 import ProductsPage from './features/products/pages/ProductsPage'
+import StatementPage from './features/statements/pages/StatementPage'
 import NotFound from './pages/NotFound'
 import { LoadingScreen } from './components/ui/feedback'
 import { GlobalLoader } from './components/ui/GlobalLoader'
@@ -51,6 +52,7 @@ export default function App() {
                 <Route element={<ProtectedRoute permission={PERM.loans.view} />}>
                   <Route path="/loans" element={<LoansPage />} />
                   <Route path="/loans/:id" element={<LoanDetailPage />} />
+                  <Route path="/loans/:id/statement" element={<StatementPage kind="loan" />} />
                 </Route>
                 <Route element={<ProtectedRoute permission={PERM.loans.create} />}><Route path="/loans/new" element={<LoanFormPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.loans.edit} />}><Route path="/loans/:id/edit" element={<LoanFormPage />} /></Route>
@@ -64,6 +66,7 @@ export default function App() {
                 <Route element={<ProtectedRoute permission={PERM.customers.read} />}>
                   <Route path="/customers" element={<CustomersPage />} />
                   <Route path="/customers/:id" element={<CustomerDetailPage />} />
+                  <Route path="/customers/:id/statement" element={<StatementPage kind="client" />} />
                 </Route>
                 <Route element={<ProtectedRoute permission={PERM.customers.create} />}>
                   <Route path="/customers/new" element={<CustomerFormPage />} />

@@ -11,8 +11,11 @@ import * as topups from '../services/topup.service.js';
 import * as settings from '../services/settings.service.js';
 import * as reports from '../services/report.service.js';
 import * as exporter from '../services/export.service.js';
+import * as statements from '../services/statement.service.js';
+import * as statementExport from '../services/statementExport.service.js';
 import { AUDIT } from '../config/auditActions.js';
-import { auditAs, auditFilter, listAudit } from '../services/AuditService.js';
+import { auditAs, auditFilter, listAudit, recordAudit } from '../services/AuditService.js';
+import { AuditLog } from '../models/AuditLog.js';
 import { recalculateLoan, refreshLiveLoans } from '../services/loanLedger.service.js';
 import { Loan } from '../models/Loan.js';
 import { User } from '../models/User.js';
@@ -74,6 +77,27 @@ export const topupApprove = asyncHandler(async (req, res) => ok(res, { topUp: aw
 export const topupReject = asyncHandler(async (req, res) => ok(res, { topUp: await topups.rejectTopUp(id(req), req.body.reason, actorOf(req)) }, 'Top-up rejected'));
 export const topupCancel = asyncHandler(async (req, res) => ok(res, { topUp: await topups.cancelTopUp(id(req), req.body.reason, actorOf(req)) }, 'Top-up cancelled'));
 
+/* statements */
+async function sendStatement(req: Request, res: any, s: Awaited<ReturnType<typeof statements.buildLoanStatement>>, entity: string, entityId: string, label: string) {
+  const f = res.locals.query;
+  await auditAs(actorOf(req), { action: A.STATEMENT_GENERATED, entity, entityId, entityLabel: label, after: { format: f.format, from: f.from ?? null, to: f.to ?? null } });
+  if (f.format === 'json') return ok(res, { statement: s });
+  const base = `protech-statement-${s.client.customerId}-${new Date().toISOString().slice(0, 10)}`;
+  if (f.format === 'csv') return void res.type('text/csv').attachment(`${base}.csv`).send(statementExport.statementToCsv(s));
+  if (f.format === 'xlsx') return void res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment(`${base}.xlsx`).send(await statementExport.statementToXlsx(s, req.auth!.name));
+  res.type('application/pdf').attachment(`${base}.pdf`).send(await statementExport.statementToPdf(s, req.auth!.name));
+}
+export const loanStatement = asyncHandler(async (req, res) => { const s = await statements.buildLoanStatement(id(req), res.locals.query); await sendStatement(req, res, s, 'Loan', id(req), s.loans[0]!.loan.loanId); });
+export const clientStatement = asyncHandler(async (req, res) => { const s = await statements.buildClientStatement(id(req), res.locals.query); await sendStatement(req, res, s, 'Customer', id(req), s.client.customerId); });
+
+/* page-view tracking (who looked at what, when) */
+export const pageView = asyncHandler(async (req, res) => {
+  const a = req.auth!;
+  const recent = await AuditLog.findOne({ user: a.id, action: A.PAGE_VIEW, entityLabel: req.body.path, createdAt: { $gt: new Date(Date.now() - 20_000) } }).select('_id'); // ignore rapid repeats
+  if (!recent) await recordAudit({ userId: a.id, userName: a.name, userRole: a.role, action: A.PAGE_VIEW, entity: 'Page', entityLabel: req.body.path, after: req.body.title ? { page: req.body.title } : undefined, ip: req.ip });
+  res.status(204).end();
+});
+
 /* reports */
 export const reportCatalog = asyncHandler(async (_req, res) => ok(res, { reports: reports.reportCatalog() }));
 export const reportRun = asyncHandler(async (req, res) => {
@@ -96,6 +120,15 @@ export const settingsUpdate = asyncHandler(async (req, res) => ok(res, { [String
 
 /* audit */
 export const auditList = asyncHandler(async (_req, res) => { const f = q(res); const r = await listAudit(auditFilter(f), f); sendPage(res, r.items, f, r.total); });
+export const auditExport = asyncHandler(async (req, res) => {
+  const f = q(res);
+  const r = await listAudit(auditFilter(f), { page: 1, limit: 5000 });
+  const esc = (v: unknown) => { const t = String(v ?? ''); return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const lines = ['Time,Person,Role,Action,Record type,Record,Before,After,IP'];
+  for (const a of r.items) lines.push([new Date(a.createdAt).toISOString(), a.userName, a.userRole, a.action, a.entity, a.entityLabel ?? a.entityId, a.before ? JSON.stringify(a.before) : '', a.after ? JSON.stringify(a.after) : '', a.ip].map(esc).join(','));
+  await auditAs(actorOf(req), { action: A.REPORT_EXPORTED, entity: 'Report', entityLabel: 'Audit log', after: { rows: r.items.length } });
+  res.type('text/csv').attachment(`protech-audit-log-${new Date().toISOString().slice(0, 10)}.csv`).send('\ufeff' + lines.join('\r\n'));
+});
 export const auditMeta = asyncHandler(async (_req, res) => ok(res, { actions: Object.values(AUDIT), users: (await User.find().select('name').sort({ name: 1 })).map((u) => ({ id: String(u._id), name: u.name })) }));
 
 /* first-run */

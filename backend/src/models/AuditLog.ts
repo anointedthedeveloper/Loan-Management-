@@ -4,6 +4,7 @@ const auditLogSchema = new Schema(
   {
     user: { type: Schema.Types.ObjectId, ref: 'User' },
     userName: String,
+    userRole: { type: String, index: true }, // ceo / accountant ... so activity can be filtered by role
     action: { type: String, required: true, index: true }, // e.g. "auth.login", "customer.created"
     entity: { type: String, index: true },
     entityId: { type: String, index: true },

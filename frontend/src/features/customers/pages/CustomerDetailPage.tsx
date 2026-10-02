@@ -42,6 +42,7 @@ export default function CustomerDetailPage() {
         <div className="flex gap-2">
           <Button variant="secondary" onClick={() => nav('/customers')}>Back</Button>
           {can(PERM.loans.create) && c.status === 'active' && <Link to={`/loans/new?customer=${c.id}`}><Button variant="secondary">New loan</Button></Link>}
+          {can(PERM.customers.viewFinancials) && <Link to={`/customers/${c.id}/statement`}><Button variant="secondary">Generate statement</Button></Link>}
           {can(PERM.customers.update) && <Link to={`/customers/${c.id}/edit`}><Button><Pencil className="size-4" />Edit</Button></Link>}
         </div>
       </div>

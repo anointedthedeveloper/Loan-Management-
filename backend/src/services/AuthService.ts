@@ -67,7 +67,7 @@ export async function login(identifier: string, password: string, remember: bool
       user.failedLoginAttempts = 0;
     }
     await user.save();
-    await recordAudit({ userId: String(user._id), userName: user.name, action: AUDIT.LOGIN_FAILED, entity: 'User', entityId: String(user._id), ip });
+    await recordAudit({ userId: String(user._id), userName: user.name, userRole: user.role, action: AUDIT.LOGIN_FAILED, entity: 'User', entityId: String(user._id), ip });
     throw invalid();
   }
   if (!user.isActive) throw AppError.forbidden('This account has been deactivated. Contact the CEO.', 'ACCOUNT_DISABLED');
@@ -76,7 +76,7 @@ export async function login(identifier: string, password: string, remember: bool
   user.lockedUntil = undefined;
   user.lastLoginAt = new Date();
   await user.save();
-  await recordAudit({ userId: String(user._id), userName: user.name, action: AUDIT.LOGIN, entity: 'User', entityId: String(user._id), ip });
+  await recordAudit({ userId: String(user._id), userName: user.name, userRole: user.role, action: AUDIT.LOGIN, entity: 'User', entityId: String(user._id), ip });
 
   const role = user.role as Role;
   return { token: signToken(String(user._id), role, remember), user: publicUser({ ...user.toObject(), role }) };

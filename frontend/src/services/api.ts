@@ -35,9 +35,9 @@ export const setUnauthorizedHandler = (fn: () => void) => { onUnauthorized = fn 
 
 export interface Pagination { page: number; limit: number; total: number; pages: number }
 
-async function request(path: string, opts: { method?: string; body?: unknown }) {
-  track(1)
-  try { return await doRequest(path, opts) } finally { track(-1) }
+async function request(path: string, opts: { method?: string; body?: unknown; silent?: boolean }) {
+  if (!opts.silent) track(1)
+  try { return await doRequest(path, opts) } finally { if (!opts.silent) track(-1) }
 }
 
 async function doRequest(path: string, opts: { method?: string; body?: unknown }) {
@@ -60,7 +60,7 @@ async function doRequest(path: string, opts: { method?: string; body?: unknown }
   return json
 }
 
-export async function api<T>(path: string, opts: { method?: string; body?: unknown } = {}): Promise<T> {
+export async function api<T>(path: string, opts: { method?: string; body?: unknown; /** background call: no global loading bar */ silent?: boolean } = {}): Promise<T> {
   return (await request(path, opts)).data as T
 }
 

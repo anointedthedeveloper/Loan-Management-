@@ -18,7 +18,7 @@ export const me = asyncHandler(async (req, res) => {
 });
 
 export const logout = asyncHandler(async (req, res) => {
-  await recordAudit({ userId: req.auth!.id, userName: req.auth!.name, action: AUDIT.LOGOUT, entity: 'User', entityId: req.auth!.id, ip: req.ip });
+  await recordAudit({ userId: req.auth!.id, userName: req.auth!.name, userRole: req.auth!.role, action: AUDIT.LOGOUT, entity: 'User', entityId: req.auth!.id, ip: req.ip });
   ok(res, null, 'Signed out');
 });
 
@@ -36,6 +36,6 @@ export const changePassword = asyncHandler(async (req, res) => {
   user.passwordHash = await AuthService.hashPassword(req.body.newPassword);
   user.passwordChangedAt = new Date();
   await user.save();
-  await recordAudit({ userId: req.auth!.id, userName: req.auth!.name, action: AUDIT.PASSWORD_CHANGED, entity: 'User', entityId: req.auth!.id, ip: req.ip });
+  await recordAudit({ userId: req.auth!.id, userName: req.auth!.name, userRole: req.auth!.role, action: AUDIT.PASSWORD_CHANGED, entity: 'User', entityId: req.auth!.id, ip: req.ip });
   ok(res, null, 'Password updated');
 });

@@ -17,6 +17,6 @@ export interface PermissionInfo { key: string; label: string }
 export interface PermissionGroup { key: string; label: string; permissions: PermissionInfo[] }
 
 export interface ActivityEntry {
-  id: string; action: string; userName: string | null; entity: string | null; entityId: string | null
+  id: string; action: string; userName: string | null; userRole?: string | null; ip?: string | null; entity: string | null; entityId: string | null
   entityLabel: string | null; before: Record<string, unknown> | null; after: Record<string, unknown> | null; createdAt: string
 }

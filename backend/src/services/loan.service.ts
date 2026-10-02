@@ -29,14 +29,14 @@ export function serializeLoan(l: any) {
   const c = o.customer;
   return {
     ...r, id: String(o._id), _id: undefined,
-    customer: c && typeof c === 'object' && c._id ? { id: String(c._id), customerId: c.customerId, fullName: c.fullName, phone: c.phone } : { id: String(c) },
+    customer: c && typeof c === 'object' && c._id ? { id: String(c._id), customerId: c.customerId, fullName: c.fullName, phone: c.phone, ippisNumber: c.employment?.ippisNumber ?? null, ministry: c.employment?.ministry ?? null } : { id: String(c) },
     product: o.product ? String(o.product._id ?? o.product) : null,
     createdBy: o.createdBy && typeof o.createdBy === 'object' && o.createdBy.name ? { id: String(o.createdBy._id), name: o.createdBy.name } : o.createdBy ? { id: String(o.createdBy) } : null,
     approvedBy: o.approvedBy && typeof o.approvedBy === 'object' && o.approvedBy.name ? { id: String(o.approvedBy._id), name: o.approvedBy.name } : null,
     topUpOf: o.topUpOf ? String(o.topUpOf) : null, topUp: o.topUp ? String(o.topUp) : null, settledByTopUp: o.settledByTopUp ? String(o.settledByTopUp) : null,
   };
 }
-const populateLoan = [{ path: 'customer', select: 'customerId fullName phone' }, { path: 'createdBy', select: 'name' }, { path: 'approvedBy', select: 'name' }];
+const populateLoan = [{ path: 'customer', select: 'customerId fullName phone employment.ippisNumber employment.ministry' }, { path: 'createdBy', select: 'name' }, { path: 'approvedBy', select: 'name' }];
 
 /* ---------------- pricing ---------------- */
 export interface PricingInput {
@@ -180,7 +180,9 @@ export async function approveLoan(id: string, actor: Actor, opts: { system?: boo
 export async function disburseLoan(id: string, actor: Actor) {
   const loan = await findLoan(id);
   if (loan.status !== 'approved') throw AppError.conflict(`Only approved loans can be disbursed (this loan is ${loan.status})`, 'INVALID_LOAN_STATE');
-  await postTransaction({ customer: loan.customer, loan: loan._id, type: 'disbursement', amount: loan.amount, date: todayLagos(), description: `Loan disbursement ${loan.loanId}`, createdBy: actor.id });
+  // The payout is dated the loan's payment (start) date; a future start date is paid out now.
+  const today = todayLagos();
+  await postTransaction({ customer: loan.customer, loan: loan._id, type: 'disbursement', amount: loan.amount, date: loan.startDate < today ? loan.startDate : today, description: `Loan disbursement ${loan.loanId}`, createdBy: actor.id });
   loan.status = 'active'; loan.disbursedAt = new Date(); await loan.save();
   await recalculateLoan(loan._id);
   await auditAs(actor, { action: AUDIT.LOAN_DISBURSED, entity: 'Loan', entityId: String(loan._id), entityLabel: loan.loanId, after: { amount: loan.amount } });
