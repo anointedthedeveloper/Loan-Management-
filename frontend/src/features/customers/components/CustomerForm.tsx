@@ -44,7 +44,7 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, o
       <FormSection title="Contact">
         {text('phone', 'Phone number *', { type: 'tel', placeholder: '0803 123 4567' })}
         {text('altPhone', 'Alternative phone', { type: 'tel' })}
-        {text('email', 'Email', { type: 'email', placeholder: 'name@example.com' })}
+        {text('email', 'Email', { type: 'email', placeholder: 'Email address' })}
         <div className="sm:col-span-2">{text('address', 'Residential address *')}</div>
         {text('state', 'State')}
         {text('lga', 'Local government area (LGA)')}

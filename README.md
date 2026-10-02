@@ -14,6 +14,7 @@ npm test && npm run typecheck
 cd frontend && npm i && npm run dev   # http://localhost:5173, proxies /api -> :4000
 ```
 Demo users (development data only, `isDemoData: true`): `ceo` / `accountant`; passwords come from `SEED_*` env vars.
+**Production** uses `npm run seed:users` instead: it creates/updates the real accounts (Dr Peter Agunloye - CEO, Taiwo Oyegbata - accountant) with no demo data. `npm run seed` (demo loans) refuses to run against a hosted/production database.
 
 ## Phase status
 | Phase | Status |

@@ -3,7 +3,11 @@ import { env } from '../config/env.js';
 import { seedUsers } from './seedUsers.js';
 import { seedDemoData } from './seedDemo.js';
 
-if (env.isProd) { console.error('Refusing to seed demo data in production.'); process.exit(1); }
+// Demo data is for local development only. Refuse production and any hosted (Atlas) database unless explicitly overridden.
+if (env.isProd || (/mongodb\.net|mongodb\+srv/.test(env.MONGODB_URI) && process.env.ALLOW_DEMO_SEED !== '1')) {
+  console.error('Refusing to seed demo data into a production / hosted database. Use `npm run seed:users` for the real accounts.');
+  process.exit(1);
+}
 await connectDb();
 await seedUsers();
 await seedDemoData();
