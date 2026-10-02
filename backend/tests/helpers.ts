@@ -33,8 +33,8 @@ export function customerPayload(over: Record<string, unknown> = {}) {
     firstName: 'Chinedu', middleName: 'Emeka', lastName: `Okafor${n}`,
     phone: `0803${String(1000000 + n)}`, email: `chinedu${n}@example.com`,
     address: '12 Allen Avenue, Ikeja', state: 'Lagos', lga: 'Ikeja', gender: 'male',
-    idType: 'nin', idNumber: `NIN${String(10000000 + n)}`,
-    employment: { employmentType: 'employed', employerName: 'Zenith Logistics', occupation: 'Driver' },
+    dateOfBirth: '1988-04-12', idType: 'nin', idNumber: String(70000000000 + n),
+    employment: { employmentType: 'employed', employerName: 'Zenith Logistics', occupation: 'Driver', ippisNumber: `IP${100000 + n}`, ministry: 'OSGF' },
     emergencyContact: { name: 'Ada Okafor', relationship: 'Spouse', phone: '08098765432' },
     ...over,
   };

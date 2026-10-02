@@ -17,7 +17,7 @@ import { EditProfileModal, ResetPasswordModal } from '../components/StaffModals'
 
 export default function StaffDetailPage() {
   const { id = '' } = useParams()
-  const { user: me } = useAuth()
+  const { user: me, refresh } = useAuth()
   const toast = useToast()
   const [user, setUser] = useState<User | null>(null)
   const [cat, setCat] = useState<PermissionCatalogue | null>(null)
@@ -44,7 +44,7 @@ export default function StaffDetailPage() {
 
   async function run(fn: () => Promise<unknown>, ok: string) {
     setBusy(true)
-    try { await fn(); toast('success', ok); setModal(null); reload() }
+    try { await fn(); toast('success', ok); setModal(null); reload(); if (user?.id === me?.id) void refresh() }
     catch (e) { toast('error', e instanceof ApiError ? e.message : 'Action failed'); setModal(null) }
     finally { setBusy(false) }
   }
@@ -81,7 +81,7 @@ export default function StaffDetailPage() {
         </section>
       </div>
 
-      {modal === 'edit' && <EditProfileModal user={user} cat={cat} isSelf={isSelf} onClose={() => setModal(null)} onDone={() => { setModal(null); reload() }} />}
+      {modal === 'edit' && <EditProfileModal user={user} cat={cat} isSelf={isSelf} onClose={() => setModal(null)} onDone={() => { setModal(null); reload(); if (isSelf) void refresh() }} />}
       {modal === 'reset' && <ResetPasswordModal user={user} onClose={() => setModal(null)} onDone={() => { setModal(null); reload() }} />}
       <ConfirmDialog open={modal === 'status'} danger={user.isActive} loading={busy} title={user.isActive ? 'Deactivate account?' : 'Activate account?'}
         message={user.isActive ? `${user.name} will be signed out and unable to sign in until reactivated. Their history is kept.` : `${user.name} will be able to sign in again.`}

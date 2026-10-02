@@ -25,7 +25,6 @@ export const ID_TYPES = [
 export const GENDERS = [
   { value: 'male', label: 'Male' },
   { value: 'female', label: 'Female' },
-  { value: 'other', label: 'Other / prefer not to say' },
 ] as const;
 
 export const EMPLOYMENT_TYPES = [

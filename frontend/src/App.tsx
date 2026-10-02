@@ -22,6 +22,7 @@ import AuditLogPage from './features/audit/pages/AuditLogPage'
 import SettingsPage from './features/settings/pages/SettingsPage'
 import NotFound from './pages/NotFound'
 import { LoadingScreen } from './components/ui/feedback'
+import { GlobalLoader } from './components/ui/GlobalLoader'
 
 function RoleRedirect() {
   const { user, loading } = useAuth()
@@ -33,6 +34,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ToastProvider>
+        <GlobalLoader />
         <AuthProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />

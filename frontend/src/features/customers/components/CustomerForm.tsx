@@ -36,37 +36,37 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, o
         {text('firstName', 'First name *', { autoFocus: true })}
         {text('middleName', 'Middle name')}
         {text('lastName', 'Last name *')}
-        {text('dateOfBirth', 'Date of birth', { type: 'date' })}
-        <SelectField label="Gender" options={meta.genders} value={v.gender} onChange={set('gender')} error={err('gender')} />
+        {text('dateOfBirth', 'Date of birth *', { type: 'date' })}
+        <SelectField label="Gender *" options={meta.genders} value={v.gender} onChange={set('gender')} error={err('gender')} />
         <SelectField label="Status" options={meta.statuses} value={v.status} onChange={set('status')} error={err('status')} placeholder="Choose status" />
       </FormSection>
 
       <FormSection title="Contact">
         {text('phone', 'Phone number *', { type: 'tel', placeholder: '0803 123 4567' })}
         {text('altPhone', 'Alternative phone', { type: 'tel' })}
-        {text('email', 'Email', { type: 'email', placeholder: 'Email address' })}
+        {text('email', 'Email *', { type: 'email', placeholder: 'Email address' })}
         <div className="sm:col-span-2">{text('address', 'Residential address *')}</div>
-        {text('state', 'State')}
+        {text('state', 'State *')}
         {text('lga', 'Local government area (LGA)')}
       </FormSection>
 
-      <FormSection title="Identification" description="Each identification number can be registered to one customer only.">
-        <SelectField label="Identification type" options={meta.idTypes} value={v.idType} onChange={set('idType')} error={err('idType')} />
-        {text('idNumber', 'Identification number')}
+      <FormSection title="Identification" description="NIN or BVN must be 11 digits. Each identification number can be registered to one customer only.">
+        <SelectField label="Identification type *" options={meta.idTypes} value={v.idType} onChange={set('idType')} error={err('idType')} />
+        {text('idNumber', 'Identification number *', { inputMode: 'numeric' })}
       </FormSection>
 
       <FormSection title="Employment / business">
         <SelectField label="Employment type" options={meta.employmentTypes} value={v.employmentType} onChange={set('employmentType')} error={err('employmentType')} />
         {text('occupation', 'Occupation')}
         <div className="sm:col-span-2">{text('employerName', 'Employer / business name')}</div>
-        {text('ippisNumber', 'IPPIS number')}
-        {text('ministry', 'Ministry / department')}
+        {text('ippisNumber', 'IPPIS number *')}
+        {text('ministry', 'Ministry / department *')}
       </FormSection>
 
       <FormSection title="Emergency contact">
-        {text('ecName', 'Contact name')}
+        {text('ecName', 'Contact name *')}
         {text('ecRelationship', 'Relationship')}
-        {text('ecPhone', 'Contact phone', { type: 'tel' })}
+        {text('ecPhone', 'Contact phone *', { type: 'tel' })}
       </FormSection>
 
       <FormSection title="Records" description="Client number from Protech's previous loan book, if this customer already existed there.">

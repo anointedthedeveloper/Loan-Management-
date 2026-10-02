@@ -83,6 +83,10 @@ export async function updateCustomer(id: string, input: Partial<CustomerInput>, 
   if ('firstName' in next || 'middleName' in next || 'lastName' in next) {
     next.fullName = fullNameOf({ firstName: next.firstName ?? c.firstName, middleName: 'middleName' in next ? next.middleName : c.middleName, lastName: next.lastName ?? c.lastName });
   }
+  // Nested sections are merged so a partial edit can never drop a required value (e.g. IPPIS number).
+  for (const k of ['employment', 'emergencyContact'] as const) {
+    if (next[k]) next[k] = { ...((c.get(k) as { toObject?: () => object } | undefined)?.toObject?.() ?? c.get(k) ?? {}), ...next[k] };
+  }
   const merged = { phone: next.phone ?? c.phone, email: 'email' in next ? next.email : c.email, idType: 'idType' in next ? next.idType : c.idType, idNumber: 'idNumber' in next ? next.idNumber : c.idNumber };
   await assertNoDuplicate(merged as any, c._id);
   // Allow clearing optional fields: undefined from a blank form field means "unset".

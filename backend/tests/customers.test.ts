@@ -44,9 +44,28 @@ describe('customer creation', () => {
     expect(idOnly.body.errors.idNumber).toBeTruthy();
   });
 
-  it('allows optional fields to be omitted', async () => {
+  it('requires the essential details (identity, contact, ID, IPPIS, emergency contact)', async () => {
     const r = await create({ firstName: 'Minimal', lastName: 'Person', phone: '07011112222', address: '1 Short St' } as any);
-    expect(r.status).toBe(201);
+    expect(r.status).toBe(400);
+    expect(Object.keys(r.body.errors)).toEqual(expect.arrayContaining(['email', 'state', 'dateOfBirth', 'gender', 'idType', 'idNumber', 'employment', 'emergencyContact']));
+    const blanks = await create(customerPayload({ employment: { ippisNumber: '', ministry: '' }, emergencyContact: { name: '', phone: '' }, email: '' }));
+    expect(Object.keys(blanks.body.errors)).toEqual(expect.arrayContaining(['employment.ippisNumber', 'employment.ministry', 'emergencyContact.name', 'emergencyContact.phone', 'email']));
+  });
+
+  it('allows the genuinely optional fields to be omitted', async () => {
+    const p: any = customerPayload();
+    for (const k of ['middleName', 'altPhone', 'lga', 'notes', 'legacyId']) delete p[k];
+    p.employment = { ippisNumber: p.employment.ippisNumber, ministry: p.employment.ministry };
+    p.emergencyContact = { name: p.emergencyContact.name, phone: p.emergencyContact.phone };
+    expect((await create(p)).status).toBe(201);
+  });
+
+  it('accepts only male or female, and validates NIN/BVN as 11 digits', async () => {
+    expect((await create(customerPayload({ gender: 'other' }))).body.errors.gender).toBeTruthy();
+    expect((await create(customerPayload({ gender: 'female' }))).status).toBe(201);
+    expect((await create(customerPayload({ idType: 'nin', idNumber: '12345' }))).body.errors.idNumber).toMatch(/11 digits/);
+    expect((await create(customerPayload({ idType: 'bvn', idNumber: '1234567890A' }))).body.errors.idNumber).toBeTruthy();
+    expect((await create(customerPayload({ idType: 'drivers_license', idNumber: 'ABC12345678' }))).status).toBe(201);
   });
 
   it('rejects duplicates by phone, email and identification (server-side)', async () => {
@@ -115,10 +134,14 @@ describe('customer retrieval and update', () => {
 describe('clearing optional fields', () => {
   it('unsets a field when the form sends a blank value', async () => {
     const c = (await create()).body.data.customer;
-    const r = await request(app).patch(`/api/customers/${c.id}`).set(as(ceo)).send({ email: '', employment: { occupation: '' } });
+    const r = await request(app).patch(`/api/customers/${c.id}`).set(as(ceo)).send({ altPhone: '', employment: { occupation: '' } });
     expect(r.status).toBe(200);
-    expect(r.body.data.customer.email).toBeUndefined();
+    expect(r.body.data.customer.altPhone).toBeUndefined();
     expect(r.body.data.customer.employment?.occupation).toBeUndefined();
+    expect(r.body.data.customer.employment?.ippisNumber).toBe(c.employment.ippisNumber); // untouched sibling kept
+    const blank = await request(app).patch(`/api/customers/${c.id}`).set(as(ceo)).send({ email: '' });
+    expect(blank.status).toBe(400); // required fields cannot be blanked
+    expect(blank.body.errors.email).toBeTruthy();
   });
 });
 

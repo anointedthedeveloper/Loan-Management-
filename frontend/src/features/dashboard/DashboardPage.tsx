@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import { greetingFor, greetingName } from '../../utils/greeting'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, Banknote, Landmark, Users, UserCog } from 'lucide-react'
 import { api, ApiError } from '../../services/api'
@@ -44,17 +45,18 @@ export default function DashboardPage({ variant }: { variant: 'ceo' | 'accountan
   const [data, setData] = useState<Overview | null>(null)
   const [error, setError] = useState('')
   const [key, setKey] = useState(0)
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => { const t = setInterval(() => setNow(new Date()), 60_000); return () => clearInterval(t) }, []) // keeps the greeting right as the day goes on
   useEffect(() => { setError(''); api<Overview>('/dashboard/overview').then(setData).catch((e) => setError(e instanceof ApiError ? e.message : 'Unexpected error')) }, [key])
   if (!user) return null
-  const hour = new Date().getHours()
-  const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
+  const greet = greetingFor(now)
   const loading = !data && !error
   const fin = data?.financial
   const ceo = variant === 'ceo'
 
   return (
     <div className="space-y-6">
-      <div><h1 className="text-2xl font-bold tracking-tight">{greet}, {user.name.split(' ')[0]}</h1><p className="mt-1 text-sm text-slate-500">{ceo ? 'Executive overview' : 'Daily operations'} · figures are calculated live from the ledger</p></div>
+      <div><h1 className="text-2xl font-bold tracking-tight">{greet}, {greetingName(user.name)}</h1><p className="mt-1 text-sm text-slate-500">{ceo ? 'Executive overview' : 'Daily operations'} · figures are calculated live from the ledger</p></div>
       {error ? <ErrorState message={error} onRetry={() => setKey((k) => k + 1)} /> : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

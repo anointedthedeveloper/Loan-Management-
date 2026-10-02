@@ -1,6 +1,15 @@
 const BASE = import.meta.env.VITE_API_URL ?? '/api'
 const KEY = 'protech.token'
 
+/** Number of requests currently in flight, so the UI can show a global loading bar. */
+let pending = 0
+const listeners = new Set<() => void>()
+export const pendingStore = {
+  get: () => pending,
+  subscribe: (fn: () => void) => { listeners.add(fn); return () => { listeners.delete(fn) } },
+}
+const track = (d: number) => { pending = Math.max(0, pending + d); listeners.forEach((l) => l()) }
+
 export class ApiError extends Error {
   status: number
   code: string
@@ -27,6 +36,11 @@ export const setUnauthorizedHandler = (fn: () => void) => { onUnauthorized = fn 
 export interface Pagination { page: number; limit: number; total: number; pages: number }
 
 async function request(path: string, opts: { method?: string; body?: unknown }) {
+  track(1)
+  try { return await doRequest(path, opts) } finally { track(-1) }
+}
+
+async function doRequest(path: string, opts: { method?: string; body?: unknown }) {
   const token = tokenStore.get()
   let res: Response
   try {

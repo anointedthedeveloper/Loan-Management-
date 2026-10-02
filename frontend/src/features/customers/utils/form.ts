@@ -35,16 +35,18 @@ export const toPayload = (v: CustomerFormValues) => ({
   status: v.status, notes: v.notes,
 })
 
-/** Quick client-side hints only; the API re-validates everything. */
+/** Quick client-side checks so people get instant feedback; the API re-validates everything. */
 export function quickValidate(v: CustomerFormValues): Record<string, string> {
   const e: Record<string, string> = {}
-  if (!v.firstName.trim()) e.firstName = 'Enter first name'
-  if (!v.lastName.trim()) e.lastName = 'Enter last name'
-  if (!v.phone.trim()) e.phone = 'Enter phone number'
-  if (!v.address.trim()) e.address = 'Enter residential address'
+  const need = (k: keyof CustomerFormValues, msg: string) => { if (!String(v[k]).trim()) e[k] = msg }
+  need('firstName', 'Enter first name'); need('lastName', 'Enter last name'); need('dateOfBirth', 'Enter date of birth'); need('gender', 'Choose gender')
+  need('phone', 'Enter phone number'); need('email', 'Enter email address'); need('address', 'Enter residential address'); need('state', 'Enter state')
+  need('idType', 'Choose the identification type'); need('idNumber', 'Enter the identification number')
+  need('ippisNumber', 'Enter IPPIS number'); need('ministry', 'Enter ministry / department')
+  need('ecName', 'Enter emergency contact name'); need('ecPhone', 'Enter emergency contact phone')
   if (v.email && !/^\S+@\S+\.\S+$/.test(v.email)) e.email = 'Enter a valid email address'
-  if (v.idType && !v.idNumber) e.idNumber = 'Enter the identification number'
-  if (v.idNumber && !v.idType) e.idType = 'Choose the identification type'
+  if (v.dateOfBirth && new Date(v.dateOfBirth) >= new Date()) e.dateOfBirth = 'Date of birth must be in the past'
+  if ((v.idType === 'nin' || v.idType === 'bvn') && v.idNumber && !/^\d{11}$/.test(v.idNumber.trim())) e.idNumber = `A ${v.idType.toUpperCase()} is exactly 11 digits`
   return e
 }
 

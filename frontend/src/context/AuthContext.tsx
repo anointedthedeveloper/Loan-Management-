@@ -8,6 +8,8 @@ interface AuthState {
   loading: boolean
   login: (identifier: string, password: string, remember: boolean) => Promise<User>
   logout: () => Promise<void>
+  /** Reloads the signed-in user (e.g. after editing your own profile or permissions). */
+  refresh: () => Promise<void>
   /** UI convenience only — the backend independently enforces every permission. */
   can: (permission: string) => boolean
 }
@@ -37,7 +39,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null)
   }, [])
 
-  const value = useMemo<AuthState>(() => ({ user, loading, login, logout, can: (p) => !!user?.permissions.includes(p) }), [user, loading, login, logout])
+  const refresh = useCallback(async () => { try { setUser((await authService.me()).user) } catch { /* keep current user; a 401 is handled globally */ } }, [])
+
+  const value = useMemo<AuthState>(() => ({ user, loading, login, logout, refresh, can: (p) => !!user?.permissions.includes(p) }), [user, loading, login, logout, refresh])
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
