@@ -9,7 +9,7 @@ import { MoneyField } from '../../../components/ui/MoneyField'
 import { useAuth } from '../../../context/AuthContext'
 import { PERM } from '../../../config/permissions'
 import { SelectField, TextareaField } from '../../../components/ui/FormControls'
-import { Modal } from '../../../components/ui/Modal'
+import { Modal, ModalActions } from '../../../components/ui/Modal'
 import { LoanPicker, type Hit } from '../../../components/ui/Pickers'
 import { formatDate, formatMoney } from '../../../utils/format'
 import type { TopUpCalc } from '../../../types/finance'
@@ -78,7 +78,7 @@ export function TopUpRequestModal({ loan, onClose, onDone }: { loan?: { id: stri
         </div>
         {calcErr ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{calcErr}</p> : calc ? <TopUpCalculation c={calc} /> : <p className="text-sm text-slate-500">Enter the amount to see how the top-up is calculated.</p>}
         <TextareaField label="Notes" value={f.notes} onChange={set('notes')} />
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…" disabled={!!calc && !calc.eligible}>{approver ? 'Create top-up' : 'Submit for approval'}</Button></div>
+        <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…" disabled={!!calc && !calc.eligible}>{approver ? 'Create top-up' : 'Submit for approval'}</Button></ModalActions>
       </form>
     </Modal>
   )

@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { Button } from './Button'
 
@@ -10,17 +11,24 @@ export function Modal({ open, title, onClose, children, wide }: { open: boolean;
     return () => document.removeEventListener('keydown', h)
   }, [open, onClose])
   if (!open) return null
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 p-0 animate-fade-in sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={title} className={`max-h-[92vh] w-full animate-pop overflow-y-auto rounded-t-2xl bg-white shadow-xl sm:rounded-2xl ${wide ? 'sm:max-w-2xl' : 'sm:max-w-md'}`}>
-        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+  // Rendered on <body> so no parent (transforms, overflow, stacking) can clip or mis-position the dialog.
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/50 animate-fade-in sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div role="dialog" aria-modal="true" aria-label={title} className={`flex max-h-[92vh] w-full animate-pop flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl ${wide ? 'sm:max-w-2xl' : 'sm:max-w-md'}`}>
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
           <h2 className="text-base font-semibold">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="rounded p-1 text-slate-500 hover:bg-slate-100"><X className="size-5" /></button>
         </div>
-        <div className="p-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
+}
+
+/** Action row pinned to the bottom of a scrolling dialog so Save / Cancel are always visible. */
+export function ModalActions({ children }: { children: ReactNode }) {
+  return <div className="sticky -bottom-5 z-10 -mx-5 mt-5 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3">{children}</div>
 }
 
 export function ConfirmDialog({ open, title, message, confirmLabel = 'Confirm', danger, loading, onConfirm, onCancel }: {

@@ -6,7 +6,7 @@ import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
 import { MoneyField } from '../../../components/ui/MoneyField'
 import { SelectField } from '../../../components/ui/FormControls'
-import { Modal } from '../../../components/ui/Modal'
+import { Modal, ModalActions } from '../../../components/ui/Modal'
 import { CustomerPicker, LoanPicker, type Hit } from '../../../components/ui/Pickers'
 import { transactionService } from '../../repayments/services/repaymentService'
 
@@ -38,7 +38,7 @@ export function ManualTransactionModal({ onClose, onDone }: { onClose: () => voi
         <Field label="Reference" value={f.reference} onChange={set('reference')} error={errs.reference} />
         <Field label="Description" value={f.description} onChange={set('description')} />
         <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">Fees, adjustments, refunds and other entries are recorded in the ledger but do not change loan balances. Use <b>Record repayment</b> for loan payments.</p>
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">Record entry</Button></div>
+        <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">Record entry</Button></ModalActions>
       </form>
     </Modal>
   )

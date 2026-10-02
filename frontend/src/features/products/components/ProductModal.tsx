@@ -6,7 +6,7 @@ import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
 import { MoneyField } from '../../../components/ui/MoneyField'
 import { SelectField, TextareaField } from '../../../components/ui/FormControls'
-import { Modal } from '../../../components/ui/Modal'
+import { Modal, ModalActions } from '../../../components/ui/Modal'
 import type { Product } from '../../../types/finance'
 import { productService } from '../../settings/services/settingsService'
 
@@ -56,7 +56,7 @@ export function ProductModal({ product, categories, onClose, onDone }: { product
           {errs.allowedFrequencies && <p className="mt-1 text-xs text-red-600">{errs.allowedFrequencies}</p>}</fieldset>
         <SelectField label="Default frequency" options={(meta?.frequencies ?? []).filter((o) => f.allowedFrequencies.includes(o.value))} value={f.defaultFrequency} onChange={set('defaultFrequency')} error={errs.defaultFrequency} placeholder="Default" />
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.isActive} onChange={(e) => setF((s) => ({ ...s, isActive: e.target.checked }))} className="accent-brand-700" />Product is active (available for new loans)</label>
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">{product ? 'Save changes' : 'Create product'}</Button></div>
+        <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">{product ? 'Save changes' : 'Create product'}</Button></ModalActions>
       </form>
     </Modal>
   )

@@ -6,7 +6,7 @@ import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
 import { MoneyField } from '../../../components/ui/MoneyField'
 import { SelectField } from '../../../components/ui/FormControls'
-import { Modal } from '../../../components/ui/Modal'
+import { Modal, ModalActions } from '../../../components/ui/Modal'
 import { LoanPicker, type Hit } from '../../../components/ui/Pickers'
 import { repaymentService } from '../../repayments/services/repaymentService'
 import { formatMoney } from '../../../utils/format'
@@ -47,7 +47,7 @@ export function RecordRepaymentModal({ loan, onClose, onDone }: { loan?: { id: s
         <Field label="Reference" value={f.reference} onChange={set('reference')} error={errs.reference} placeholder="Transfer / receipt reference" />
         <Field label="Note (optional)" value={f.description} onChange={set('description')} />
         <p className="text-xs text-slate-500">Balances, the schedule and the loan status are updated automatically. Leave the date empty for today.</p>
-        <div className="flex justify-end gap-2"><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">Record repayment</Button></div>
+        <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">Record repayment</Button></ModalActions>
       </form>
     </Modal>
   )
