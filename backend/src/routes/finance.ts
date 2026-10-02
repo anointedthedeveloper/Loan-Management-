@@ -4,6 +4,7 @@ import { authenticate, requirePermission } from '../middleware/auth.js';
 import { validateBody, validateQuery } from '../middleware/validate.js';
 import * as v from '../validators/finance.js';
 import { settingsSchemas } from '../validators/settings.js';
+import { createUserSchema } from '../validators/users.js';
 import { env } from '../config/env.js';
 import { AppError } from '../utils/AppError.js';
 import * as c from '../controllers/financeControllers.js';
@@ -83,3 +84,5 @@ const cronAuth: RequestHandler = (req, _res, next) => {
   next();
 };
 jobsRouter.all('/refresh-overdue', cronAuth, c.refreshOverdue);
+/** One-time first-CEO creation for a brand-new deployment. Refuses once any user exists. */
+jobsRouter.post('/bootstrap', cronAuth, body(createUserSchema.pick({ name: true, email: true, username: true, password: true })), c.bootstrapCeo);

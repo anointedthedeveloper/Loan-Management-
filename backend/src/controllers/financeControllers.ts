@@ -86,5 +86,16 @@ export const settingsUpdate = asyncHandler(async (req, res) => ok(res, { [String
 export const auditList = asyncHandler(async (_req, res) => { const f = q(res); const r = await listAudit(auditFilter(f), f); sendPage(res, r.items, f, r.total); });
 export const auditMeta = asyncHandler(async (_req, res) => ok(res, { actions: Object.values(AUDIT), users: (await User.find().select('name').sort({ name: 1 })).map((u) => ({ id: String(u._id), name: u.name })) }));
 
+/* first-run */
+export const bootstrapCeo = asyncHandler(async (req, res) => {
+  if (await User.exists({})) throw AppError.conflict('This system already has users, so bootstrap is disabled.', 'ALREADY_INITIALISED');
+  const { hashPassword, publicUser } = await import('../services/AuthService.js');
+  const { ALL_PERMISSIONS } = await import('../config/permissions.js');
+  const user = await User.create({ ...req.body, passwordHash: await hashPassword(req.body.password), role: 'ceo', permissions: ALL_PERMISSIONS });
+  const { recordAudit } = await import('../services/AuditService.js');
+  await recordAudit({ userName: 'Bootstrap', action: A.STAFF_CREATED, entity: 'User', entityId: String(user._id), entityLabel: user.username, after: { role: 'ceo', via: 'bootstrap' }, ip: req.ip });
+  ok(res, { user: publicUser({ ...user.toObject(), role: 'ceo' }) }, 'First CEO created', 201);
+});
+
 /* automation */
 export const refreshOverdue = asyncHandler(async (_req, res) => ok(res, await refreshLiveLoans(), 'Loans refreshed'));

@@ -82,3 +82,12 @@ Seed the first users once from your machine: `MONGODB_URI=<atlas uri> npm run se
 
 ## Deployment environment variables (backend)
 `MONGODB_URI`, `JWT_SECRET` (32+ chars), `CORS_ORIGINS`, `NODE_ENV=production`, optional `CRON_SECRET`, `JWT_EXPIRES_IN`, `BCRYPT_ROUNDS`. Frontend: `VITE_API_URL=https://<backend>/api`.
+
+## First login on a new deployment (no local MongoDB access needed)
+Set `CRON_SECRET` (16+ chars) in the backend's environment variables, redeploy, then create the first CEO once:
+```bash
+curl -X POST https://<backend>/api/jobs/bootstrap \
+  -H "Authorization: Bearer <CRON_SECRET>" -H "Content-Type: application/json" \
+  -d '{"name":"Your Name","email":"you@company.com","username":"ceo","password":"<10+ chars, upper, lower, number>"}'
+```
+It only works while the database has no users. Create the accountant afterwards from Staff & Permissions.

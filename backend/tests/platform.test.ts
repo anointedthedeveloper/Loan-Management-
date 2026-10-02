@@ -164,3 +164,21 @@ describe('security hardening', () => {
     expect(JSON.stringify(e.body)).not.toMatch(/at .*\.(ts|js):\d+/);
   });
 });
+
+describe('first-run bootstrap', () => {
+  it('is protected, validated, and works only while no users exist', async () => {
+    const { User } = await import('../src/models/User.js');
+    const body = { name: 'First Admin', email: 'first@protech.ng', username: 'firstceo', password: 'Strongpass123' };
+    const auth = { Authorization: 'Bearer cron-secret-cron-secret-123' };
+    expect((await request(app).post('/api/jobs/bootstrap').send(body)).status).toBe(403);
+    expect((await request(app).post('/api/jobs/bootstrap').set(auth).send(body)).body.code).toBe('ALREADY_INITIALISED'); // seeded users exist
+    await User.deleteMany({});
+    expect((await request(app).post('/api/jobs/bootstrap').set(auth).send({ ...body, password: 'weak' })).status).toBe(400);
+    const ok = await request(app).post('/api/jobs/bootstrap').set(auth).send(body);
+    expect(ok.status).toBe(201);
+    expect(ok.body.data.user).toMatchObject({ role: 'ceo', username: 'firstceo' });
+    expect(JSON.stringify(ok.body)).not.toContain('passwordHash');
+    expect((await request(app).post('/api/auth/login').send({ identifier: 'firstceo', password: 'Strongpass123' })).status).toBe(200);
+    expect((await request(app).post('/api/jobs/bootstrap').set(auth).send({ ...body, username: 'second' })).status).toBe(409);
+  });
+});
