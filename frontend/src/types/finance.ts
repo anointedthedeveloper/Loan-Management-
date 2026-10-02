@@ -22,6 +22,7 @@ export interface Loan {
   interestRate: number; rateBasis: string; interestAmount: number; totalRepayment: number
   duration: { value: number; unit: string }; frequency: string; customIntervalDays?: number; numberOfInstallments: number; installmentAmount: number
   startDate: string; firstPaymentDate?: string | null; firstPaymentDateIsCustom?: boolean; dueDate: string; loanType?: 'new' | 'renewal' | 'topup'
+  nonCashCredits?: number
   amountPaid: number; principalPaid: number; interestPaid: number; principalBalance: number; interestBalance: number; outstandingBalance: number; creditBalance: number
   nextInstallmentNumber?: number | null; nextDueDate?: string | null; nextInstallmentAmount: number; daysOverdue: number; overdueAmount: number
   notes?: string; statusReason?: string; createdBy?: { id: string; name?: string } | null; approvedBy?: { id: string; name?: string } | null
@@ -31,6 +32,11 @@ export interface LoanDetail { loan: Loan; schedule: Installment[] }
 export interface LoanPreview {
   product: { id: string; name: string; code: string; interestRate: number; rateBasis: string; bankDeductionRate: number }
   frequency: string; duration: { value: number; unit: string }; terms: Terms; schedule: Installment[]
+}
+
+export interface SettlementQuote {
+  loanId: string; date: string; mode: 'full_balance' | 'waive_future_interest'; outstandingBalance: number
+  interestWaived: number; amountToPay: number; installmentsRemaining: number; waivers: { number: number; interest: number }[]
 }
 
 export interface Product {

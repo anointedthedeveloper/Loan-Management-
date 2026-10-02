@@ -20,6 +20,8 @@ export const DEFAULT_SETTINGS = {
     /** reject: refuse payments above the balance. credit: accept and hold the excess as a customer credit on the loan. */
     overpaymentPolicy: 'reject' as 'reject' | 'credit',
     allowFutureDatedPayments: false,
+    /** full_balance: an early settlement pays everything still owed. waive_future_interest: interest on installments not yet due is waived. */
+    earlySettlement: 'full_balance' as 'full_balance' | 'waive_future_interest',
   },
   latePayment: {
     graceDays: 0,

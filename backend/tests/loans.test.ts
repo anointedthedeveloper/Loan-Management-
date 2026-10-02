@@ -228,6 +228,107 @@ describe('repayments (ledger first, balances derived)', () => {
   });
 });
 
+describe('mark an installment paid', () => {
+  it("records exactly what is owed on that month, in the ledger, leaving other months alone", async () => {
+    const l = await activeLoan();
+    const r = await api('post', `/api/loans/${l.id}/installments/3/pay`).send({ method: 'cash' });
+    expect(r.status).toBe(201);
+    expect(r.body.message).toMatch(/Installment 3/);
+    expect(r.body.data.transaction).toMatchObject({ type: 'repayment', amount: 216666.67, state: 'posted' });
+    const sched = r.body.data.schedule;
+    expect(sched[2]).toMatchObject({ number: 3, status: 'paid', remaining: 0 });
+    expect(sched[0].amountPaid).toBe(0);
+    expect(r.body.data.loan.outstandingBalance).toBeCloseTo(1_300_000 - 216_666.67, 2);
+    expect(await Transaction.countDocuments({ loan: l.id, type: 'repayment', targetInstallment: 3 })).toBe(1);
+    expect(await AuditLog.countDocuments({ action: 'INSTALLMENT_MARKED_PAID', entityId: l.id })).toBe(1);
+    expect((await api('post', `/api/loans/${l.id}/installments/3/pay`).send({ method: 'cash' })).body.code).toBe('ALREADY_PAID');
+    expect((await api('post', `/api/loans/${l.id}/installments/99/pay`).send({})).status).toBe(404);
+  });
+  it('reversing it restores the installment; accountants may mark paid, others may not', async () => {
+    const l = await activeLoan();
+    const r = await api('post', `/api/loans/${l.id}/installments/2/pay`, acct).send({ method: 'cash' });
+    expect(r.status).toBe(201);
+    await api('post', `/api/transactions/${r.body.data.transaction.id}/reverse`).send({ reason: 'Marked the wrong month' });
+    const after = await api('get', `/api/loans/${l.id}`);
+    expect(after.body.data.schedule[1]).toMatchObject({ amountPaid: 0, status: expect.stringMatching(/upcoming|due|overdue/) });
+    await User.updateOne({ username: 'accountant' }, { permissions: ['loans.view'] });
+    expect((await api('post', `/api/loans/${l.id}/installments/2/pay`, acct).send({})).status).toBe(403);
+    await User.updateOne({ username: 'accountant' }, { permissions: [] });
+  });
+  it('requires a reference for bank transfers, like any repayment', async () => {
+    const l = await activeLoan();
+    expect((await api('post', `/api/loans/${l.id}/installments/1/pay`).send({ method: 'bank_transfer' })).body.errors.reference).toBeTruthy();
+  });
+});
+
+describe('early settlement (paying a loan off before its term ends)', () => {
+  const setMode = (m: string) => api('put', '/api/settings/repayment').send({ allocationOrder: 'oldest_first', withinInstallment: 'interest_first', overpaymentPolicy: 'reject', allowFutureDatedPayments: false, earlySettlement: m });
+
+  it('default: the quote is everything still owed, and settling completes the loan', async () => {
+    await setMode('full_balance');
+    const l = await activeLoan();
+    await pay(l.id, 216666.67);
+    const q = await api('get', `/api/loans/${l.id}/settlement-quote`);
+    expect(q.body.data.quote).toMatchObject({ mode: 'full_balance', interestWaived: 0, installmentsRemaining: 5 });
+    expect(q.body.data.quote.amountToPay).toBeCloseTo(1_300_000 - 216_666.67, 2);
+    const r = await api('post', `/api/loans/${l.id}/settle`).send({ method: 'cash' });
+    expect(r.status).toBe(200);
+    expect(r.body.data.loan).toMatchObject({ status: 'completed', outstandingBalance: 0 });
+    expect(r.body.data.schedule.every((i: any) => i.status === 'paid')).toBe(true);
+    expect(await Transaction.countDocuments({ loan: l.id, type: 'waiver' })).toBe(0);
+    expect(await AuditLog.countDocuments({ action: 'LOAN_SETTLED_EARLY', entityId: l.id })).toBe(1);
+    expect((await api('post', `/api/loans/${l.id}/settle`).send({})).body.code).toBe('SETTLEMENT_NOT_ALLOWED'); // already completed
+  });
+
+  it('waive_future_interest: interest on months not yet due is written off (non-cash) and only the rest is paid', async () => {
+    await setMode('waive_future_interest');
+    const l = await activeLoan(); // monthly, 6 installments from today: all future
+    const q = (await api('get', `/api/loans/${l.id}/settlement-quote`)).body.data.quote;
+    expect(q.mode).toBe('waive_future_interest');
+    expect(q.interestWaived).toBe(300_000);                     // all six installments are still in the future
+    expect(q.amountToPay).toBe(1_000_000);                      // principal only
+    const r = await api('post', `/api/loans/${l.id}/settle`).send({ method: 'cash' });
+    expect(r.body.data.loan).toMatchObject({ status: 'completed', outstandingBalance: 0, nonCashCredits: 300_000 });
+    const waiver = (await Transaction.findOne({ loan: l.id, type: 'waiver' }))!;
+    expect(waiver).toMatchObject({ amount: 300_000, isCash: false, affectsLoanBalance: true });
+    const repay = (await Transaction.findOne({ loan: l.id, type: 'repayment' }))!;
+    expect(repay).toMatchObject({ amount: 1_000_000, isCash: true });
+    // customer totals count only the cash that actually came in
+    const sum = (await api('get', `/api/customers/${l.customer.id}/summary`)).body.data.metrics;
+    expect(sum.totalRepaid).toBeGreaterThanOrEqual(1_000_000);
+    await setMode('full_balance');
+  });
+
+  it('only already-elapsed months pay their interest when interest is waived', async () => {
+    await setMode('waive_future_interest');
+    const l = await activeLoan({ startDate: isoDate(addDays(addMonths(today, -2), -1)) }); // installments 1 & 2 are overdue, 3-6 are future
+    const q = (await api('get', `/api/loans/${l.id}/settlement-quote`)).body.data.quote;
+    expect(q.waivers.map((w: any) => w.number)).toEqual([3, 4, 5, 6]);
+    expect(q.interestWaived).toBe(200_000);
+    expect(q.amountToPay).toBeCloseTo(1_100_000, 0);
+    await setMode('full_balance');
+  });
+
+  it('waiving interest needs approval rights; reversing the waiver reopens the loan', async () => {
+    await setMode('waive_future_interest');
+    const l = await activeLoan();
+    expect((await api('post', `/api/loans/${l.id}/settle`, acct).send({ method: 'cash' })).body.code).toBe('WAIVER_NOT_ALLOWED');
+    expect((await Loan.findById(l.id))!.status).toBe('active'); // nothing was recorded
+    expect(await Transaction.countDocuments({ loan: l.id, type: 'waiver' })).toBe(0);
+    await api('post', `/api/loans/${l.id}/settle`).send({ method: 'cash' });
+    const waiver = (await Transaction.findOne({ loan: l.id, type: 'waiver' }))!;
+    await api('post', `/api/transactions/${waiver._id}/reverse`).send({ reason: 'Settlement terms were wrong' });
+    expect((await api('get', `/api/loans/${l.id}`)).body.data.loan.outstandingBalance).toBe(300_000); // the interest is owed again
+    await setMode('full_balance');
+  });
+
+  it('accountants can settle at the full balance (no waiver involved)', async () => {
+    await setMode('full_balance');
+    const l = await activeLoan();
+    expect((await api('post', `/api/loans/${l.id}/settle`, acct).send({ method: 'cash' })).body.data.loan.status).toBe('completed');
+  });
+});
+
 describe('overdue detection and automation', () => {
   it('a loan past its due dates becomes overdue and shows days/amount overdue', async () => {
     const l = await activeLoan({ startDate: isoDate(addDays(addMonths(today, -3), -1)) }); // installments 1-3 are past due

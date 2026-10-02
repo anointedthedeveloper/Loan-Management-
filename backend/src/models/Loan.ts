@@ -44,7 +44,7 @@ const schema = new Schema(
     amountPaid: money, principalPaid: money, interestPaid: money,
     principalBalance: money, interestBalance: money, outstandingBalance: money, creditBalance: money,
     nextInstallmentNumber: Number, nextDueDate: Date, nextInstallmentAmount: money,
-    daysOverdue: money, overdueAmount: money, lastRecalculatedAt: Date,
+    daysOverdue: money, overdueAmount: money, nonCashCredits: money, lastRecalculatedAt: Date,
 
     // workflow
     notes: String,

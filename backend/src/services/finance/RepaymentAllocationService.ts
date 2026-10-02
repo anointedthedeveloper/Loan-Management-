@@ -9,7 +9,7 @@ export interface AllocationResult { allocations: Allocation[]; applied: number; 
  * Mutates the working installments (their paid fields) so repayments can be replayed in order.
  * The order is configuration (Settings > Repayment), not hard-coded.
  */
-export function allocatePayment(installments: WorkingInstallment[], amountKobo: number, rules: RepaymentRules): AllocationResult {
+export function allocatePayment(installments: WorkingInstallment[], amountKobo: number, rules: RepaymentRules, target?: number): AllocationResult {
   const byNumber = new Map<number, Allocation>();
   const bucket = (n: number) => { let a = byNumber.get(n); if (!a) { a = { number: n, principal: 0, interest: 0 }; byNumber.set(n, a); } return a; };
   let left = amountKobo;
@@ -38,6 +38,9 @@ export function allocatePayment(installments: WorkingInstallment[], amountKobo: 
   };
 
   const ordered = [...installments].sort((a, b) => a.number - b.number);
+  // A payment marked for a specific installment ("mark this month paid") settles that one first; any excess then follows the normal order.
+  const targeted = target === undefined ? undefined : ordered.find((i) => i.number === target);
+  if (targeted && left > 0) payInstallment(targeted);
   if (rules.allocationOrder === 'interest_first_overall') {
     for (const i of ordered) if (left > 0) payInterest(i);
     for (const i of ordered) if (left > 0) payPrincipal(i);

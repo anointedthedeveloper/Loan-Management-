@@ -49,6 +49,7 @@ export const TRANSACTION_TYPES = [
   { value: 'adjustment', label: 'Adjustment', direction: 'none', manual: true, reversible: true },
   { value: 'fee', label: 'Fee', direction: 'in', manual: true, reversible: true },
   { value: 'refund', label: 'Refund', direction: 'out', manual: true, reversible: true },
+  { value: 'waiver', label: 'Interest waiver', direction: 'none', manual: false, reversible: true },
   { value: 'reversal', label: 'Reversal', direction: 'none', manual: false, reversible: false },
   { value: 'other', label: 'Other', direction: 'none', manual: true, reversible: true },
 ] as const;

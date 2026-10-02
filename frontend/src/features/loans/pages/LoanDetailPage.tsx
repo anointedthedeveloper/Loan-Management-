@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowUpRight, Ban, Banknote, Check, FileX, Pencil, Send, ShieldAlert, X } from 'lucide-react'
+import { ArrowUpRight, Ban, Banknote, Check, FileX, Flag, Pencil, Send, ShieldAlert, X } from 'lucide-react'
 import { PERM } from '../../../config/permissions'
 import { ApiError } from '../../../services/api'
 import { useAuth } from '../../../context/AuthContext'
@@ -16,6 +16,8 @@ import { formatDate, formatMoney, titleCase } from '../../../utils/format'
 import { loanService } from '../services/loanService'
 import { ScheduleTable } from '../components/ScheduleTable'
 import { RecordRepaymentModal } from '../components/RecordRepaymentModal'
+import { MarkInstallmentPaidModal, SettleLoanModal } from '../components/MarkPaidModals'
+import type { Installment } from '../../../types/finance'
 import { TransactionsTable } from '../../transactions/components/TransactionsTable'
 import { TopUpRequestModal } from '../../topups/components/TopUpRequestModal'
 
@@ -29,7 +31,8 @@ export default function LoanDetailPage() {
   const { data, error, loading, reload } = useAsync(() => loanService.get(id), [id])
   const tx = useAsync(() => loanService.transactions(id), [id])
   const [tab, setTab] = useState('schedule')
-  const [modal, setModal] = useState<'repay' | 'topup' | Action | null>(null)
+  const [modal, setModal] = useState<'repay' | 'topup' | 'settle' | Action | null>(null)
+  const [marking, setMarking] = useState<Installment | null>(null)
   const [busy, setBusy] = useState(false)
 
   if (error) return <ErrorState message={error} onRetry={reload} />
@@ -65,6 +68,7 @@ export default function LoanDetailPage() {
           {l.status === 'approved' && can(PERM.loans.approve) && <Button onClick={() => setModal('disburse')}><Send className="size-4" />Disburse</Button>}
           {['pending', 'approved'].includes(l.status) && (can(PERM.loans.edit) || can(PERM.loans.approve)) && <Button variant="ghost" onClick={() => setModal('cancel')}><Ban className="size-4" />Cancel loan</Button>}
           {live && can(PERM.repayments.record) && <Button onClick={() => setModal('repay')}><Banknote className="size-4" />Record repayment</Button>}
+          {live && (can(PERM.repayments.record) || can(PERM.loans.approve)) && <Button variant="secondary" onClick={() => setModal('settle')}><Flag className="size-4" />Settle loan</Button>}
           {live && can(PERM.topups.request) && <Button variant="secondary" onClick={() => setModal('topup')}><ArrowUpRight className="size-4" />Top-up</Button>}
           {['active', 'overdue'].includes(l.status) && can(PERM.loans.approve) && <Button variant="ghost" className="text-red-600" onClick={() => setModal('default')}><ShieldAlert className="size-4" />Mark defaulted</Button>}
         </div>
@@ -73,11 +77,12 @@ export default function LoanDetailPage() {
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         {cards.map(([k, v, c]) => <div key={k} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-medium text-slate-500">{k}</p><p className={`mt-1 text-lg font-bold tabular-nums ${c ?? ''}`}>{v}</p></div>)}
       </div>
+      {(l.nonCashCredits ?? 0) > 0 && <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">Amount paid includes <b>{formatMoney(l.nonCashCredits)}</b> credited without cash (waived interest or a balance settled by a top-up).</p>}
       {live && l.nextInstallmentNumber && <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm">Next installment: <b>#{l.nextInstallmentNumber}</b> of {formatMoney(l.nextInstallmentAmount)} due <b>{formatDate(l.nextDueDate)}</b>.{l.creditBalance > 0 && <> Customer credit held: <b>{formatMoney(l.creditBalance)}</b>.</>}</p>}
 
       <Tabs tabs={[{ key: 'schedule', label: 'Repayment schedule' }, { key: 'transactions', label: 'Transactions' }, { key: 'terms', label: 'Terms & history' }]} active={tab} onChange={setTab} />
       <div key={tab} className="animate-fade-in rounded-xl border border-slate-200 bg-white shadow-sm">
-        {tab === 'schedule' && <ScheduleTable rows={schedule} />}
+        {tab === 'schedule' && <ScheduleTable rows={schedule} onMarkPaid={live && can(PERM.repayments.record) ? setMarking : undefined} />}
         {tab === 'transactions' && (tx.error ? <ErrorState message={tx.error} onRetry={tx.reload} /> : tx.loading ? <div className="p-5"><Skeleton className="h-24 w-full" /></div> : tx.data?.data.length ? <TransactionsTable rows={tx.data.data} onChanged={() => { reload(); tx.reload() }} /> : <EmptyState icon={<FileX className="size-6" />} title="No transactions yet" hint="The disbursement and repayments appear here once recorded." />)}
         {tab === 'terms' && (
           <dl className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
@@ -93,6 +98,8 @@ export default function LoanDetailPage() {
         )}
       </div>
 
+      {marking && <MarkInstallmentPaidModal loan={l} installment={marking} onClose={() => setMarking(null)} onDone={() => { setMarking(null); done() }} />}
+      {modal === 'settle' && <SettleLoanModal loan={l} onClose={() => setModal(null)} onDone={done} />}
       {modal === 'repay' && <RecordRepaymentModal loan={l} onClose={() => setModal(null)} onDone={done} />}
       {modal === 'topup' && <TopUpRequestModal loan={l} onClose={() => setModal(null)} onDone={done} />}
       <ConfirmDialog open={modal === 'approve'} loading={busy} title="Approve this loan?" confirmLabel="Approve loan" message={`Approving ${l.loanId} records a ${formatMoney(l.amount)} disbursement to ${l.customer.fullName} in the ledger and activates the loan.`} onConfirm={() => run('approve')} onCancel={() => setModal(null)} />

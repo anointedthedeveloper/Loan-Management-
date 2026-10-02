@@ -8,7 +8,8 @@ import type { RepaymentRules, WorkingInstallment } from './types.js';
 
 export type InstallmentStatus = 'upcoming' | 'due' | 'partially_paid' | 'paid' | 'overdue';
 
-export interface PaymentEvent { id: string; amountKobo: number }
+/** `target`: installment this payment was marked for. `fixed`: exact write-offs (e.g. waived interest) applied as-is, bypassing allocation rules. */
+export interface PaymentEvent { id: string; amountKobo: number; target?: number; fixed?: Allocation[] }
 export interface InstallmentState {
   number: number; dueDate: Date; expectedAmount: number; principalComponent: number; interestComponent: number;
   paidPrincipal: number; paidInterest: number; amountPaid: number; remaining: number; status: InstallmentStatus;
@@ -37,7 +38,20 @@ export function computeLoanState(plan: SchedulePlan[], payments: PaymentEvent[],
   const allocationsByPayment: Record<string, Allocation[]> = {};
   let credit = 0;
   for (const p of payments) {
-    const r = allocatePayment(working, p.amountKobo, rules);
+    if (p.fixed) {
+      const applied: Allocation[] = [];
+      for (const f of p.fixed) {
+        const w = working.find((x) => x.number === f.number);
+        if (!w) continue;
+        const interest = Math.min(f.interest, w.interestKobo - w.paidInterestKobo);
+        const principal = Math.min(f.principal, w.principalKobo - w.paidPrincipalKobo);
+        w.paidInterestKobo += interest; w.paidPrincipalKobo += principal;
+        applied.push({ number: f.number, interest, principal });
+      }
+      allocationsByPayment[p.id] = applied;
+      continue;
+    }
+    const r = allocatePayment(working, p.amountKobo, rules, p.target);
     allocationsByPayment[p.id] = r.allocations;
     credit += r.unapplied;
   }

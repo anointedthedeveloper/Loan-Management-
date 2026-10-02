@@ -29,7 +29,8 @@ export const SETTING_SECTIONS: SettingSection[] = [
     { key: 'allocationOrder', label: 'Allocation order', type: 'select', options: [{ value: 'oldest_first', label: 'Oldest installment first' }, { value: 'interest_first_overall', label: 'All interest first, then principal' }] },
     { key: 'withinInstallment', label: 'Inside an installment', type: 'select', options: [{ value: 'interest_first', label: 'Interest first' }, { value: 'principal_first', label: 'Principal first' }, { value: 'proportional', label: 'Proportionally' }] },
     { key: 'overpaymentPolicy', label: 'Payment above the balance', type: 'select', options: [{ value: 'reject', label: 'Reject the payment' }, { value: 'credit', label: 'Accept and hold the excess as credit' }] },
-    { key: 'allowFutureDatedPayments', label: 'Allow future-dated payments', type: 'toggle' } ] },
+    { key: 'allowFutureDatedPayments', label: 'Allow future-dated payments', type: 'toggle' },
+    { key: 'earlySettlement', label: 'Early settlement (paying a loan off before its term ends)', type: 'select', options: [{ value: 'full_balance', label: 'Pay everything still owed' }, { value: 'waive_future_interest', label: 'Waive interest on installments not yet due' }], help: 'Waiving interest can only be done by someone with loan approval rights.' } ] },
   { key: 'latePayment', label: 'Late payment', description: 'Overdue and default timing. Penalty calculation is not enabled until Protech’s rule is configured.', fields: [
     { key: 'graceDays', label: 'Grace days before an installment is overdue', type: 'number' },
     { key: 'defaultAfterDays', label: 'Mark as defaulted after (days overdue)', type: 'number', nullable: true, help: 'Leave empty to default loans manually only.' } ] },

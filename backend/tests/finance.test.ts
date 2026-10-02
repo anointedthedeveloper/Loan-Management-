@@ -260,3 +260,35 @@ describe("matches Protech's loan book", () => {
     expect(generateSchedule(t, 'monthly').map((i) => i.dueDate.toISOString().slice(0, 10))).toEqual(['2026-01-31', '2026-02-28', '2026-03-31', '2026-04-30']);
   });
 });
+
+describe('marking one installment paid, and waived interest', () => {
+  const t = calculateLoan(base);
+  const p = plan(t);
+  const early = utcDate(2026, 0, 31);
+
+  it('a payment marked for installment 3 settles installment 3 and leaves 1 and 2 untouched', () => {
+    const s = computeLoanState(p, [{ id: 'a', amountKobo: toKobo(216_666.67), target: 3 }], early, rules);
+    expect(s.installments[2]).toMatchObject({ status: 'paid', remaining: 0 });
+    expect(s.installments[0]!.amountPaid).toBe(0);
+    expect(s.installments[1]!.amountPaid).toBe(0);
+    expect(s.outstandingBalance).toBeCloseTo(1_300_000 - 216_666.67, 2);
+    expect(s.nextInstallmentNumber).toBe(1);
+  });
+  it('any excess over the targeted installment follows the normal order', () => {
+    const s = computeLoanState(p, [{ id: 'a', amountKobo: toKobo(300_000), target: 3 }], early, rules);
+    expect(s.installments[2]!.status).toBe('paid');
+    expect(s.installments[0]!.amountPaid).toBeCloseTo(300_000 - 216_666.67, 2);
+  });
+  it('fixed write-offs (waived interest) reduce the obligation exactly, outside the allocation rules', () => {
+    const waiver = { id: 'w', amountKobo: toKobo(150_000), fixed: [4, 5, 6].map((n) => ({ number: n, principal: 0, interest: toKobo(50_000) })) };
+    const s = computeLoanState(p, [waiver], early, rules);
+    expect(s.interestBalance).toBe(150_000);
+    expect(s.principalBalance).toBe(1_000_000);
+    expect(s.installments[0]!.amountPaid).toBe(0);
+    expect(s.installments[3]).toMatchObject({ paidInterest: 50_000, paidPrincipal: 0 });
+    // paying what is left after the waiver completes the loan
+    const full = computeLoanState(p, [waiver, { id: 'r', amountKobo: toKobo(1_150_000) }], early, rules);
+    expect(full.fullyPaid).toBe(true);
+    expect(full.creditBalance).toBe(0);
+  });
+});

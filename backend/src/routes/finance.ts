@@ -33,6 +33,9 @@ loansRouter.post('/:id/reject', perm('loans.approve'), body(v.reasonSchema), c.l
 loansRouter.post('/:id/cancel', perm('loans.edit', 'loans.approve'), body(v.reasonSchema), c.loanCancel);
 loansRouter.post('/:id/default', perm('loans.approve'), body(v.reasonSchema), c.loanDefault);
 loansRouter.post('/:id/recalculate', perm('loans.edit', 'loans.approve'), c.loanRecalculate);
+loansRouter.post('/:id/installments/:number/pay', perm('repayments.record'), body(v.markPaidSchema), c.installmentPay);
+loansRouter.get('/:id/settlement-quote', perm('repayments.record', 'loans.approve'), query(v.settlementQuerySchema), c.settlementQuote);
+loansRouter.post('/:id/settle', perm('repayments.record', 'loans.approve'), body(v.settleSchema), c.loanSettle);
 loansRouter.get('/:id/transactions', perm('transactions.view', 'loans.view'), c.loanTransactions);
 
 export const repaymentsRouter = mk();

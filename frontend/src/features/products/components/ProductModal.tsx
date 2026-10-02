@@ -40,6 +40,7 @@ export function ProductModal({ product, categories, onClose, onDone }: { product
           <Field label="Product name" value={f.name} onChange={set('name')} error={errs.name} autoFocus /><Field label="Code" value={f.code} onChange={set('code')} error={errs.code} placeholder="e.g. SAL" />
           <div className="sm:col-span-2">
             <Field label="Category" list="product-categories" value={f.category} onChange={set('category')} error={errs.category} placeholder="Choose or type a category, e.g. Salary advance" />
+            <p className="mt-1 text-xs text-slate-500">A label that groups similar products (for example <i>Salary advance</i> or <i>SME / Business</i>). It is used to organise and filter this list only — it does not change rates, limits or any loan rule.</p>
             <datalist id="product-categories">{categories.map((c) => <option key={c} value={c} />)}</datalist>
           </div>
           <div className="sm:col-span-2"><TextareaField label="Description" value={f.description} onChange={set('description')} /></div>

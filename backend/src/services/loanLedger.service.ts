@@ -21,7 +21,7 @@ export async function recalculateLoan(loanId: Types.ObjectId | string, opts: { t
   const payments = await Transaction.find({ loan: loan._id, affectsLoanBalance: true, reversedAt: { $exists: false } }).sort({ date: 1, createdAt: 1, _id: 1 });
 
   const plan = schedule.installments.map((i) => ({ number: i.number, dueDate: i.dueDate, principalComponent: i.principalComponent, interestComponent: i.interestComponent }));
-  const state = computeLoanState(plan, payments.map((p) => ({ id: String(p._id), amountKobo: toKobo(p.amount) })), opts.today ?? todayLagos(), rules.repayment, rules.latePayment.graceDays);
+  const state = computeLoanState(plan, payments.map((p) => ({ id: String(p._id), amountKobo: toKobo(p.amount), target: p.targetInstallment ?? undefined, fixed: p.fixedAllocations?.length ? p.fixedAllocations.map((a) => ({ number: a.number!, principal: toKobo(a.principal ?? 0), interest: toKobo(a.interest ?? 0) })) : undefined })), opts.today ?? todayLagos(), rules.repayment, rules.latePayment.graceDays);
   const status = resolveStatus(loan.status, state, { defaultAfterDays: rules.latePayment.defaultAfterDays });
 
   schedule.set('installments', state.installments.map((i) => ({ ...i })));
@@ -36,6 +36,7 @@ export async function recalculateLoan(loanId: Types.ObjectId | string, opts: { t
     principalBalance: state.principalBalance, interestBalance: state.interestBalance, outstandingBalance: state.outstandingBalance, creditBalance: state.creditBalance,
     nextInstallmentNumber: state.nextInstallmentNumber, nextDueDate: state.nextDueDate, nextInstallmentAmount: state.nextInstallmentAmount,
     daysOverdue: state.daysOverdue, overdueAmount: state.overdueAmount, lastRecalculatedAt: new Date(),
+    nonCashCredits: payments.filter((p) => !p.isCash).reduce((s, p) => s + p.amount, 0), // waived interest / balances settled by top-ups
   } });
   if (before !== status) await recordAudit({ userName: 'System', action: AUDIT.LOAN_STATUS_CHANGED, entity: 'Loan', entityId: String(loan._id), entityLabel: loan.loanId, before: { status: before }, after: { status } });
   return { state, status, changed: before !== status };

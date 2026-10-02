@@ -23,6 +23,10 @@ const schema = new Schema(
     /** True when the entry feeds the loan balance replay (repayments, top-up settlements). */
     affectsLoanBalance: { type: Boolean, default: false },
     allocations: [{ _id: false, number: Number, principal: Number, interest: Number }],
+    /** Installment this payment was marked for ("mark month paid"). */
+    targetInstallment: Number,
+    /** Exact write-offs applied as-is (interest waivers on early settlement). */
+    fixedAllocations: [{ _id: false, number: Number, principal: Number, interest: Number }],
     reversalOf: { type: Schema.Types.ObjectId, ref: 'Transaction' },
     reversedAt: Date,
     reversedBy: { type: Schema.Types.ObjectId, ref: 'User' },

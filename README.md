@@ -96,3 +96,7 @@ It only works while the database has no users. Create the accountant afterwards 
 ## Approval flow (who approves what)
 - **CEO / anyone holding `loans.approve`** creating a loan (or `topups.approve` requesting a top-up): approved and disbursed immediately; the approval and disbursement are still written to the ledger and audit log.
 - **Accountants** (default permission `loans.create`) submit loans and top-ups for approval; the CEO approves or rejects them. The settings `requireApproval` / `autoDisburseOnApproval` still apply.
+
+## Marking a month paid and settling early
+- **Mark paid** (schedule row): records a repayment for exactly what is still owed on that installment, targeted at it (`POST /loans/:id/installments/:n/pay`). Other months are untouched; reversing it from Transactions undoes it.
+- **Settle loan** (`GET .../settlement-quote`, `POST .../settle`): closes the loan before its term ends. Rule is a setting (Settings > Repayment rules > Early settlement): `full_balance` (default, pay everything still owed) or `waive_future_interest` (interest on installments not yet due is written off as a non-cash `waiver` entry; requires `loans.approve`). Waived amounts never count as cash collected.

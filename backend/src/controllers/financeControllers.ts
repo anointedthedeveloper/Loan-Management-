@@ -5,6 +5,7 @@ import { actorOf } from './customerController.js';
 import * as products from '../services/product.service.js';
 import * as loans from '../services/loan.service.js';
 import * as repayments from '../services/repayment.service.js';
+import * as settlement from '../services/settlement.service.js';
 import * as tx from '../services/transaction.service.js';
 import * as topups from '../services/topup.service.js';
 import * as settings from '../services/settings.service.js';
@@ -47,6 +48,11 @@ export const loanCancel = asyncHandler(async (req, res) => ok(res, await loans.c
 export const loanDefault = asyncHandler(async (req, res) => ok(res, await loans.markLoanDefaulted(id(req), req.body.reason, actorOf(req)), 'Loan marked as defaulted'));
 export const loanTransactions = asyncHandler(async (req, res) => { const f = { page: 1, limit: 100, sort: 'date', order: 'desc', loan: id(req) }; const r = await tx.listTransactions(f); sendPage(res, r.items, f, r.total); });
 export const loanRecalculate = asyncHandler(async (req, res) => { const l = await Loan.findById(id(req)); if (!l) throw AppError.notFound('Loan not found', 'LOAN_NOT_FOUND'); await recalculateLoan(l._id); ok(res, await loans.getLoan(id(req)), 'Balances recalculated from the ledger'); });
+
+/* mark a month paid / settle early */
+export const installmentPay = asyncHandler(async (req, res) => ok(res, await repayments.markInstallmentPaid(id(req), Number(req.params.number), req.body, actorOf(req)), `Installment ${req.params.number} marked as paid`, 201));
+export const settlementQuote = asyncHandler(async (req, res) => ok(res, { quote: await settlement.quoteSettlement(id(req), res.locals.query.date) }));
+export const loanSettle = asyncHandler(async (req, res) => ok(res, await settlement.settleLoan(id(req), req.body, actorOf(req), req.auth!.permissions.includes('loans.approve')), 'Loan settled'));
 
 /* repayments & transactions */
 export const repaymentList = asyncHandler(async (_req, res) => { const f = q(res); const r = await repayments.listRepayments(f); sendPage(res, r.items, f, r.total); });

@@ -76,6 +76,9 @@ const txCommon = {
   reference: z.preprocess(blank, z.string().trim().max(80).optional()),
   description: text(300),
 };
+export const markPaidSchema = z.object({ ...txCommon });
+export const settleSchema = z.object({ ...txCommon });
+export const settlementQuerySchema = z.object({ date: optDate });
 export const recordRepaymentSchema = z.object({ loanId: objectId, amount: money('Payment amount'), ...txCommon });
 export const manualTransactionSchema = z.object({
   type: z.enum(vals(TRANSACTION_TYPES.filter((t) => t.manual))),
