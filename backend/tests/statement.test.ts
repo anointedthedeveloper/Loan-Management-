@@ -11,7 +11,7 @@ const bin = (res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: 
 beforeAll(async () => {
   await setupDb(); ceo = await ceoToken(); acct = await accountantToken();
   product = (await api('post', '/api/loan-products').send({ name: 'Salary Advance', code: 'SAL', category: 'Salary advance', interestRate: 5, rateBasis: 'per_month', bankDeductionRate: 4, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
-  const c = await api('post', '/api/customers').send(customerPayload({ firstName: 'Omoloro', middleName: '', lastName: 'Sylvia', employment: { ippisNumber: '437602', ministry: 'OSGF', occupation: 'Clerk' } }));
+  const c = await api('post', '/api/customers').send(customerPayload({ firstName: 'Omoloro', middleName: '', lastName: 'Sylvia', employment: { sector: 'government', ippisNumber: '437602', ministry: 'OSGF', occupation: 'Clerk' } }));
   cust = c.body.data.customer.id;
 });
 afterAll(teardownDb);

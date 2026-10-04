@@ -20,7 +20,7 @@ const customerSchema = new Schema(
     gender: str,
     idType: str,
     idNumber: str,
-    employment: { employmentType: str, employerName: str, occupation: str, ippisNumber: str, ministry: str }, // IPPIS no. / ministry as used in the loan book
+    employment: { sector: { ...str, enum: ['government', 'non_government'] }, employmentType: str, employerName: str, occupation: str, ippisNumber: str, ministry: str }, // IPPIS no. / ministry as used in the loan book
     legacyId: str, // client number from the previous loan book
     emergencyContact: { name: str, relationship: str, phone: str },
     registrationDate: { type: Date, default: Date.now },
@@ -41,6 +41,7 @@ const customerSchema = new Schema(
 const live = { isArchived: false };
 customerSchema.index({ phone: 1 }, { unique: true, partialFilterExpression: live, name: 'uniq_phone' });
 customerSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { ...live, email: { $type: 'string' } }, name: 'uniq_email' });
+customerSchema.index({ 'employment.ippisNumber': 1 }, { unique: true, partialFilterExpression: { ...live, 'employment.ippisNumber': { $type: 'string' } }, name: 'uniq_ippis' });
 customerSchema.index({ idType: 1, idNumber: 1 }, { unique: true, partialFilterExpression: { ...live, idNumber: { $type: 'string' } }, name: 'uniq_identification' });
 // Listing / search / filter paths.
 customerSchema.index({ isArchived: 1, status: 1, registrationDate: -1 });

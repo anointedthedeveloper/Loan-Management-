@@ -48,14 +48,41 @@ describe('customer creation', () => {
     const r = await create({ firstName: 'Minimal', lastName: 'Person', phone: '07011112222', address: '1 Short St' } as any);
     expect(r.status).toBe(400);
     expect(Object.keys(r.body.errors)).toEqual(expect.arrayContaining(['email', 'state', 'dateOfBirth', 'gender', 'idType', 'idNumber', 'employment', 'emergencyContact']));
-    const blanks = await create(customerPayload({ employment: { ippisNumber: '', ministry: '' }, emergencyContact: { name: '', phone: '' }, email: '' }));
+    const blanks = await create(customerPayload({ employment: { sector: 'government', ippisNumber: '', ministry: '' }, emergencyContact: { name: '', phone: '' }, email: '' }));
     expect(Object.keys(blanks.body.errors)).toEqual(expect.arrayContaining(['employment.ippisNumber', 'employment.ministry', 'emergencyContact.name', 'emergencyContact.phone', 'email']));
+  });
+
+  it('requires IPPIS for government workers but not for non-government workers', async () => {
+    const gov = await create(customerPayload({ employment: { sector: 'government', ippisNumber: '', ministry: '' } }));
+    expect(gov.status).toBe(400);
+    expect(gov.body.errors['employment.ippisNumber']).toBeTruthy();
+    const none = await create(customerPayload({ employment: { occupation: 'Trader' } }));
+    expect(none.status).toBe(400);
+    expect(none.body.errors['employment.sector']).toBeTruthy();
+    const priv = await create(customerPayload({ employment: { sector: 'non_government', employerName: 'Own shop', occupation: 'Trader' } }));
+    expect(priv.status).toBe(201);
+    expect(priv.body.data.customer.employment.ippisNumber).toBeUndefined();
+  });
+
+  it('identifies customers by IPPIS number (unique and searchable)', async () => {
+    const a = await create(customerPayload({ employment: { sector: 'government', ippisNumber: 'ip778899', ministry: 'OSGF' } }));
+    expect(a.body.data.customer.employment.ippisNumber).toBe('IP778899');
+    const dup = await create(customerPayload({ employment: { sector: 'government', ippisNumber: 'IP778899', ministry: 'OSGF' } }));
+    expect(dup.status).toBe(409);
+    expect(dup.body.errors['employment.ippisNumber']).toBeTruthy();
+    const found = await request(app).get('/api/customers?q=IP778899').set(as(ceo));
+    expect(found.body.data.map((c: any) => c.id)).toContain(a.body.data.customer.id);
+  });
+
+  it('lists customers alphabetically by default', async () => {
+    const names = (await request(app).get('/api/customers?limit=100').set(as(ceo))).body.data.map((c: any) => c.fullName as string);
+    expect(names).toEqual([...names].sort((x, y) => x.localeCompare(y, 'en', { sensitivity: 'base' })));
   });
 
   it('allows the genuinely optional fields to be omitted', async () => {
     const p: any = customerPayload();
     for (const k of ['middleName', 'altPhone', 'lga', 'notes', 'legacyId']) delete p[k];
-    p.employment = { ippisNumber: p.employment.ippisNumber, ministry: p.employment.ministry };
+    p.employment = { sector: 'government', ippisNumber: p.employment.ippisNumber, ministry: p.employment.ministry };
     p.emergencyContact = { name: p.emergencyContact.name, phone: p.emergencyContact.phone };
     expect((await create(p)).status).toBe(201);
   });
@@ -87,7 +114,7 @@ describe('customer creation', () => {
 
 describe('payroll details from the loan book', () => {
   it('stores IPPIS number, ministry and the legacy client number', async () => {
-    const r = await create(customerPayload({ legacyId: '473', employment: { ippisNumber: '437602', ministry: 'OSGF', occupation: 'Clerk' } }));
+    const r = await create(customerPayload({ legacyId: '473', employment: { sector: 'government', ippisNumber: '437602', ministry: 'OSGF', occupation: 'Clerk' } }));
     expect(r.status).toBe(201);
     expect(r.body.data.customer.employment).toMatchObject({ ippisNumber: '437602', ministry: 'OSGF' });
     expect(r.body.data.customer.legacyId).toBe('473');

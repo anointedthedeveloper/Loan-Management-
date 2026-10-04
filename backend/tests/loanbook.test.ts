@@ -18,7 +18,7 @@ afterAll(teardownDb);
 
 async function client(name: string, ippis: string, ministry: string, legacyId?: string) {
   const [first, last] = name.split(' ');
-  return (await api('post', '/api/customers').send(customerPayload({ firstName: first, middleName: '', lastName: last, legacyId, employment: { ippisNumber: ippis, ministry, occupation: 'Clerk' } }))).body.data.customer.id as string;
+  return (await api('post', '/api/customers').send(customerPayload({ firstName: first, middleName: '', lastName: last, legacyId, employment: { sector: 'government', ippisNumber: ippis, ministry, occupation: 'Clerk' } }))).body.data.customer.id as string;
 }
 const loan = async (customerId: string, amount: number, months: number, start: string, first: string) =>
   (await api('post', '/api/loans').send({ customerId, productId: product, amount, duration: { value: months, unit: 'months' }, startDate: start, firstPaymentDate: first })).body.data.loan;

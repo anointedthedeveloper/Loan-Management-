@@ -67,12 +67,15 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, d
         {text('idNumber', 'Identification number *', { inputMode: 'numeric' })}
       </FormSection>
 
-      <FormSection title="Employment / business">
+      <FormSection title="Employment / business" description="Government workers must have an IPPIS number; it identifies them across the portal. Non-government workers do not need one.">
+        <SelectField label="Worker type *" options={[{ value: 'government', label: 'Government worker' }, { value: 'non_government', label: 'Non-government worker' }]} value={v.sector} onChange={set('sector')} error={err('sector')} />
         <SelectField label="Employment type" options={meta.employmentTypes} value={v.employmentType} onChange={set('employmentType')} error={err('employmentType')} />
         {text('occupation', 'Occupation')}
         <div className="sm:col-span-2">{text('employerName', 'Employer / business name')}</div>
-        {text('ippisNumber', 'IPPIS number *')}
-        {text('ministry', 'Ministry / department *')}
+        {v.sector === 'government' && <>
+          {text('ippisNumber', 'IPPIS number *')}
+          {text('ministry', 'Ministry / department *')}
+        </>}
       </FormSection>
 
       <FormSection title="Emergency contact">

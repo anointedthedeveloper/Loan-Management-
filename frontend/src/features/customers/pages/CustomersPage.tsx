@@ -20,6 +20,7 @@ import type { Customer } from '../types'
 const columns: { key: string; label: string; sortable?: boolean; hide?: boolean }[] = [
   { key: 'customerId', label: 'Customer ID', sortable: true },
   { key: 'fullName', label: 'Name', sortable: true },
+  { key: 'ippis', label: 'IPPIS no.', hide: true },
   { key: 'phone', label: 'Phone', hide: true },
   { key: 'status', label: 'Status', sortable: true },
   { key: 'registrationDate', label: 'Registered', sortable: true, hide: true },
@@ -31,7 +32,7 @@ export default function CustomersPage() {
   const nav = useNavigate()
   const meta = useCustomerMeta()
   const [filters, setFilters] = useState<Filters>({ q: '', status: '', from: '', to: '' })
-  const [sort, setSort] = useState({ key: 'registrationDate', order: 'desc' as 'asc' | 'desc' })
+  const [sort, setSort] = useState({ key: 'fullName', order: 'asc' as 'asc' | 'desc' })
   const [page, setPage] = useState(1)
   const [rows, setRows] = useState<Customer[] | null>(null)
   const [pg, setPg] = useState<P | null>(null)
@@ -95,6 +96,7 @@ export default function CustomersPage() {
                   <tr key={c.id} onClick={() => nav(`/customers/${c.id}`)} className="cursor-pointer hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs text-slate-600">{c.customerId}</td>
                     <td className="px-4 py-3"><p className="font-medium">{c.fullName}</p>{c.email && <p className="text-xs text-slate-500">{c.email}</p>}</td>
+                    <td className="hidden px-4 py-3 font-mono text-xs md:table-cell">{c.employment?.ippisNumber ?? <span className="font-sans text-slate-400">{c.employment?.sector === 'non_government' ? 'Non-govt' : '—'}</span>}</td>
                     <td className="hidden px-4 py-3 md:table-cell">{c.phone}</td>
                     <td className="px-4 py-3"><CustomerStatusBadge status={c.status} /></td>
                     <td className="hidden px-4 py-3 text-slate-500 md:table-cell">{formatDate(c.registrationDate)}</td>

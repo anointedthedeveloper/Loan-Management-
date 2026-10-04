@@ -29,32 +29,34 @@ export function serialize(doc: any) {
 }
 const nameRef = (u: any) => (u && typeof u === 'object' && 'name' in u ? { id: String(u._id), name: u.name } : u ? String(u) : null);
 
-const FIELD_LABEL: Record<string, string> = { phone: 'phone number', email: 'email address', idNumber: 'identification number', idType: 'identification number' };
+const FIELD_LABEL: Record<string, string> = { phone: 'phone number', email: 'email address', idNumber: 'identification number', idType: 'identification number', ippisNumber: 'IPPIS number' };
 
-async function assertNoDuplicate(c: { phone?: string; email?: string; idType?: string; idNumber?: string }, excludeId?: Types.ObjectId) {
+async function assertNoDuplicate(c: { phone?: string; email?: string; idType?: string; idNumber?: string; ippisNumber?: string }, excludeId?: Types.ObjectId) {
   const or: Record<string, unknown>[] = [];
   if (c.phone) or.push({ phone: c.phone });
   if (c.email) or.push({ email: c.email });
   if (c.idType && c.idNumber) or.push({ idType: c.idType, idNumber: c.idNumber });
+  if (c.ippisNumber) or.push({ 'employment.ippisNumber': c.ippisNumber });
   if (!or.length) return;
   const existing = await Customer.findOne({ isArchived: false, $or: or, ...(excludeId ? { _id: { $ne: excludeId } } : {}) });
   if (!existing) return;
-  const field = existing.phone === c.phone ? 'phone' : existing.email && existing.email === c.email ? 'email' : 'idNumber';
-  throw new AppError(409, `A customer with this ${FIELD_LABEL[field]} already exists (${existing.customerId} – ${existing.fullName})`, 'DUPLICATE_CUSTOMER', { [field]: `Already registered to ${existing.customerId}` });
+  const field = existing.phone === c.phone ? 'phone' : existing.email && existing.email === c.email ? 'email' : c.ippisNumber && existing.employment?.ippisNumber === c.ippisNumber ? 'ippisNumber' : 'idNumber';
+  const errKey = field === 'ippisNumber' ? 'employment.ippisNumber' : field;
+  throw new AppError(409, `A customer with this ${FIELD_LABEL[field]} already exists (${existing.customerId} – ${existing.fullName})`, 'DUPLICATE_CUSTOMER', { [errKey]: `Already registered to ${existing.customerId}` });
 }
 
 function mapDuplicateKey(err: any): never {
   if (err?.code === 11000) {
     const key = Object.keys(err.keyPattern ?? {})[0] ?? 'record';
-    const field = key === 'idType' || key === 'idNumber' ? 'idNumber' : key;
-    throw new AppError(409, `A customer with this ${FIELD_LABEL[field] ?? field} already exists`, 'DUPLICATE_CUSTOMER', { [field]: 'Already registered' });
+    const field = key === 'idType' || key === 'idNumber' ? 'idNumber' : key === 'employment.ippisNumber' ? 'ippisNumber' : key;
+    throw new AppError(409, `A customer with this ${FIELD_LABEL[field] ?? field} already exists`, 'DUPLICATE_CUSTOMER', { [field === 'ippisNumber' ? 'employment.ippisNumber' : field]: 'Already registered' });
   }
   throw err;
 }
 
 export async function createCustomer(input: CustomerInput, actor: Actor) {
   const data = { ...input, fullName: fullNameOf(input) };
-  await assertNoDuplicate(data);
+  await assertNoDuplicate({ ...data, ippisNumber: data.employment.ippisNumber });
   try {
     const customer = await Customer.create({ ...data, customerId: await nextCustomerId(), createdBy: actor.id, updatedBy: actor.id });
     const out = serialize(customer);
@@ -88,7 +90,19 @@ export async function updateCustomer(id: string, input: Partial<CustomerInput>, 
     if (next[k]) next[k] = { ...((c.get(k) as { toObject?: () => object } | undefined)?.toObject?.() ?? c.get(k) ?? {}), ...next[k] };
   }
   const merged = { phone: next.phone ?? c.phone, email: 'email' in next ? next.email : c.email, idType: 'idType' in next ? next.idType : c.idType, idNumber: 'idNumber' in next ? next.idNumber : c.idNumber };
-  await assertNoDuplicate(merged as any, c._id);
+  const emp = (next.employment ?? (c.get('employment') as any)?.toObject?.() ?? {}) as { sector?: string; ippisNumber?: string; ministry?: string };
+  if (next.employment) {
+    const sector = emp.sector ?? (emp.ippisNumber ? 'government' : undefined);
+    if (!sector) throw new AppError(422, 'Choose government or non-government worker', 'VALIDATION_ERROR', { 'employment.sector': 'Choose government or non-government worker' });
+    next.employment = { ...emp, sector };
+    const errs: Record<string, string> = {};
+    if (sector === 'government') {
+      if (!emp.ippisNumber) errs['employment.ippisNumber'] = 'Enter the IPPIS number (required for government workers)';
+      if (!emp.ministry) errs['employment.ministry'] = 'Enter ministry / department';
+    }
+    if (Object.keys(errs).length) throw new AppError(422, 'Please correct the highlighted fields', 'VALIDATION_ERROR', errs);
+  }
+  await assertNoDuplicate({ ...merged, ippisNumber: emp.ippisNumber } as any, c._id);
   // Allow clearing optional fields: undefined from a blank form field means "unset".
   for (const [k, v] of Object.entries(next)) { if (v === undefined) c.set(k, undefined); else c.set(k, v); }
   c.updatedBy = new Types.ObjectId(actor.id);
@@ -125,7 +139,7 @@ export async function listCustomers(q: ListCustomersQuery) {
   if (q.from || q.to) filter.registrationDate = { ...(q.from && { $gte: q.from }), ...(q.to && { $lte: q.to }) };
   if (q.q) {
     const term = escapeRe(q.q);
-    const or: Record<string, unknown>[] = [{ customerId: new RegExp(term, 'i') }, { fullName: new RegExp(term, 'i') }, { email: new RegExp(term, 'i') }];
+    const or: Record<string, unknown>[] = [{ customerId: new RegExp(term, 'i') }, { fullName: new RegExp(term, 'i') }, { email: new RegExp(term, 'i') }, { 'employment.ippisNumber': new RegExp(term, 'i') }];
     const phone = normalizePhone(q.q);
     const digits = q.q.replace(/\D/g, '');
     if (phone) or.push({ phone }); else if (digits.length >= 3) or.push({ phone: new RegExp(escapeRe(digits.replace(/^(234)/, '0'))) });

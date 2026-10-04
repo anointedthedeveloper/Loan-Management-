@@ -50,7 +50,9 @@ const body = {
   idNumber: z.string({ error: 'Enter the identification number' }).trim().toUpperCase().min(1, 'Enter the identification number').regex(/^[A-Z0-9\-/]{4,30}$/, 'Enter a valid identification number'),
   employment: z.object({
     employmentType: oneOf(EMPLOYMENT_TYPES, 'employment type'), employerName: text(120), occupation: text(120),
-    ippisNumber: req('IPPIS number', 40), ministry: req('ministry / department', 120),
+    sector: z.enum(['government', 'non_government'], { error: 'Choose government or non-government worker' }),
+    ippisNumber: z.preprocess(blank, z.string().trim().toUpperCase().max(40).optional()),
+    ministry: text(120),
   }),
   emergencyContact: z.object({ name: req('emergency contact name', 100), relationship: text(60), phone: requiredPhone('emergency contact phone') }),
   legacyId: text(40),
@@ -59,14 +61,21 @@ const body = {
   registrationDate: z.preprocess(blank, z.coerce.date().optional()),
 };
 
+/** Government workers must have an IPPIS number (and a ministry); non-government workers need neither. */
+export const sectorRules = (e: { sector?: string; ippisNumber?: string; ministry?: string } | undefined, ctx: z.RefinementCtx) => {
+  if (e?.sector !== 'government') return;
+  if (!e.ippisNumber) ctx.addIssue({ code: 'custom', path: ['employment', 'ippisNumber'], message: 'Enter the IPPIS number (required for government workers)' });
+  if (!e.ministry) ctx.addIssue({ code: 'custom', path: ['employment', 'ministry'], message: 'Enter ministry / department' });
+};
+
 /** NIN and BVN are exactly 11 digits. */
 const idFormat = (v: { idType?: string; idNumber?: string }, ctx: z.RefinementCtx) => {
   if ((v.idType === 'nin' || v.idType === 'bvn') && v.idNumber && !/^\d{11}$/.test(v.idNumber))
     ctx.addIssue({ code: 'custom', path: ['idNumber'], message: `A ${v.idType.toUpperCase()} is exactly 11 digits` });
 };
 
-export const createCustomerSchema = z.object(body).superRefine(idFormat);
-/** On update every field is optional, but any field that is sent must still be valid (required fields cannot be blanked). */
+export const createCustomerSchema = z.object(body).superRefine((v, ctx) => { idFormat(v, ctx); sectorRules(v.employment, ctx); });
+/** On update every field is optional, but any field that is sent must still be valid (required fields cannot be blanked); sector rules are re-checked on the merged record in the service. */
 export const updateCustomerSchema = z.object({
   ...body,
   employment: body.employment.partial(),
@@ -83,8 +92,8 @@ export const listCustomersSchema = z.object({
   status: csv(isCustomerStatus),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
-  sort: z.enum(SORT_FIELDS).default('registrationDate'),
-  order: z.enum(['asc', 'desc']).default('desc'),
+  sort: z.enum(SORT_FIELDS).default('fullName'),
+  order: z.enum(['asc', 'desc']).default('asc'),
 });
 export type ListCustomersQuery = z.infer<typeof listCustomersSchema>;
 export type CustomerInput = z.infer<typeof createCustomerSchema>;

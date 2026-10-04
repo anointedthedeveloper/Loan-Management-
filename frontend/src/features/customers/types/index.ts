@@ -11,7 +11,7 @@ export interface Customer {
   address: string; state?: string; lga?: string
   dateOfBirth?: string; gender?: string
   idType?: string; idNumber?: string
-  employment?: { employmentType?: string; employerName?: string; occupation?: string; ippisNumber?: string; ministry?: string }
+  employment?: { sector?: 'government' | 'non_government'; employmentType?: string; employerName?: string; occupation?: string; ippisNumber?: string; ministry?: string }
   legacyId?: string
   emergencyContact?: { name?: string; relationship?: string; phone?: string }
   registrationDate: string
