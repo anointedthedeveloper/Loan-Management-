@@ -1,5 +1,5 @@
 import { User } from '../models/User.js';
-import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
+import { CURRENT_GRANTS_VERSION, DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { hashPassword } from '../services/AuthService.js';
 import { env } from '../config/env.js';
 
@@ -13,7 +13,7 @@ export async function seedUsers() {
     if (await User.exists({ username: d.username })) continue;
     await User.create({
       name: d.name, email: d.email, username: d.username, role: d.role,
-      passwordHash: await hashPassword(d.pw), permissions: DEFAULT_ROLE_PERMISSIONS[d.role], isDemoData: true,
+      passwordHash: await hashPassword(d.pw), permissions: DEFAULT_ROLE_PERMISSIONS[d.role], grantsVersion: CURRENT_GRANTS_VERSION, isDemoData: true,
     });
   }
 }

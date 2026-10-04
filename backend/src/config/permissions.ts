@@ -70,3 +70,13 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 export function isPermission(value: string): value is Permission {
   return Object.prototype.hasOwnProperty.call(PERMISSIONS, value);
 }
+
+/**
+ * One-time additions to the permissions of existing, non-CEO accounts when a new default is introduced
+ * (the stored list otherwise never changes unless the CEO edits it). Bump `version` and add a row to introduce one.
+ * Accounts created after a version already include it, so a CEO revoking it later is respected.
+ */
+export const PERMISSION_GRANTS: { version: number; role: Role; add: Permission[] }[] = [
+  { version: 1, role: 'accountant', add: ['loans.view', 'loans.create'] }, // accountants create loans; the CEO approves them
+];
+export const CURRENT_GRANTS_VERSION = Math.max(...PERMISSION_GRANTS.map((g) => g.version));

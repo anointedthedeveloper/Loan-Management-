@@ -9,6 +9,8 @@ const userSchema = new Schema(
     passwordHash: { type: String, required: true, select: false },
     role: { type: String, enum: ROLES, required: true },
     permissions: { type: [String], default: [] },
+    /** Which PERMISSION_GRANTS have been applied to this account (absent = none). */
+    grantsVersion: { type: Number },
     isActive: { type: Boolean, default: true },
     failedLoginAttempts: { type: Number, default: 0 },
     lockedUntil: { type: Date },

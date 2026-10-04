@@ -3,7 +3,7 @@ import { User } from '../models/User.js';
 import { AppError } from '../utils/AppError.js';
 import { changedFields } from '../utils/diff.js';
 import { AUDIT } from '../config/auditActions.js';
-import { DEFAULT_ROLE_PERMISSIONS, ALL_PERMISSIONS, type Role } from '../config/permissions.js';
+import { CURRENT_GRANTS_VERSION, DEFAULT_ROLE_PERMISSIONS, ALL_PERMISSIONS, type Role } from '../config/permissions.js';
 import { hashPassword, publicUser } from './AuthService.js';
 import { auditAs, listAudit } from './AuditService.js';
 import type { Actor } from '../types/index.js';
@@ -43,7 +43,7 @@ export async function createStaff(input: any, actor: Actor) {
   const role = rest.role as Role;
   const user = await User.create({
     ...rest, passwordHash: await hashPassword(password),
-    permissions: role === 'ceo' ? ALL_PERMISSIONS : (permissions ?? DEFAULT_ROLE_PERMISSIONS[role]), createdBy: actor.id,
+    permissions: role === 'ceo' ? ALL_PERMISSIONS : (permissions ?? DEFAULT_ROLE_PERMISSIONS[role]), grantsVersion: CURRENT_GRANTS_VERSION, createdBy: actor.id,
   });
   const out = toPublic(user);
   await auditAs(actor, { action: AUDIT.STAFF_CREATED, entity: 'User', entityId: out.id, entityLabel: out.username, after: out });

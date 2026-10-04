@@ -3,6 +3,16 @@ import { effectivePermissions, verifyToken } from '../services/AuthService.js';
 import { User } from '../models/User.js';
 import type { Permission, Role } from '../config/permissions.js';
 import { AppError } from '../utils/AppError.js';
+import { CURRENT_GRANTS_VERSION, DEFAULT_ROLE_PERMISSIONS, PERMISSION_GRANTS } from '../config/permissions.js';
+
+/** Adds newly introduced default permissions to an older account, once. */
+async function applyPermissionGrants(user: InstanceType<typeof User>) {
+  if (user.role === 'ceo' || (user.grantsVersion ?? 0) >= CURRENT_GRANTS_VERSION) return;
+  const have = new Set(user.permissions.length ? user.permissions : DEFAULT_ROLE_PERMISSIONS[user.role as Role]);
+  for (const g of PERMISSION_GRANTS) if (g.role === user.role && g.version > (user.grantsVersion ?? 0)) g.add.forEach((p) => have.add(p));
+  user.permissions = [...have]; user.grantsVersion = CURRENT_GRANTS_VERSION;
+  await user.save();
+}
 
 export interface AuthUser { id: string; name: string; role: Role; permissions: Permission[] }
 
@@ -22,6 +32,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     // Tokens issued before a password change/reset are no longer valid.
     if (user.passwordChangedAt && payload.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) throw AppError.unauthorized('Session expired. Please sign in again.', 'TOKEN_INVALID');
     const role = user.role as Role;
+    await applyPermissionGrants(user);
     req.userDoc = user;
     req.auth = { id: String(user._id), name: user.name, role, permissions: effectivePermissions(role, user.permissions) };
     next();

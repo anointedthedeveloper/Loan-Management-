@@ -1,6 +1,6 @@
 import { connectDb, disconnectDb } from '../config/db.js';
 import { User } from '../models/User.js';
-import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
+import { CURRENT_GRANTS_VERSION, DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { hashPassword } from '../services/AuthService.js';
 import { env } from '../config/env.js';
 
@@ -25,7 +25,7 @@ for (const p of people) {
     await existing.save();
     console.log(`Updated ${p.username}: ${existing.name} <${existing.email}>`);
   } else {
-    await User.create({ name: p.name, email: p.email, username: p.username, role: p.role, passwordHash: await hashPassword(p.password), permissions: DEFAULT_ROLE_PERMISSIONS[p.role], isDemoData: false });
+    await User.create({ name: p.name, email: p.email, username: p.username, role: p.role, passwordHash: await hashPassword(p.password), permissions: DEFAULT_ROLE_PERMISSIONS[p.role], grantsVersion: CURRENT_GRANTS_VERSION, isDemoData: false });
     console.log(`Created ${p.username}: ${p.name} <${p.email}>`);
   }
 }

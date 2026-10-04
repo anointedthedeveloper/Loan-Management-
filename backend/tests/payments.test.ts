@@ -122,3 +122,23 @@ describe('completed loans live on their own list', () => {
     expect((await api('get', `/api/customers/${cust}/loans`)).body.data.map((x: any) => x.id)).toContain(l.id);
   });
 });
+
+describe('accountant creates loans, the CEO approves them', () => {
+  it('an older accountant account gets loans.create once; the loan waits for approval; the CEO approves and can edit it', async () => {
+    const { User } = await import('../src/models/User.js');
+    await User.updateOne({ username: 'accountant' }, { permissions: ['loans.view', 'customers.read'], $unset: { grantsVersion: 1 } }); // as stored before the grant existed
+    const customerId = (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id;
+    const mk = () => api('post', '/api/loans', acct).send({ customerId, productId: salary, amount: 500000, duration: { value: 6, unit: 'months' }, startDate: isoDate(todayLagos()) });
+    const r = await mk();
+    expect(r.status).toBe(201);
+    expect(r.body.data.loan.status).toBe('pending'); // needs the CEO's approval
+    expect((await api('post', `/api/loans/${r.body.data.loan.id}/approve`, acct)).status).toBe(403);
+    const edited = await api('patch', `/api/loans/${r.body.data.loan.id}`).send({ amount: 600000 });
+    expect(edited.body.data.loan.amount).toBe(600000);
+    const ok = await api('post', `/api/loans/${r.body.data.loan.id}/approve`);
+    expect(ok.body.data.loan.status).toBe('active');
+    // once granted, the CEO can take it away again and it stays away
+    await User.updateOne({ username: 'accountant' }, { permissions: ['loans.view'] });
+    expect((await mk()).status).toBe(403);
+  });
+});
