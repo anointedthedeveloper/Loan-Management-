@@ -11,6 +11,7 @@ import { transactionType } from '../config/loanOptions.js';
 import { auditAs } from './AuditService.js';
 import { recalculateLoan } from './loanLedger.service.js';
 import { getFinanceRules } from './settings.service.js';
+import { attachmentsFor } from './attachment.service.js';
 import type { Actor } from '../types/index.js';
 
 export const nextTransactionId = async () => `TXN-${String(await nextSequence('transaction')).padStart(6, '0')}`;
@@ -44,6 +45,7 @@ export function serializeTransaction(t: any) {
     customer: ref(o.customer, (c) => ({ customerId: c.customerId, fullName: c.fullName })),
     loan: ref(o.loan, (l) => ({ loanId: l.loanId })),
     createdBy: ref(o.createdBy, (u) => ({ name: u.name })), reversalOf: o.reversalOf ? String(o.reversalOf) : null,
+    editedFrom: o.editedFrom ? String(o.editedFrom) : null, supersededBy: o.supersededBy ? String(o.supersededBy) : null, targetInstallment: o.targetInstallment ?? null,
     reversedAt: o.reversedAt ?? null, reversalReason: o.reversalReason ?? null, state: o.reversedAt ? 'reversed' : 'posted', createdAt: o.createdAt,
   };
 }
@@ -70,13 +72,19 @@ export async function listTransactions(q: any, base: Record<string, unknown> = {
     Transaction.find(f).sort(sort).skip(skipOf(q)).limit(q.limit).populate(populateTx),
     Transaction.countDocuments(f),
   ]);
-  return { items: rows.map(serializeTransaction), total };
+  return { items: await withAttachments(rows.map(serializeTransaction)), total };
+}
+
+/** Adds each entry's proof-of-payment files (names only) in one query. */
+export async function withAttachments<T extends { id: string }>(items: T[]) {
+  const map = await attachmentsFor(items.map((i) => i.id));
+  return items.map((i) => ({ ...i, attachments: map.get(i.id) ?? [] }));
 }
 
 export async function getTransaction(id: string) {
   const t = Types.ObjectId.isValid(id) ? await Transaction.findById(id).populate(populateTx) : null;
   if (!t) throw AppError.notFound('Transaction not found', 'TRANSACTION_NOT_FOUND');
-  return serializeTransaction(t);
+  return (await withAttachments([serializeTransaction(t)]))[0]!;
 }
 
 /** Fees, adjustments, refunds and other entries. They are recorded in the ledger but do not change loan balances until a rule for them is configured. */

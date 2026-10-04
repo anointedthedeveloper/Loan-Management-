@@ -42,6 +42,7 @@ loansRouter.get('/:id/transactions', perm('transactions.view', 'loans.view'), c.
 export const repaymentsRouter = mk();
 repaymentsRouter.use(authenticate);
 repaymentsRouter.get('/', perm('repayments.view'), query(v.listTransactionsSchema), c.repaymentList);
+repaymentsRouter.post('/:id/edit', perm('repayments.edit'), body(v.editRepaymentSchema), c.repaymentEdit);
 repaymentsRouter.post('/', perm('repayments.record'), body(v.recordRepaymentSchema), c.repaymentCreate);
 
 export const transactionsRouter = mk();

@@ -75,8 +75,12 @@ const txCommon = {
   method: z.preprocess(blank, z.enum(vals(PAYMENT_METHODS)).optional()),
   reference: z.preprocess(blank, z.string().trim().max(80).optional()),
   description: text(300),
+  /** Files uploaded beforehand (POST /attachments) as proof of payment: debit/credit alert, receipt... */
+  attachmentIds: z.array(objectId).max(5, 'At most 5 files per payment').optional(),
 };
-export const markPaidSchema = z.object({ ...txCommon });
+/** `amount` lets the user change what was paid; blank means "exactly what is still owed". */
+export const markPaidSchema = z.object({ ...txCommon, amount: z.preprocess(blank, money('Amount paid').optional()) });
+export const editRepaymentSchema = z.object({ ...txCommon, amount: money('Amount paid'), reason: z.string({ error: 'Enter the reason for the change' }).trim().min(3, 'Enter the reason for the change').max(300) });
 export const settleSchema = z.object({ ...txCommon });
 export const settlementQuerySchema = z.object({ date: optDate });
 export const recordRepaymentSchema = z.object({ loanId: objectId, amount: money('Payment amount'), ...txCommon });

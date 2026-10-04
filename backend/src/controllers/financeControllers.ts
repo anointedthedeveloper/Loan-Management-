@@ -60,6 +60,7 @@ export const loanSettle = asyncHandler(async (req, res) => ok(res, await settlem
 /* repayments & transactions */
 export const repaymentList = asyncHandler(async (_req, res) => { const f = q(res); const r = await repayments.listRepayments(f); sendPage(res, r.items, f, r.total); });
 export const repaymentCreate = asyncHandler(async (req, res) => ok(res, await repayments.recordRepayment(req.body, actorOf(req)), 'Repayment recorded', 201));
+export const repaymentEdit = asyncHandler(async (req, res) => ok(res, await repayments.editRepayment(id(req), req.body, actorOf(req)), 'Repayment updated'));
 export const txList = asyncHandler(async (_req, res) => { const f = q(res); const r = await tx.listTransactions(f); sendPage(res, r.items, f, r.total); });
 export const txGet = asyncHandler(async (req, res) => ok(res, { transaction: await tx.getTransaction(id(req)) }));
 export const txCreate = asyncHandler(async (req, res) => ok(res, { transaction: await tx.createManualTransaction(req.body, actorOf(req)) }, 'Transaction recorded', 201));

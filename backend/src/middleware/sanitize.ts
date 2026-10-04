@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 
 /** Removes MongoDB operator keys ("$where", "$ne"...) from request bodies so user input can never become a query operator. */
 function strip(v: unknown): unknown {
+  if (Buffer.isBuffer(v)) return v; // raw file uploads
   if (Array.isArray(v)) return v.map(strip);
   if (v && typeof v === 'object') {
     const out: Record<string, unknown> = {};

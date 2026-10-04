@@ -27,6 +27,10 @@ const schema = new Schema(
     targetInstallment: Number,
     /** Exact write-offs applied as-is (interest waivers on early settlement). */
     fixedAllocations: [{ _id: false, number: Number, principal: Number, interest: Number }],
+    /** Set when this entry replaces a repayment that was edited (the original is reversed, never changed). */
+    editedFrom: { type: Schema.Types.ObjectId, ref: 'Transaction' },
+    supersededBy: { type: Schema.Types.ObjectId, ref: 'Transaction' },
+    supersededReference: String,
     reversalOf: { type: Schema.Types.ObjectId, ref: 'Transaction' },
     reversedAt: Date,
     reversedBy: { type: Schema.Types.ObjectId, ref: 'User' },

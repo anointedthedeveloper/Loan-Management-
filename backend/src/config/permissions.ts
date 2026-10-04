@@ -17,9 +17,9 @@ export const PERMISSION_MODULES = [
   },
   {
     key: 'loans', label: 'Loans',
-    permissions: { 'loans.view': 'View loans', 'loans.create': 'Create loans', 'loans.edit': 'Edit loans', 'loans.approve': 'Approve / reject loans', 'products.manage': 'Manage loan products' },
+    permissions: { 'loans.view': 'View loans', 'loans.create': 'Create loans', 'loans.edit': 'Edit loans', 'loans.editActive': 'Edit running loans (all details)', 'loans.approve': 'Approve / reject loans', 'products.manage': 'Manage loan products' },
   },
-  { key: 'repayments', label: 'Repayments', permissions: { 'repayments.view': 'View repayments', 'repayments.record': 'Record repayments' } },
+  { key: 'repayments', label: 'Repayments', permissions: { 'repayments.view': 'View repayments', 'repayments.record': 'Record repayments', 'repayments.edit': 'Edit recorded repayments' } },
   { key: 'transactions', label: 'Transactions', permissions: { 'transactions.view': 'View transactions', 'transactions.create': 'Record transactions', 'transactions.reverse': 'Reverse transactions' } },
   { key: 'topups', label: 'Top-ups', permissions: { 'topups.view': 'View top-ups', 'topups.request': 'Request top-ups', 'topups.approve': 'Approve top-ups' } },
   { key: 'reports', label: 'Reports', permissions: { 'reports.view': 'View reports', 'reports.export': 'Export reports' } },
