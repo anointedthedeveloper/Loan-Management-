@@ -38,10 +38,9 @@ async function price(input: TopUpInput) {
     { productId: String(loan.product), amount: input.amount, duration: input.duration, frequency: input.frequency, customIntervalDays: input.customIntervalDays, startDate },
     { skipLimits: true },
   );
-  void draft;
   const existing = { outstandingBalance: state.outstandingBalance, principalBalance: state.principalBalance, totalRepayment: loan.totalRepayment, amountPaid: state.amountPaid };
   const calc = calculateTopUp(existing, input.amount, {
-    bankDeductionRate: loan.bankDeductionRate, interestRate: input.interestRate ?? loan.interestRate, rateBasis: loan.rateBasis as any,
+    bankDeductionRate: loan.bankDeductionRate, interestRate: input.interestRate ?? loan.interestRate, rateBasis: draft.rates.rateBasis as any,
     duration: input.duration as any, frequency: input.frequency as any, customIntervalDays: input.customIntervalDays, startDate,
   }, rules.topup);
   return { loan, calc, rules, startDate, state };
@@ -113,7 +112,7 @@ export async function approveTopUp(id: string, actor: Actor, opts: { system?: bo
   if (t.interestRate !== undefined && t.interestRate !== null && t.interestRate !== loan.interestRate) {
     // honour a rate override: reprice with the overridden rate using the same engine
     const { calculateLoan, generateSchedule } = await import('./finance/index.js');
-    draft.terms = calculateLoan({ amount: t.requestedAmount, carriedBalance: calc.carriedBalance, bankDeductionRate: loan.bankDeductionRate, interestRate: t.interestRate, rateBasis: loan.rateBasis as any, duration: t.duration as any, frequency: t.frequency as any, customIntervalDays: t.customIntervalDays ?? undefined, interestBasis: draft.interestBasis as any, startDate: t.startDate ?? todayLagos() });
+    draft.terms = calculateLoan({ amount: t.requestedAmount, carriedBalance: calc.carriedBalance, bankDeductionRate: loan.bankDeductionRate, interestRate: t.interestRate, rateBasis: draft.rates.rateBasis as any, duration: t.duration as any, frequency: t.frequency as any, customIntervalDays: t.customIntervalDays ?? undefined, interestBasis: draft.interestBasis as any, startDate: t.startDate ?? todayLagos() });
     draft.schedule = generateSchedule(draft.terms, draft.frequency, t.customIntervalDays ?? undefined);
   }
   const newLoan = await createLoanRecord(draft, {

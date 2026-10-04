@@ -23,10 +23,12 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState('')
+  const [history, setHistory] = useState(false) // client statements: also include completed loans
+  const scope = kind === 'client' && history ? 'all' : undefined
 
   async function generate() {
     setLoading(true); setError('')
-    try { setS(await statementService.generate(target, { from: from || undefined, to: to || undefined })) }
+    try { setS(await statementService.generate(target, { from: from || undefined, to: to || undefined, scope })) }
     catch (e) { setS(null); setError(e instanceof ApiError ? e.message : 'Could not generate the statement') }
     finally { setLoading(false) }
   }
@@ -34,7 +36,7 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
 
   async function exportAs(f: 'pdf' | 'xlsx' | 'csv') {
     setExporting(f)
-    try { await statementService.download(target, f, { from: from || undefined, to: to || undefined }) } catch (e) { toast('error', e instanceof ApiError ? e.message : 'Download failed') } finally { setExporting('') }
+    try { await statementService.download(target, f, { from: from || undefined, to: to || undefined, scope }) } catch (e) { toast('error', e instanceof ApiError ? e.message : 'Download failed') } finally { setExporting('') }
   }
   const back = kind === 'loan' ? `/loans/${id}` : `/customers/${id}`
 
@@ -48,6 +50,7 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm print:hidden">
         <label className="text-xs font-medium text-slate-500">From<input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={`${input} mt-1 block`} /></label>
         <label className="text-xs font-medium text-slate-500">To<input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={`${input} mt-1 block`} /></label>
+        {kind === 'client' && <label className="flex items-center gap-2 pb-2 text-sm text-slate-600"><input type="checkbox" checked={history} onChange={(e) => setHistory(e.target.checked)} className="size-4 rounded border-slate-300" />Include completed loans</label>}
         <Button onClick={generate} loading={loading} loadingText="Generating…"><RefreshCw className="size-4" />Generate statement</Button>
         {s && (
           <div className="ml-auto flex flex-wrap gap-2">
@@ -71,7 +74,7 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
             <section key={l.loan.id} className="space-y-3 break-inside-avoid-page">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-brand-700">Loan information · {l.loan.loanId} <span className="font-normal normal-case text-slate-500">({titleCase(l.loan.status)}{l.loan.loanType !== 'new' ? `, ${l.loan.loanType}` : ''})</span></h2>
               <dl className="grid gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-5 print:bg-transparent print:p-0">
-                <Item k="Amount Taken" v={formatMoney(l.loan.amountTaken)} /><Item k="Principal" v={formatMoney(l.loan.principal)} /><Item k="Monthly interest" v={formatMoney(l.loan.monthlyInterest)} /><Item k="Interest (one-time total)" v={formatMoney(l.loan.interest)} /><Item k="Total Loan" v={formatMoney(l.loan.totalLoan)} />
+                <Item k="Amount Taken" v={formatMoney(l.loan.amountTaken)} /><Item k="Principal" v={formatMoney(l.loan.principal)} />{l.loan.rateBasis === 'per_month' && <Item k="Monthly interest" v={formatMoney(l.loan.monthlyInterest)} />}<Item k={l.loan.rateBasis === 'per_loan' ? `Interest (one-time ${l.loan.interestRate}%)` : 'Interest'} v={formatMoney(l.loan.interest)} /><Item k="Total Loan" v={formatMoney(l.loan.totalLoan)} />
                 <Item k={`EMI (${l.loan.frequency})`} v={`${formatMoney(l.loan.emi)} × ${l.loan.numberOfInstallments}`} /><Item k="Payment Date" v={formatDate(l.loan.paymentDate)} /><Item k="First Repayment" v={formatDate(l.loan.firstRepaymentDate)} /><Item k="Final Due Date" v={formatDate(l.loan.finalDueDate)} />
               </dl>
               <div className="overflow-x-auto rounded-lg border border-slate-200">

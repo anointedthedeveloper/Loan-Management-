@@ -8,7 +8,7 @@ const ymd = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : 
 const dmy = (d: Date | null | undefined) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—');
 const clientLines = (s: Statement): [string, string][] => [['IPPIS Number', s.client.ippisNumber ?? '—'], ['Client Name', s.client.name], ['Ministry / Organization', s.client.ministry ?? '—'], ['Client ID', s.client.customerId], ['Phone', s.client.phone]];
 const loanLines = (l: Statement['loans'][number]['loan']): [string, string][] => [
-  ['Loan ID', l.loanId], ['Amount Taken', money(l.amountTaken)], ['Principal', money(l.principal)], ['Monthly Interest', money(l.monthlyInterest)], ['Interest (one-time)', money(l.interest)], ['Total Loan', money(l.totalLoan)],
+  ['Loan ID', l.loanId], ['Amount Taken', money(l.amountTaken)], ['Principal', money(l.principal)], ...(l.rateBasis === 'per_month' ? [['Monthly Interest', money(l.monthlyInterest)] as [string, string]] : []), [l.rateBasis === 'per_loan' ? `Interest (one-time ${l.interestRate}%)` : 'Interest', money(l.interest)], ['Total Loan', money(l.totalLoan)],
   ['EMI (per period)', `${money(l.emi)} × ${l.numberOfInstallments}`], ['Payment Date', dmy(l.paymentDate)], ['First Repayment', dmy(l.firstRepaymentDate)], ['Final Due Date', dmy(l.finalDueDate)],
 ];
 const periodText = (s: Statement) => (s.period.from || s.period.to ? `Period: ${s.period.from ? dmy(s.period.from) : 'start'} to ${s.period.to ? dmy(s.period.to) : 'date'}` : 'Period: all transactions');

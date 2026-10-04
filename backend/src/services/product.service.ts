@@ -9,10 +9,23 @@ import type { Actor } from '../types/index.js';
 
 export const serializeProduct = (p: any) => { const o = typeof p.toObject === 'function' ? p.toObject() : p; const { __v, ...r } = o; return { ...r, id: String(o._id), _id: undefined }; };
 
+/**
+ * Protech's interest is a one-time flat charge (5% of the principal, once), not a monthly rate. Products saved before that
+ * rule existed are moved to it once; a basis the CEO chooses afterwards is respected.
+ */
+let migrated = false;
+async function applyOneTimeInterest() {
+  if (migrated) return;
+  await LoanProduct.updateMany({ oneTimeApplied: { $ne: true } }, { $set: { rateBasis: 'per_loan', oneTimeApplied: true } });
+  migrated = true;
+}
+
 export async function listProducts(opts: { activeOnly?: boolean } = {}) {
+  await applyOneTimeInterest();
   return (await LoanProduct.find(opts.activeOnly ? { isActive: true } : {}).sort({ isActive: -1, category: 1, name: 1 })).map(serializeProduct);
 }
 export async function getProduct(id: string) {
+  await applyOneTimeInterest();
   const p = Types.ObjectId.isValid(id) ? await LoanProduct.findById(id) : null;
   if (!p) throw AppError.notFound('Loan product not found', 'PRODUCT_NOT_FOUND');
   return p;
@@ -23,7 +36,7 @@ async function assertUniqueCode(code: string, excludeId?: unknown) {
 
 export async function createProduct(input: any, actor: Actor) {
   await assertUniqueCode(input.code);
-  const p = await LoanProduct.create({ ...input, createdBy: actor.id, updatedBy: actor.id });
+  const p = await LoanProduct.create({ ...input, oneTimeApplied: true, createdBy: actor.id, updatedBy: actor.id });
   const out = serializeProduct(p);
   await auditAs(actor, { action: AUDIT.PRODUCT_CREATED, entity: 'LoanProduct', entityId: out.id, entityLabel: out.code, after: out });
   return out;

@@ -142,3 +142,38 @@ describe('accountant creates loans, the CEO approves them', () => {
     expect((await mk()).status).toBe(403);
   });
 });
+
+describe('one-time flat interest and current-loan-only documents', () => {
+  it('5% of ₦1,000,000 is ₦50,000 once: total ₦1,050,000, whatever the tenor', async () => {
+    const p = (await api('post', '/api/loan-products').send({ name: 'Flat', code: 'FLAT', interestRate: 5, bankDeductionRate: 0, minAmount: 10000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 12, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product;
+    expect(p.rateBasis).toBe('per_loan'); // the default
+    const customerId = (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id;
+    const mk = (months: number) => api('post', '/api/loans').send({ customerId, productId: p.id, amount: 1_000_000, duration: { value: months, unit: 'months' }, startDate: isoDate(todayLagos()) });
+    const l12 = (await mk(12)).body.data.loan;
+    expect(l12).toMatchObject({ principal: 1_000_000, interestAmount: 50_000, totalRepayment: 1_050_000, numberOfInstallments: 12 });
+    expect(l12.installmentAmount).toBeCloseTo(87_500, 2);
+  });
+  it('the loan book lists each customer once, with their current loan only', async () => {
+    const customerId = (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id;
+    const flat = (await api('post', '/api/loan-products').send({ name: 'Flat 2', code: 'FLAT2', interestRate: 5, bankDeductionRate: 4, minAmount: 10000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 12, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
+    const mk = () => api('post', '/api/loans').send({ customerId, productId: flat, amount: 96000, duration: { value: 3, unit: 'months' }, startDate: isoDate(todayLagos()) });
+    const first = (await mk()).body.data.loan;
+    await api('post', '/api/repayments').send({ loanId: first.id, amount: first.totalRepayment }); // completed
+    const second = (await mk()).body.data.loan;
+    const book = (await api('get', '/api/reports/loan-book')).body.data.rows.filter((r: any) => r.loanId === first.loanId || r.loanId === second.loanId);
+    expect(book.map((r: any) => r.loanId)).toEqual([second.loanId]);
+    const stmt = (await api('get', `/api/customers/${customerId}/statement`)).body.data.statement;
+    expect(stmt.loans).toHaveLength(1);
+    expect(stmt.loans[0].loan.loanId).toBe(second.loanId);
+    // the Excel book uses the one-time formulas (principal x rate, no tenor multiplier)
+    const xl = await api('get', '/api/reports/loan-book?format=xlsx').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    const ExcelJS = (await import('exceljs')).default; const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(xl.body));
+    const ws = wb.worksheets[0]!; let head = 0; ws.eachRow((row, n) => { if (!head && (row.values as any[]).includes('Clients Name')) head = n; });
+    const col = (ws.getRow(head).values as any[]).indexOf('Interest');
+    const formulas: string[] = []; ws.eachRow((row, n) => { if (n > head) { const v = row.getCell(col).value as any; if (v?.formula) formulas.push(String(v.formula)); } });
+    expect(formulas.length).toBeGreaterThan(0);
+    expect(formulas.some((f) => /^ROUND\([A-Z]+\d+\*5%,2\)$/.test(f))).toBe(true);
+    const all = (await api('get', `/api/customers/${customerId}/statement?scope=all`)).body.data.statement;
+    expect(all.loans).toHaveLength(2);
+  });
+});

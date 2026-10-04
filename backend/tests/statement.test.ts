@@ -76,8 +76,15 @@ describe('loan statement (DR / CR / balance from the ledger)', () => {
     expect(s.loans[0].totals.closingBalance).toBeCloseTo(266666.66, 2);
   });
 
-  it('a client statement combines every disbursed loan', async () => {
+  it('a client statement shows the current loan once by default', async () => {
     const s = await stmt(`/api/customers/${cust}`);
+    expect(s.loans).toHaveLength(1);
+    const latestOpen = await Loan.findOne({ customer: cust, status: { $in: ['active', 'overdue', 'defaulted'] } }).sort({ startDate: -1, createdAt: -1 });
+    if (latestOpen) expect(s.loans[0].loan.loanId).toBe(latestOpen.loanId);
+  });
+
+  it('a client statement combines every disbursed loan when asked for the full history', async () => {
+    const s = await stmt(`/api/customers/${cust}`, '?scope=all');
     expect(s.loans.length).toBeGreaterThanOrEqual(4);
     const open = s.loans.reduce((a: number, l: any) => a + l.totals.closingBalance, 0);
     expect(s.summary.closingBalance).toBeCloseTo(open, 2);

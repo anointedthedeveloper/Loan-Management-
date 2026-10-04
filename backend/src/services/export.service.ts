@@ -32,14 +32,16 @@ export async function toXlsx(r: ReportResult, company: string): Promise<Buffer> 
     const x = ws.addRow(r.columns.map((c) => { const v = raw(c, row[c.key]!); if (c.type === 'date') return utcDateOf(v) ?? v; return typeof v === 'string' && /^[=+\-@]/.test(v) ? `'${v}` : v; }));
     if (!L) continue;
     // The calculator's own formulas, so the sheet can be audited and recalculated in Excel.
-    const n = x.number; const calc = (row as any)._calc as { ded: number; rate: number } | null; const put = (k: string | null, formula: string, key: string) => { if (k) x.getCell(k).value = { formula, result: Number(row[key]) || 0 }; };
+    const n = x.number; const calc = (row as any)._calc as { ded: number; rate: number; once: boolean } | null; const put = (k: string | null, formula: string, key: string) => { if (k) x.getCell(k).value = { formula, result: Number(row[key]) || 0 }; };
     if (calc) {
       const pct = `${Math.round(calc.rate * 1e6) / 1e4}%`;
+      // One-time flat interest: Principal x Rate. (The older per-month rule multiplies by the tenor as well.)
+      const intF = calc.once ? `${L.prin}${n}*${pct}` : `${L.prin}${n}*${pct}*${L.tenor}${n}`;
       put(L.gross, calc.ded > 0 ? `ROUND(${L.bank}${n}/${Math.round((1 - calc.ded) * 1e6) / 1e6},2)` : `ROUND(${L.bank}${n},2)`, 'grossPayment');
       put(L.prin, `ROUND(${L.bf}${n}+${L.gross}${n},2)`, 'principal');
-      put(L.int, `ROUND(${L.prin}${n}*${pct}*${L.tenor}${n},2)`, 'interest');
-      put(L.loan, `ROUND(${L.prin}${n}+${L.prin}${n}*${pct}*${L.tenor}${n},2)`, 'grossLoan');
-      put(L.emi, `ROUND((${L.prin}${n}+${L.prin}${n}*${pct}*${L.tenor}${n})/${L.tenor}${n},2)`, 'emi');
+      put(L.int, `ROUND(${intF},2)`, 'interest');
+      put(L.loan, `ROUND(${L.prin}${n}+${intF},2)`, 'grossLoan');
+      put(L.emi, `ROUND((${L.prin}${n}+${intF})/${L.tenor}${n},2)`, 'emi');
     }
     if (L.m1 && L.mN && !r.from && !r.to) put(L.repaid, `SUM(${L.m1}${n}:${L.mN}${n})`, 'repaid');
     put(L.bal, `ROUND(${L.loan}${n}-${L.repaid}${n},2)`, 'balance');

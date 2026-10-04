@@ -109,12 +109,12 @@ export async function assertEligible(customerId: string, opts: { newLoan?: boole
   return c;
 }
 
-export async function previewLoan(input: PricingInput & { customerId?: string; loanId?: string; interestRate?: number; bankDeductionRate?: number }) {
+export async function previewLoan(input: PricingInput & { customerId?: string; loanId?: string; interestRate?: number; bankDeductionRate?: number; rateBasis?: string }) {
   if (input.loanId) { // previewing an edit of an existing loan
     const loan = await findLoan(input.loanId);
     const running = RUNNING_EDITABLE.includes(loan.status);
     return draftView(await buildDraft(input, { carriedBalance: loan.carriedBalance || undefined, interestBasis: loan.interestBasis as any, skipLimits: running,
-      rates: running ? { interestRate: input.interestRate ?? loan.interestRate, bankDeductionRate: input.bankDeductionRate ?? loan.bankDeductionRate, rateBasis: loan.rateBasis } : undefined }));
+      rates: running ? { interestRate: input.interestRate ?? loan.interestRate, bankDeductionRate: input.bankDeductionRate ?? loan.bankDeductionRate, rateBasis: input.rateBasis ?? loan.rateBasis } : undefined }));
   }
   if (input.customerId) await assertEligible(input.customerId, { newLoan: true });
   return draftView(await buildDraft(input));
@@ -160,7 +160,7 @@ const RUNNING_EDITABLE = ['approved', 'active', 'overdue', 'defaulted'];
  * those with loans.editActive (the CEO): terms are re-priced, the schedule is rebuilt and every recorded repayment is
  * replayed over it, so balances and statuses stay consistent. The change is audited with before/after values and a reason.
  */
-export async function updateLoan(id: string, input: Partial<PricingInput> & { notes?: string; interestRate?: number; bankDeductionRate?: number; reason?: string }, actor: Actor, canEditRunning = false) {
+export async function updateLoan(id: string, input: Partial<PricingInput> & { notes?: string; interestRate?: number; bankDeductionRate?: number; rateBasis?: string; reason?: string }, actor: Actor, canEditRunning = false) {
   const loan = await findLoan(id);
   const running = RUNNING_EDITABLE.includes(loan.status);
   if (loan.status !== 'pending' && !running) throw AppError.conflict(`A ${loan.status} loan cannot be edited.`, 'LOAN_NOT_EDITABLE');
@@ -172,13 +172,13 @@ export async function updateLoan(id: string, input: Partial<PricingInput> & { no
     numberOfInstallments: input.numberOfInstallments, startDate: input.startDate ?? loan.startDate,
     firstPaymentDate: input.firstPaymentDate ?? (loan.firstPaymentDateIsCustom ? loan.firstPaymentDate ?? undefined : undefined),
   };
-  const d = await buildDraft(merged, { carriedBalance: loan.carriedBalance || undefined, interestBasis: loan.interestBasis as any, skipLimits: running, rates: running ? { interestRate: input.interestRate ?? loan.interestRate, bankDeductionRate: input.bankDeductionRate ?? loan.bankDeductionRate, rateBasis: loan.rateBasis } : undefined });
+  const d = await buildDraft(merged, { carriedBalance: loan.carriedBalance || undefined, interestBasis: loan.interestBasis as any, skipLimits: running, rates: running ? { interestRate: input.interestRate ?? loan.interestRate, bankDeductionRate: input.bankDeductionRate ?? loan.bankDeductionRate, rateBasis: input.rateBasis ?? loan.rateBasis } : undefined });
   const t = d.terms;
   loan.set({ product: d.product._id, productName: d.product.name, amount: t.amount, carriedBalance: t.carriedBalance, bankDeductionRate: t.bankDeductionRate, grossAmount: t.grossAmount, principal: t.principal,
     interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestAmount: t.interestAmount, monthlyInterest: t.monthlyInterest, totalRepayment: t.totalRepayment, duration: d.duration, frequency: d.frequency,
     customIntervalDays: d.customIntervalDays, numberOfInstallments: t.numberOfInstallments, installmentAmount: t.installmentAmount, startDate: t.startDate, firstPaymentDate: t.firstDueDate, firstPaymentDateIsCustom: !!d.firstPaymentDate, dueDate: t.dueDate,
     outstandingBalance: t.totalRepayment, principalBalance: t.principal, interestBalance: t.interestAmount, ...(input.notes !== undefined && { notes: input.notes }), updatedBy: actor.id });
-  if (running) loan.set({ interestRate: d.rates.interestRate, bankDeductionRate: d.rates.bankDeductionRate });
+  if (running) loan.set({ interestRate: d.rates.interestRate, bankDeductionRate: d.rates.bankDeductionRate, rateBasis: d.rates.rateBasis });
   await loan.save();
   await RepaymentSchedule.updateOne({ loan: loan._id }, { $set: { installments: d.schedule.map((s) => ({ ...s, paidPrincipal: 0, paidInterest: 0, amountPaid: 0, remaining: s.expectedAmount, status: 'upcoming' })) } });
   if (running) {

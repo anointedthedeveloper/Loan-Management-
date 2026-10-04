@@ -5,6 +5,7 @@ import { TopUp } from '../models/TopUp.js';
 import { AppError } from '../utils/AppError.js';
 import { addDays, addMonths, todayLagos, utcDate } from '../utils/dates.js';
 import { round2 } from '../utils/money.js';
+import { LIVE_LOAN_STATUSES } from '../config/loanOptions.js';
 
 export type ColType = 'text' | 'money' | 'date' | 'number' | 'status';
 export interface Col { key: string; label: string; type: ColType }
@@ -49,7 +50,14 @@ const addMonthKey = (ym: string, n: number) => { const [y, m] = ym.split('-').ma
  * export needs to write live formulas; it is stripped from JSON output.
  */
 async function loanBook(q: ReportQuery): Promise<RunResult> {
-  const loans = await Loan.find({ status: { $in: q.status?.length ? q.status : ['active', 'overdue', 'defaulted', 'completed'] }, ...range(q, 'startDate') }).sort({ startDate: 1, loanId: 1 }).limit(q.limit + 1).populate({ path: 'customer', select: 'customerId legacyId fullName employment' });
+  // The book lists each customer's CURRENT loan only (one open loan per customer); completed loans are history, not part of the book.
+  // Pass an explicit status filter to see other loans.
+  let loans: any[] = await Loan.find({ status: { $in: q.status?.length ? q.status : [...LIVE_LOAN_STATUSES] }, ...range(q, 'startDate') }).sort({ startDate: 1, loanId: 1 }).limit(q.limit + 1).populate({ path: 'customer', select: 'customerId legacyId fullName employment' });
+  if (!q.status?.length) { // older data may hold more than one open loan for a customer: keep the latest so each customer appears once
+    const latest = new Map<string, any>();
+    for (const l of loans) { const k = String(l.customer?._id ?? l.customer); const cur = latest.get(k); if (!cur || l.startDate > cur.startDate || (+l.startDate === +cur.startDate && l.loanId > cur.loanId)) latest.set(k, l); }
+    loans = loans.filter((l) => latest.get(String(l.customer?._id ?? l.customer)) === l);
+  }
   const ids = loans.map((l) => l._id);
   const credits = ids.length ? await Transaction.aggregate([
     { $match: { loan: { $in: ids }, affectsLoanBalance: true, reversedAt: { $exists: false } } },
@@ -82,18 +90,18 @@ async function loanBook(q: ReportQuery): Promise<RunResult> {
     // Payments dated outside the shown months still count towards "to date".
     const allPaid = credits.filter((x) => String(x._id.loan) === String(l._id)).reduce((s, x) => s + x.amount, 0);
     row.repaid = round2(Math.max(repaid, allPaid)); row.balance = round2(l.totalRepayment - (row.repaid as number));
-    const formulaOk = l.frequency === 'monthly' && l.duration?.unit === 'months' && l.rateBasis === 'per_month' && (l.interestBasis ?? 'full_principal') === 'full_principal' && !q.from && !q.to;
-    (row as any)._calc = formulaOk ? { ded: (l.bankDeductionRate ?? 0) / 100, rate: l.interestRate / 100 } : null;
+    const formulaOk = l.frequency === 'monthly' && l.duration?.unit === 'months' && (l.rateBasis === 'per_month' || l.rateBasis === 'per_loan') && (l.interestBasis ?? 'full_principal') === 'full_principal' && !q.from && !q.to;
+    (row as any)._calc = formulaOk ? { ded: (l.bankDeductionRate ?? 0) / 100, rate: l.interestRate / 100, once: l.rateBasis === 'per_loan' } : null;
     return row;
   });
   return { rows, columns };
 }
 
 export const REPORTS: ReportDef[] = [
-  { key: 'loan-book', label: 'Loan book (monthly breakdown)', description: 'One row per loan in Protech\'s loan-book layout, with a column for each month\'s repayments, repayment to date and balance. Download as Excel.', columns: [], run: loanBook },
-  { key: 'loans', label: 'Loan report', description: 'Loans by start date with terms, repayments and balances.', sums: ['amount', 'interestAmount', 'totalRepayment', 'amountPaid', 'outstandingBalance'],
+  { key: 'loan-book', label: 'Loan book (monthly breakdown)', description: 'One row per customer (their current, open loan) in Protech\'s loan-book layout, with a column for each month\'s repayments, repayment to date and balance. Completed loans are not included. Download as Excel.', columns: [], run: loanBook },
+  { key: 'loans', label: 'Loan report', description: 'Current (open) loans by start date with terms, repayments and balances. Choose a status to include other loans.', sums: ['amount', 'interestAmount', 'totalRepayment', 'amountPaid', 'outstandingBalance'],
     columns: [c('loanId', 'Loan'), c('customer', 'Customer'), c('product', 'Product'), c('loanType', 'Type', 'status'), c('amount', 'Amount', 'money'), c('interestAmount', 'Interest', 'money'), c('totalRepayment', 'Total repayment', 'money'), c('amountPaid', 'Paid', 'money'), c('outstandingBalance', 'Outstanding', 'money'), c('status', 'Status', 'status'), c('startDate', 'Start', 'date'), c('dueDate', 'Due', 'date')],
-    run: async (q) => (await Loan.find({ ...range(q, 'startDate'), ...statusIn(q) }).sort({ startDate: -1 }).limit(q.limit + 1).populate(popCust)).map((l) => ({ loanId: l.loanId, customer: cust(l.customer), product: l.productName ?? '', loanType: l.loanType ?? 'new', amount: l.amount, interestAmount: l.interestAmount, totalRepayment: l.totalRepayment, amountPaid: l.amountPaid, outstandingBalance: l.outstandingBalance, status: l.status, startDate: l.startDate, dueDate: l.dueDate })) },
+    run: async (q) => (await Loan.find({ ...range(q, 'startDate'), ...(q.status?.length ? statusIn(q) : { status: { $in: LIVE_LOAN_STATUSES } }) }).sort({ startDate: -1 }).limit(q.limit + 1).populate(popCust)).map((l) => ({ loanId: l.loanId, customer: cust(l.customer), product: l.productName ?? '', loanType: l.loanType ?? 'new', amount: l.amount, interestAmount: l.interestAmount, totalRepayment: l.totalRepayment, amountPaid: l.amountPaid, outstandingBalance: l.outstandingBalance, status: l.status, startDate: l.startDate, dueDate: l.dueDate })) },
   { key: 'repayments', label: 'Repayment report', description: 'Repayments received (excludes reversed payments).', sums: ['amount'],
     columns: [c('transactionId', 'Transaction'), c('date', 'Date', 'date'), c('customer', 'Customer'), c('loan', 'Loan'), c('method', 'Method'), c('reference', 'Reference'), c('amount', 'Amount', 'money'), c('createdBy', 'Recorded by')],
     run: async (q) => (await Transaction.find({ type: 'repayment', reversedAt: { $exists: false }, ...range(q, 'date') }).sort({ date: -1 }).limit(q.limit + 1).populate(txPop)).map((t: any) => ({ transactionId: t.transactionId, date: t.date, customer: cust(t.customer), loan: t.loan?.loanId ?? '', method: t.method ?? '', reference: t.reference ?? '', amount: t.amount, createdBy: t.createdBy?.name ?? '' })) },
@@ -104,10 +112,10 @@ export const REPORTS: ReportDef[] = [
     columns: [c('loanId', 'Loan'), c('customer', 'Customer'), c('phone', 'Phone'), c('overdueAmount', 'Overdue amount', 'money'), c('daysOverdue', 'Days overdue', 'number'), c('outstandingBalance', 'Total outstanding', 'money'), c('status', 'Status', 'status')],
     run: async (q) => (await Loan.find({ overdueAmount: { $gt: 0 }, status: { $in: ['overdue', 'defaulted', 'active'] } }).sort({ daysOverdue: -1 }).limit(q.limit + 1).populate(popCust)).map((l: any) => ({ loanId: l.loanId, customer: cust(l.customer), phone: l.customer?.phone ?? '', overdueAmount: l.overdueAmount, daysOverdue: l.daysOverdue, outstandingBalance: l.outstandingBalance, status: l.status })) },
   { key: 'customers', label: 'Customer report', description: 'Customers registered in the period with their loan position.', sums: ['loans', 'outstanding'],
-    columns: [c('customerId', 'Customer ID'), c('fullName', 'Name'), c('phone', 'Phone'), c('status', 'Status', 'status'), c('registrationDate', 'Registered', 'date'), c('loans', 'Loans', 'number'), c('outstanding', 'Outstanding', 'money')],
+    columns: [c('customerId', 'Customer ID'), c('fullName', 'Name'), c('phone', 'Phone'), c('status', 'Status', 'status'), c('registrationDate', 'Registered', 'date'), c('loans', 'Open loans', 'number'), c('outstanding', 'Outstanding', 'money')],
     run: async (q) => {
       const cs = await Customer.find({ isArchived: false, ...range(q, 'registrationDate') }).sort({ registrationDate: -1 }).limit(q.limit + 1);
-      const agg = await Loan.aggregate([{ $match: { customer: { $in: cs.map((x) => x._id) } } }, { $group: { _id: '$customer', loans: { $sum: 1 }, outstanding: { $sum: { $cond: [{ $in: ['$status', ['active', 'overdue', 'defaulted']] }, '$outstandingBalance', 0] } } } }]);
+      const agg = await Loan.aggregate([{ $match: { customer: { $in: cs.map((x) => x._id) } } }, { $group: { _id: '$customer', loans: { $sum: { $cond: [{ $in: ['$status', ['active', 'overdue', 'defaulted']] }, 1, 0] } }, outstanding: { $sum: { $cond: [{ $in: ['$status', ['active', 'overdue', 'defaulted']] }, '$outstandingBalance', 0] } } } }]);
       const by = new Map(agg.map((a) => [String(a._id), a]));
       return cs.map((x) => ({ customerId: x.customerId, fullName: x.fullName, phone: x.phone, status: x.status, registrationDate: x.registrationDate, loans: by.get(String(x._id))?.loans ?? 0, outstanding: round2(by.get(String(x._id))?.outstanding ?? 0) }));
     } },

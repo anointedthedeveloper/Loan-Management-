@@ -19,7 +19,7 @@ export interface ScheduleLine { number: number; month: string; dueDate: Date; em
 export interface LoanStatement {
   loan: {
     id: string; loanId: string; status: string; productName: string | null; loanType: string
-    amountTaken: number; principal: number; interest: number; monthlyInterest: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string
+    amountTaken: number; principal: number; interest: number; monthlyInterest: number; rateBasis: string; interestRate: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string
     paymentDate: Date; firstRepaymentDate: Date | null; finalDueDate: Date; currentOutstanding: number
   }
   rows: StatementRow[]
@@ -82,7 +82,7 @@ async function loanStatement(loanId: Types.ObjectId | string, from?: Date, to?: 
   return {
     loan: {
       id: String(loan._id), loanId: loan.loanId, status: loan.status, productName: loan.productName ?? null, loanType: loan.loanType ?? 'new',
-      amountTaken: loan.amount, principal: loan.principal, interest: loan.interestAmount, monthlyInterest: loan.monthlyInterest || Math.round((loan.interestAmount / Math.max(1, loan.duration?.unit === 'months' ? loan.duration.value! : (loan.numberOfInstallments ?? 1))) * 100) / 100, totalLoan: loan.totalRepayment, emi: loan.installmentAmount,
+      amountTaken: loan.amount, principal: loan.principal, interest: loan.interestAmount, monthlyInterest: loan.monthlyInterest || Math.round((loan.interestAmount / Math.max(1, loan.duration?.unit === 'months' ? loan.duration.value! : (loan.numberOfInstallments ?? 1))) * 100) / 100, rateBasis: loan.rateBasis ?? 'per_loan', interestRate: loan.interestRate, totalLoan: loan.totalRepayment, emi: loan.installmentAmount,
       numberOfInstallments: loan.numberOfInstallments, frequency: loan.frequency, paymentDate: loan.startDate,
       firstRepaymentDate: loan.firstPaymentDate ?? null, finalDueDate: loan.dueDate, currentOutstanding: loan.outstandingBalance,
     },
@@ -109,10 +109,17 @@ export async function buildLoanStatement(loanId: string, opts: { from?: Date; to
   return finish(await header(loan.customer), [await loanStatement(loan._id, opts.from, opts.to)], opts.from, opts.to);
 }
 
-/** Every disbursed loan of the client, one section each, plus a combined summary. */
-export async function buildClientStatement(customerId: string, opts: { from?: Date; to?: Date } = {}): Promise<Statement> {
+/**
+ * The client's statement covers their CURRENT loan (a customer has one open loan), so they appear once with their live figures.
+ * With no open loan the most recent completed one is shown; `scope: 'all'` adds the full history, one section per loan.
+ */
+export async function buildClientStatement(customerId: string, opts: { from?: Date; to?: Date; scope?: 'current' | 'all' } = {}): Promise<Statement> {
   if (!Types.ObjectId.isValid(customerId)) throw AppError.notFound('Customer not found', 'CUSTOMER_NOT_FOUND');
   const h = await header(customerId);
-  const loans = await Loan.find({ customer: customerId, status: { $in: ['active', 'overdue', 'defaulted', 'completed'] } }).sort({ startDate: 1, createdAt: 1 });
+  let loans = await Loan.find({ customer: customerId, status: { $in: ['active', 'overdue', 'defaulted', 'completed'] } }).sort({ startDate: 1, createdAt: 1 });
+  if (opts.scope !== 'all' && loans.length > 1) {
+    const open = loans.filter((l) => ['active', 'overdue', 'defaulted'].includes(l.status));
+    loans = [(open.length ? open : loans).slice(-1)[0]!];
+  }
   return finish(h, await Promise.all(loans.map((l) => loanStatement(l._id, opts.from, opts.to))), opts.from, opts.to);
 }

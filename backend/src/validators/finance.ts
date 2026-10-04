@@ -20,7 +20,7 @@ const productBody = (create: boolean) => ({
   description: text(300),
   category: dflt(z.string().trim().min(1, 'Enter a category').max(60), 'General', create),
   interestRate: z.coerce.number().min(0, 'Rate cannot be negative').max(100),
-  rateBasis: dflt(z.enum(vals(RATE_BASES)), 'per_month', create),
+  rateBasis: dflt(z.enum(vals(RATE_BASES)), 'per_loan', create),
   bankDeductionRate: dflt(z.coerce.number().min(0).max(99), 0, create),
   minAmount: dflt(z.coerce.number().min(0), 0, create),
   maxAmount: z.preprocess(blank, z.coerce.number().positive().optional()),
@@ -57,6 +57,7 @@ export const previewLoanSchema = z.object({
   ...pricing, customerId: objectId.optional(), loanId: objectId.optional(),
   interestRate: z.preprocess(blank, z.coerce.number().min(0).max(100).optional()),
   bankDeductionRate: z.preprocess(blank, z.coerce.number().min(0).max(99).optional()),
+  rateBasis: z.preprocess(blank, z.enum(vals(RATE_BASES)).optional()),
 });
 export const createLoanSchema = z.object({ ...pricing, customerId: objectId, notes: text(1000) });
 /** `interestRate` / `bankDeductionRate` / `reason` are only honoured when editing a running loan (needs loans.editActive). */
@@ -64,6 +65,7 @@ export const updateLoanSchema = z.object({
   ...pricing, notes: text(1000),
   interestRate: z.preprocess(blank, z.coerce.number().min(0).max(100).optional()),
   bankDeductionRate: z.preprocess(blank, z.coerce.number().min(0).max(99).optional()),
+  rateBasis: z.preprocess(blank, z.enum(vals(RATE_BASES)).optional()),
   reason: text(300),
 }).partial();
 export const reasonSchema = z.object({ reason: z.string().trim().min(3, 'Please give a reason').max(500) });
@@ -140,7 +142,7 @@ export const reportQuerySchema = z.object({
   ...pageQuery, limit: z.coerce.number().int().min(1).max(5000).default(50),
   status: csv, customer: objectId.optional(),
 });
-export const statementQuerySchema = z.object({ from: optDate, to: optDate, format: z.enum(['json', 'pdf', 'xlsx', 'csv']).default('json') });
+export const statementQuerySchema = z.object({ from: optDate, to: optDate, scope: z.enum(['current', 'all']).default('current'), format: z.enum(['json', 'pdf', 'xlsx', 'csv']).default('json') });
 export const pageViewSchema = z.object({ path: z.string().trim().min(1).max(200).regex(/^\//, 'Must be an app path'), title: z.string().trim().max(100).optional() });
 export const listAuditSchema = z.object({
   ...pageQuery, q: z.string().trim().max(100).optional(), action: csv, entity: z.string().trim().max(50).optional(),

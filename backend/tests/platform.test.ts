@@ -48,7 +48,7 @@ describe('reports', () => {
       expect(r.body.data.columns.length).toBeGreaterThan(0);
     }
     const loans = (await api('get', '/api/reports/loans')).body.data;
-    expect(loans.rows.length).toBe(await Loan.countDocuments());
+    expect(loans.rows.length).toBe(await Loan.countDocuments({ status: { $in: ['active', 'overdue', 'defaulted'] } })); // current loans only
     const sumOut = loans.rows.reduce((s: number, r: any) => s + r.outstandingBalance, 0);
     expect(loans.totals.outstandingBalance).toBeCloseTo(sumOut, 2);
     expect((await api('get', '/api/reports/nope')).status).toBe(404);

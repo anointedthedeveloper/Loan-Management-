@@ -26,7 +26,7 @@ export async function seedDemoData() {
   const actor: Actor = { id: String(ceo._id), name: ceo.name };
   const today = todayLagos();
 
-  const prod = async (name: string, code: string, o: Record<string, unknown>) => createProduct({ name, code, interestRate: 5, rateBasis: 'per_month', bankDeductionRate: 0, minAmount: 10_000, minDuration: 1, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly', isActive: true, ...o }, actor);
+  const prod = async (name: string, code: string, o: Record<string, unknown>) => createProduct({ name, code, interestRate: 5, rateBasis: 'per_loan', bankDeductionRate: 0, minAmount: 10_000, minDuration: 1, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly', isActive: true, ...o }, actor);
   const salary = await prod('Salary Advance (demo)', 'SAL', { interestRate: 5, bankDeductionRate: 4, maxAmount: 5_000_000, maxDuration: 12, description: 'Demo product mirroring the reference flat-interest calculator (4% bank deduction).' });
   const sme = await prod('SME Business Loan (demo)', 'SME', { interestRate: 4, maxAmount: 10_000_000, maxDuration: 24, allowedFrequencies: ['monthly', 'weekly'] });
   const daily = await prod('Daily Trader (demo)', 'DLY', { interestRate: 10, rateBasis: 'per_loan', minDuration: 30, maxDuration: 90, durationUnit: 'days', allowedFrequencies: ['daily'], defaultFrequency: 'daily', minAmount: 5_000 });

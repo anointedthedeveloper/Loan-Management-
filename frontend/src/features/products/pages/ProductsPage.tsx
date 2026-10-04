@@ -57,7 +57,7 @@ export default function ProductsPage() {
       {error ? <ErrorState message={error} onRetry={reload} /> : loading ? (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-56 w-full" />)}</div>
       ) : !data?.length ? (
-        <div className="rounded-xl border border-dashed border-slate-300 bg-white"><EmptyState icon={<Package className="size-6" />} title="No loan products yet" hint="Create your first product before creating loans — for example a salary advance at 5% per month." action={<Button onClick={() => setEditing('new')}><Plus className="size-4" />Add your first product</Button>} /></div>
+        <div className="rounded-xl border border-dashed border-slate-300 bg-white"><EmptyState icon={<Package className="size-6" />} title="No loan products yet" hint="Create your first product before creating loans — for example a salary advance with a 5% one-time interest charge." action={<Button onClick={() => setEditing('new')}><Plus className="size-4" />Add your first product</Button>} /></div>
       ) : groups.map((g) => (
         <section key={g.name} className="space-y-3">
           <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-slate-500">{g.name}<span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-600">{g.items.length}</span></h2>
@@ -68,7 +68,7 @@ export default function ProductsPage() {
                   <div className="min-w-0"><h3 className="truncate font-semibold">{p.name}</h3><p className="font-mono text-xs text-slate-500">{p.code}</p></div>
                   <Badge tone={p.isActive ? 'green' : 'slate'}>{p.isActive ? 'Active' : 'Inactive'}</Badge>
                 </div>
-                <p className="mt-4 text-3xl font-bold tracking-tight text-brand-700">{p.interestRate}%<span className="ml-1 text-sm font-medium text-slate-500">{p.rateBasis === 'per_month' ? 'per month, flat' : p.rateBasis === 'per_annum' ? 'per annum, flat' : 'of principal, once'}</span></p>
+                <p className="mt-4 text-3xl font-bold tracking-tight text-brand-700">{p.interestRate}%<span className="ml-1 text-sm font-medium text-slate-500">{p.rateBasis === 'per_month' ? 'per month × months' : p.rateBasis === 'per_annum' ? 'per annum, pro-rated' : 'one-time flat charge'}</span></p>
                 {p.description && <p className="mt-2 line-clamp-2 text-sm text-slate-600">{p.description}</p>}
                 <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                   <div><dt className="text-slate-500">Amount</dt><dd className="font-medium">{formatMoneyShort(p.minAmount)} – {p.maxAmount ? formatMoneyShort(p.maxAmount) : 'no limit'}</dd></div>

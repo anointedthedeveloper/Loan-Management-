@@ -12,7 +12,7 @@ export interface StatementRow { date: string; reference: string; description: st
 export interface ScheduleLine { number: number; month: string; dueDate: string; emi: number; principal: number; interest: number; paid: number; remaining: number; status: string }
 export interface LoanStatement {
   schedule: ScheduleLine[]
-  loan: { id: string; loanId: string; status: string; productName: string | null; loanType: string; amountTaken: number; principal: number; interest: number; monthlyInterest: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string; paymentDate: string; firstRepaymentDate: string | null; finalDueDate: string; currentOutstanding: number }
+  loan: { id: string; loanId: string; status: string; productName: string | null; loanType: string; amountTaken: number; principal: number; interest: number; monthlyInterest: number; rateBasis: string; interestRate: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string; paymentDate: string; firstRepaymentDate: string | null; finalDueDate: string; currentOutstanding: number }
   rows: StatementRow[]; totals: { debit: number; credit: number; closingBalance: number }
 }
 export interface Statement {

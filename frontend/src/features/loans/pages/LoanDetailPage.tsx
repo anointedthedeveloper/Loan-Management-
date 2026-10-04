@@ -91,7 +91,7 @@ export default function LoanDetailPage() {
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-brand-700">Loan information</h2>
           <dl className="mt-3 grid gap-3 sm:grid-cols-3">
-            {([['Amount Taken', formatMoney(l.amount)], ['Principal', formatMoney(l.principal)], ['Monthly interest', formatMoney(l.monthlyInterest ?? 0)], ['Interest (one-time total)', formatMoney(l.interestAmount)], ['Total Loan', formatMoney(l.totalRepayment)], [`EMI (${titleCase(l.frequency)})`, `${formatMoney(l.installmentAmount)} × ${l.numberOfInstallments}`], ['Payment Date', formatDate(l.startDate)], ['First Repayment', formatDate(l.firstPaymentDate)], ['Final Due Date', formatDate(l.dueDate)]] as [string, string][]).map(([k, v]) => <div key={k}><dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{k}</dt><dd className="mt-0.5 text-sm font-semibold tabular-nums">{v}</dd></div>)}
+            {([['Amount Taken', formatMoney(l.amount)], ['Principal', formatMoney(l.principal)], ...(l.rateBasis === 'per_month' ? [['Monthly interest', formatMoney(l.monthlyInterest ?? 0)]] : []), [l.rateBasis === 'per_loan' ? `Interest (one-time ${l.interestRate}%)` : 'Interest', formatMoney(l.interestAmount)], ['Total Loan', formatMoney(l.totalRepayment)], [`EMI (${titleCase(l.frequency)})`, `${formatMoney(l.installmentAmount)} × ${l.numberOfInstallments}`], ['Payment Date', formatDate(l.startDate)], ['First Repayment', formatDate(l.firstPaymentDate)], ['Final Due Date', formatDate(l.dueDate)]] as [string, string][]).map(([k, v]) => <div key={k}><dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{k}</dt><dd className="mt-0.5 text-sm font-semibold tabular-nums">{v}</dd></div>)}
           </dl>
         </section>
       </div>
@@ -123,7 +123,7 @@ export default function LoanDetailPage() {
         {tab === 'terms' && (
           <dl className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
             {([
-              ['Interest rate', `${l.interestRate}% ${l.rateBasis === 'per_month' ? 'per month' : l.rateBasis === 'per_annum' ? 'per annum' : 'of principal'}`], ['Interest charge', `${formatMoney(l.interestAmount)} — fixed once, on the original principal`], ['Bank deduction', `${l.bankDeductionRate}%`],
+              ['Interest rate', `${l.interestRate}% ${l.rateBasis === 'per_month' ? 'per month × months' : l.rateBasis === 'per_annum' ? 'per annum, pro-rated' : 'one-time flat, on the principal'}`], ['Interest charge', `${formatMoney(l.interestAmount)} — fixed once, on the original principal`], ['Bank deduction', `${l.bankDeductionRate}%`],
               ['Gross principal', formatMoney(l.principal)], ['Carried balance', formatMoney(l.carriedBalance)], ['Duration', `${l.duration.value} ${l.duration.unit}`],
               ['Frequency', titleCase(l.frequency)], ['Installments', `${l.numberOfInstallments} × ${formatMoney(l.installmentAmount)}`], ['Start date', formatDate(l.startDate)],
               ['First payment due', formatDate(l.firstPaymentDate)], ['Final due date', formatDate(l.dueDate)], ['Created by', l.createdBy?.name ?? '—'], ['Approved by', l.approvedBy?.name ?? '—'],

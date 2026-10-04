@@ -16,7 +16,7 @@ export function ProductModal({ product, categories, onClose, onDone }: { product
   const toast = useToast()
   const meta = useLoanMeta()
   const [f, setF] = useState({
-    name: product?.name ?? '', code: product?.code ?? '', category: product?.category ?? '', description: product?.description ?? '', interestRate: String(product?.interestRate ?? ''), rateBasis: product?.rateBasis ?? 'per_month',
+    name: product?.name ?? '', code: product?.code ?? '', category: product?.category ?? '', description: product?.description ?? '', interestRate: String(product?.interestRate ?? ''), rateBasis: product?.rateBasis ?? 'per_loan',
     bankDeductionRate: String(product?.bankDeductionRate ?? 0), minAmount: String(product?.minAmount ?? 0), maxAmount: product?.maxAmount ? String(product.maxAmount) : '',
     minDuration: String(product?.minDuration ?? 1), maxDuration: product?.maxDuration ? String(product.maxDuration) : '', durationUnit: product?.durationUnit ?? 'months',
     allowedFrequencies: product?.allowedFrequencies ?? ['monthly'], defaultFrequency: product?.defaultFrequency ?? 'monthly', isActive: product?.isActive ?? true,
@@ -45,7 +45,7 @@ export function ProductModal({ product, categories, onClose, onDone }: { product
           </div>
           <div className="sm:col-span-2"><TextareaField label="Description" value={f.description} onChange={set('description')} /></div>
           <Field label="Interest rate (%)" type="number" step="0.01" min="0" value={f.interestRate} onChange={set('interestRate')} error={errs.interestRate} />
-          <div><SelectField label="Rate basis" options={meta?.rateBases ?? []} value={f.rateBasis} onChange={set('rateBasis')} placeholder="Basis" /><p className="mt-1 text-xs text-slate-500">Flat interest is worked out <b>once</b> on the original principal (principal × rate × months), added to the loan, and repaid through equal installments. It is never recalculated on a reducing balance.</p></div>
+          <div><SelectField label="Rate basis" options={meta?.rateBases ?? []} value={f.rateBasis} onChange={set('rateBasis')} placeholder="Basis" /><p className="mt-1 text-xs text-slate-500">Interest is a <b>one-time flat charge</b>: 5% of a ₦1,000,000 loan is ₦50,000, so the customer repays ₦1,050,000 in equal installments, whatever the tenor. Choose the other options only for a rate that must be multiplied by the number of months.</p></div>
           <Field label="Bank deduction (%)" type="number" step="0.01" min="0" value={f.bankDeductionRate} onChange={set('bankDeductionRate')} error={errs.bankDeductionRate} />
           <div />
           <MoneyField label="Minimum amount" value={f.minAmount} onChange={(v) => setF((s) => ({ ...s, minAmount: v }))} /><MoneyField label="Maximum amount" value={f.maxAmount} onChange={(v) => { setF((s) => ({ ...s, maxAmount: v })); setErrs((x) => ({ ...x, maxAmount: '' })) }} error={errs.maxAmount} placeholder="No maximum" />
