@@ -167,7 +167,7 @@ describe('one-time flat interest and current-loan-only documents', () => {
     expect(stmt.loans[0].loan.loanId).toBe(second.loanId);
     // the Excel book uses the one-time formulas (principal x rate, no tenor multiplier)
     const xl = await api('get', '/api/reports/loan-book?format=xlsx').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
-    const ExcelJS = (await import('exceljs')).default; const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(xl.body));
+    const ExcelJS = (await import('exceljs')).default; const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(xl.body) as any);
     const ws = wb.worksheets[0]!; let head = 0; ws.eachRow((row, n) => { if (!head && (row.values as any[]).includes('Clients Name')) head = n; });
     const col = (ws.getRow(head).values as any[]).indexOf('Interest');
     const formulas: string[] = []; ws.eachRow((row, n) => { if (n > head) { const v = row.getCell(col).value as any; if (v?.formula) formulas.push(String(v.formula)); } });
