@@ -142,7 +142,7 @@ export const reportQuerySchema = z.object({
   ...pageQuery, limit: z.coerce.number().int().min(1).max(5000).default(50),
   status: csv, customer: objectId.optional(),
 });
-export const statementQuerySchema = z.object({ from: optDate, to: optDate, scope: z.enum(['current', 'all']).default('current'), format: z.enum(['json', 'pdf', 'xlsx', 'csv']).default('json') });
+export const statementQuerySchema = z.object({ from: optDate, to: optDate, scope: z.enum(['current', 'all']).default('current'), includeUploads: z.preprocess((v) => v === 'true' || v === '1' || v === true, z.boolean()), format: z.enum(['json', 'pdf', 'xlsx', 'csv']).default('json') });
 export const pageViewSchema = z.object({ path: z.string().trim().min(1).max(200).regex(/^\//, 'Must be an app path'), title: z.string().trim().max(100).optional() });
 export const listAuditSchema = z.object({
   ...pageQuery, q: z.string().trim().max(100).optional(), action: csv, entity: z.string().trim().max(50).optional(),

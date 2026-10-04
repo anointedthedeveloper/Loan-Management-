@@ -13,6 +13,7 @@ import * as reports from '../services/report.service.js';
 import * as exporter from '../services/export.service.js';
 import * as statements from '../services/statement.service.js';
 import * as statementExport from '../services/statementExport.service.js';
+import * as proofs from '../services/proofs.service.js';
 import { AUDIT } from '../config/auditActions.js';
 import { auditAs, auditFilter, listAudit, recordAudit } from '../services/AuditService.js';
 import { AuditLog } from '../models/AuditLog.js';
@@ -83,10 +84,12 @@ async function sendStatement(req: Request, res: any, s: Awaited<ReturnType<typeo
   const f = res.locals.query;
   await auditAs(actorOf(req), { action: A.STATEMENT_GENERATED, entity, entityId, entityLabel: label, after: { format: f.format, from: f.from ?? null, to: f.to ?? null } });
   if (f.format === 'json') return ok(res, { statement: s });
+  if (f.includeUploads && f.format !== 'pdf') throw AppError.badRequest('Uploaded proof of payment can only be included in the PDF.', 'UPLOADS_PDF_ONLY');
   const base = `protech-statement-${s.client.customerId}-${new Date().toISOString().slice(0, 10)}`;
   if (f.format === 'csv') return void res.type('text/csv').attachment(`${base}.csv`).send(statementExport.statementToCsv(s));
   if (f.format === 'xlsx') return void res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment(`${base}.xlsx`).send(await statementExport.statementToXlsx(s, req.auth!.name));
-  res.type('application/pdf').attachment(`${base}.pdf`).send(await statementExport.statementToPdf(s, req.auth!.name));
+  const pdf = await statementExport.statementToPdf(s, req.auth!.name);
+  res.type('application/pdf').attachment(`${base}.pdf`).send(f.includeUploads ? await proofs.appendProofs(pdf, await proofs.collectProofs(s), s.company.name) : pdf);
 }
 export const loanStatement = asyncHandler(async (req, res) => { const s = await statements.buildLoanStatement(id(req), res.locals.query); await sendStatement(req, res, s, 'Loan', id(req), s.loans[0]!.loan.loanId); });
 export const loanScheduleExport = asyncHandler(async (req, res) => {

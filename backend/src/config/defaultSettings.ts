@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS = {
     withinInstallment: 'interest_first' as 'interest_first' | 'principal_first' | 'proportional',
     /** reject: refuse payments above the balance. credit: accept and hold the excess as a customer credit on the loan. */
     overpaymentPolicy: 'reject' as 'reject' | 'credit',
+    /** A payment may exceed what is owed by up to this many naira (e.g. 30,000 sent for 29,999.82) even when overpayments are otherwise rejected. */
+    overpaymentTolerance: 1000,
     allowFutureDatedPayments: false,
     /** full_balance: an early settlement pays everything still owed. waive_future_interest: interest on installments not yet due is waived. */
     earlySettlement: 'full_balance' as 'full_balance' | 'waive_future_interest',

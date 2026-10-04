@@ -19,7 +19,7 @@ export const settingsSchemas = {
   repayment: z.object({
     allocationOrder: z.enum(['oldest_first', 'interest_first_overall']),
     withinInstallment: z.enum(['interest_first', 'principal_first', 'proportional']),
-    overpaymentPolicy: z.enum(['reject', 'credit']), allowFutureDatedPayments: z.boolean(),
+    overpaymentPolicy: z.enum(['reject', 'credit']), overpaymentTolerance: z.coerce.number().min(0, 'Cannot be negative').max(1_000_000).default(1000), allowFutureDatedPayments: z.boolean(),
     earlySettlement: z.enum(['full_balance', 'waive_future_interest']).default('full_balance'),
   }),
   latePayment: z.object({ graceDays: nonNegInt, penalty: z.object({ type: z.literal('none') }), defaultAfterDays: nullableInt }),

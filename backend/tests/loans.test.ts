@@ -240,13 +240,20 @@ describe('repayments (ledger first, balances derived)', () => {
   });
   it('rejects overpayment by default, accepts it as credit when configured', async () => {
     const l = await activeLoan({ amount: 96000 });
-    const over = await pay(l.id, 130000.01);
+    const over = await pay(l.id, 131000.01); // more than ₦1,000 above what is owed
     expect(over.status).toBe(400);
     expect(over.body.code).toBe('OVERPAYMENT');
     await api('put', '/api/settings/repayment').send({ allocationOrder: 'oldest_first', withinInstallment: 'interest_first', overpaymentPolicy: 'credit', allowFutureDatedPayments: false });
     const ok = await pay(l.id, 130500);
     expect(ok.body.data.loan).toMatchObject({ status: 'completed', creditBalance: 500 });
     await api('put', '/api/settings/repayment').send({ allocationOrder: 'oldest_first', withinInstallment: 'interest_first', overpaymentPolicy: 'reject', allowFutureDatedPayments: false });
+  });
+  it('allows a small overpayment (up to ₦1,000 by default), e.g. 30,000 sent for 29,999.82', async () => {
+    const l = await activeLoan({ amount: 96000 }); // owes 130,000.00
+    const r = await pay(l.id, 130000.18 + 0.82); // 130,001.00: within the tolerance
+    expect(r.status).toBe(201);
+    expect(r.body.data.loan).toMatchObject({ status: 'completed' });
+    expect(r.body.data.loan.creditBalance).toBeCloseTo(1, 2);
   });
   it('validates amount, date, reference and permissions', async () => {
     const l = await activeLoan();

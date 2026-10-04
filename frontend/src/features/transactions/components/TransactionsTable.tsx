@@ -14,7 +14,7 @@ import { TxStateBadge } from '../../../components/ui/StatusBadge'
 import { formatDate, formatDateTime, formatMoney, titleCase } from '../../../utils/format'
 import type { Transaction } from '../../../types/finance'
 import { transactionService } from '../../repayments/services/repaymentService'
-import { AttachmentLinks, AttachmentPicker } from '../../attachments/AttachmentComponents'
+import { AttachmentGallery, AttachmentPicker } from '../../attachments/AttachmentComponents'
 import { EditRepaymentModal } from '../../loans/components/EditRepaymentModal'
 
 export const useTxType = () => {
@@ -78,7 +78,7 @@ export function TransactionsTable({ rows, onChanged }: { rows: Transaction[]; on
             {(sel.attachments?.length || sel.type === 'repayment') ? (
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Proof of payment</p>
-                <AttachmentLinks files={sel.attachments} />
+                <AttachmentGallery files={sel.attachments} />
                 {!sel.attachments?.length && <p className="text-sm text-slate-400">No files attached.</p>}
                 {sel.state === 'posted' && can(PERM.repayments.record) && <AttachmentPicker label="Add a file" value={[]} transactionId={sel.id} onChange={(f) => { setSel({ ...sel, attachments: [...(sel.attachments ?? []), ...f] }); onChanged() }} />}
               </div>

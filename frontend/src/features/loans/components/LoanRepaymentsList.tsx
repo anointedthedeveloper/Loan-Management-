@@ -1,5 +1,7 @@
-import { Banknote } from 'lucide-react'
-import { AttachmentLinks } from '../../attachments/AttachmentComponents'
+import { useState } from 'react'
+import { Banknote, Paperclip } from 'lucide-react'
+import { AttachmentGallery } from '../../attachments/AttachmentComponents'
+import { Modal } from '../../../components/ui/Modal'
 import { EmptyState } from '../../../components/ui/feedback'
 import { TxStateBadge } from '../../../components/ui/StatusBadge'
 import { formatDate, formatMoney, titleCase } from '../../../utils/format'
@@ -7,6 +9,7 @@ import type { Transaction } from '../../../types/finance'
 
 /** Every repayment recorded on this loan, newest first, with what each payment was applied to. */
 export function LoanRepaymentsList({ rows }: { rows: Transaction[] }) {
+  const [sel, setSel] = useState<Transaction | null>(null)
   const repayments = rows.filter((t) => t.type === 'repayment')
   const posted = repayments.filter((t) => t.state === 'posted')
   const total = posted.reduce((s, t) => s + t.amount, 0)
@@ -19,23 +22,37 @@ export function LoanRepaymentsList({ rows }: { rows: Transaction[] }) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Reference</th><th className="hidden px-4 py-3 md:table-cell">Method</th><th className="px-4 py-3 text-right">Amount</th><th className="hidden px-4 py-3 lg:table-cell">Applied to</th><th className="hidden px-4 py-3 lg:table-cell">Recorded by</th><th className="hidden px-4 py-3 xl:table-cell">Proof</th><th className="px-4 py-3">State</th></tr></thead>
+          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Reference</th><th className="hidden px-4 py-3 md:table-cell">Method</th><th className="px-4 py-3 text-right">Amount</th><th className="hidden px-4 py-3 lg:table-cell">Applied to</th><th className="hidden px-4 py-3 lg:table-cell">Recorded by</th><th className="px-4 py-3">Proof</th><th className="px-4 py-3">State</th></tr></thead>
           <tbody className="divide-y divide-slate-100 tabular-nums">
             {repayments.map((t, i) => (
-              <tr key={t.id} className={t.state === 'reversed' ? 'text-slate-400' : ''}>
+              <tr key={t.id} onClick={() => setSel(t)} className={`cursor-pointer hover:bg-slate-50 ${t.state === 'reversed' ? 'text-slate-400' : ''}`}>
                 <td className="px-4 py-2.5">{repayments.length - i}</td><td className="whitespace-nowrap px-4 py-2.5">{formatDate(t.date)}</td>
                 <td className="px-4 py-2.5"><span className="font-mono text-xs">{t.reference ?? t.transactionId}</span>{t.reference && <span className="block font-mono text-[10px] text-slate-400">{t.transactionId}</span>}</td>
                 <td className="hidden px-4 py-2.5 md:table-cell">{t.method ? titleCase(t.method) : '—'}</td>
                 <td className={`px-4 py-2.5 text-right font-medium ${t.state === 'reversed' ? 'line-through' : ''}`}>{formatMoney(t.amount)}</td>
                 <td className="hidden px-4 py-2.5 text-xs lg:table-cell">{t.allocations.length ? t.allocations.map((a) => `#${a.number}`).join(', ') : '—'}</td>
                 <td className="hidden px-4 py-2.5 lg:table-cell">{t.createdBy?.name ?? '—'}</td>
-                <td className="hidden px-4 py-2.5 xl:table-cell"><AttachmentLinks files={t.attachments} /></td>
+                <td className="px-4 py-2.5">{t.attachments?.length ? <span className="inline-flex items-center gap-1 text-xs font-medium text-brand-700"><Paperclip className="size-3.5" />{t.attachments.length}</span> : <span className="text-slate-300">—</span>}</td>
                 <td className="px-4 py-2.5"><TxStateBadge state={t.state} />{t.editedFrom && <span className="ml-1 text-[10px] text-amber-700">corrected</span>}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">Click a payment to see its details and uploaded proof.</p>
+      {sel && (
+        <Modal open wide title={`Payment ${sel.transactionId}`} onClose={() => setSel(null)}>
+          <div className="space-y-4">
+            <p className="text-2xl font-bold tabular-nums">{formatMoney(sel.amount)}</p>
+            <dl className="grid grid-cols-2 gap-3 text-sm">
+              {([['Date', formatDate(sel.date)], ['Method', sel.method ? titleCase(sel.method) : '—'], ['Reference', sel.reference ?? '—'], ['Recorded by', sel.createdBy?.name ?? '—'], ['Applied to', sel.allocations.length ? sel.allocations.map((a) => `#${a.number}`).join(', ') : '—'], ['Note', sel.description ?? '—']] as [string, string][]).map(([k, v]) => <div key={k}><dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{k}</dt><dd className="mt-0.5 font-medium">{v}</dd></div>)}
+            </dl>
+            <div><p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Proof of payment</p>
+              {sel.attachments?.length ? <AttachmentGallery files={sel.attachments} /> : <p className="text-sm text-slate-400">No files were uploaded for this payment.</p>}</div>
+            <p className="text-xs text-slate-500">To add a file or correct this payment, use All transactions.</p>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }

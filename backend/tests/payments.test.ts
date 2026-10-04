@@ -177,3 +177,22 @@ describe('one-time flat interest and current-loan-only documents', () => {
     expect(all.loans).toHaveLength(2);
   });
 });
+
+describe('statement with uploaded proofs (PDF only)', () => {
+  it('appends image and PDF proofs as pages; Excel/CSV refuse uploads', async () => {
+    const { PDFDocument } = await import('pdf-lib');
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+    const { StandardFonts } = await import('pdf-lib'); const sub = await PDFDocument.create(); sub.addPage([200, 100]).drawText('Credit alert NGN 20,000', { x: 10, y: 50, size: 10, font: await sub.embedFont(StandardFonts.Helvetica) }); const subPdf = Buffer.from(await sub.save());
+    const l = await activeLoan();
+    const p = (await api('post', '/api/repayments').send({ loanId: l.id, amount: 20000, method: 'bank_transfer', reference: 'PROOF-1' })).body.data.transaction;
+    expect((await upload('alert.png', 'image/png', png, ceo, `&transactionId=${p.id}`)).status).toBe(201);
+    expect((await upload('slip.pdf', 'application/pdf', subPdf, ceo, `&transactionId=${p.id}`)).status).toBe(201);
+    expect((await upload('notes.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', Buffer.from('PK'), ceo, `&transactionId=${p.id}`)).status).toBe(201);
+    const get = (qs: string) => api('get', `/api/loans/${l.id}/statement?${qs}`).buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    const plain = await PDFDocument.load(Buffer.from((await get('format=pdf')).body));
+    const withProofs = await PDFDocument.load(Buffer.from((await get('format=pdf&includeUploads=true')).body));
+    expect(withProofs.getPageCount()).toBe(plain.getPageCount() + 3); // image page + pdf page + "not shown" note for the .docx
+    expect((await api('get', `/api/loans/${l.id}/statement?format=xlsx&includeUploads=true`)).body.code).toBe('UPLOADS_PDF_ONLY');
+    expect((await api('get', `/api/loans/${l.id}/statement?format=csv&includeUploads=true`)).status).toBe(400);
+  });
+});

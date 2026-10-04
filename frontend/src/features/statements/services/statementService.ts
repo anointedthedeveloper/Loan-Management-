@@ -5,6 +5,6 @@ export type StatementTarget = { kind: 'loan' | 'client'; id: string }
 const base = (t: StatementTarget) => (t.kind === 'loan' ? `/loans/${t.id}/statement` : `/customers/${t.id}/statement`)
 
 export const statementService = {
-  generate: (t: StatementTarget, p: { from?: string; to?: string; scope?: string }) => api<{ statement: Statement }>(`${base(t)}${qs({ ...p, format: 'json' })}`).then((r) => r.statement),
-  download: (t: StatementTarget, format: 'pdf' | 'xlsx' | 'csv', p: { from?: string; to?: string; scope?: string }) => download(`${base(t)}${qs({ ...p, format })}`, `statement.${format}`),
+  generate: (t: StatementTarget, p: { from?: string; to?: string; scope?: string; includeUploads?: boolean }) => api<{ statement: Statement }>(`${base(t)}${qs({ from: p.from, to: p.to, scope: p.scope, format: 'json' })}`).then((r) => r.statement),
+  download: (t: StatementTarget, format: 'pdf' | 'xlsx' | 'csv', p: { from?: string; to?: string; scope?: string; includeUploads?: boolean }) => download(`${base(t)}${qs({ from: p.from, to: p.to, scope: p.scope, includeUploads: p.includeUploads ? 'true' : undefined, format })}`, `statement.${format}`),
 }

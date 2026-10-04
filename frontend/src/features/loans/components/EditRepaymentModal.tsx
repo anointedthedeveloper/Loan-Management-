@@ -10,7 +10,7 @@ import { Modal, ModalActions } from '../../../components/ui/Modal'
 import { formatMoney } from '../../../utils/format'
 import { repaymentService } from '../../repayments/services/repaymentService'
 import type { Attachment, Transaction } from '../../../types/finance'
-import { AttachmentLinks, AttachmentPicker } from '../../attachments/AttachmentComponents'
+import { AttachmentGallery, AttachmentPicker } from '../../attachments/AttachmentComponents'
 
 /** Corrects a recorded repayment. The ledger keeps both entries (the original is reversed, a replacement is posted) and the reason is audited. */
 export function EditRepaymentModal({ tx, onClose, onDone }: { tx: Transaction; onClose: () => void; onDone: () => void }) {
@@ -43,7 +43,7 @@ export function EditRepaymentModal({ tx, onClose, onDone }: { tx: Transaction; o
         </div>
         <Field label="Reference" value={f.reference} onChange={set('reference')} error={errs.reference} />
         <Field label="Note" value={f.description} onChange={set('description')} />
-        {tx.attachments?.length ? <div><p className="mb-1.5 text-sm font-medium text-slate-700">Files already attached</p><AttachmentLinks files={tx.attachments} /></div> : null}
+        {tx.attachments?.length ? <div><p className="mb-1.5 text-sm font-medium text-slate-700">Files already attached</p><AttachmentGallery files={tx.attachments} /></div> : null}
         <AttachmentPicker value={added} onChange={setAdded} loanId={tx.loan?.id} label="Add more proof of payment" />
         <Field label="Reason for the change *" value={f.reason} onChange={set('reason')} error={errs.reason} placeholder="e.g. Amount typed wrongly" />
         <p className="text-xs text-slate-500">The original entry is reversed and a corrected one is posted. Both stay in the ledger and the change is recorded in the audit log.</p>

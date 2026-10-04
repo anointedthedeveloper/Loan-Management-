@@ -24,6 +24,7 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState('')
   const [history, setHistory] = useState(false) // client statements: also include completed loans
+  const [uploads, setUploads] = useState(false) // append the uploaded proofs (PDF only)
   const scope = kind === 'client' && history ? 'all' : undefined
 
   async function generate() {
@@ -36,7 +37,7 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
 
   async function exportAs(f: 'pdf' | 'xlsx' | 'csv') {
     setExporting(f)
-    try { await statementService.download(target, f, { from: from || undefined, to: to || undefined, scope }) } catch (e) { toast('error', e instanceof ApiError ? e.message : 'Download failed') } finally { setExporting('') }
+    try { await statementService.download(target, f, { from: from || undefined, to: to || undefined, scope, includeUploads: uploads && f === 'pdf' }) } catch (e) { toast('error', e instanceof ApiError ? e.message : 'Download failed') } finally { setExporting('') }
   }
   const back = kind === 'loan' ? `/loans/${id}` : `/customers/${id}`
 
@@ -53,9 +54,10 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
         {kind === 'client' && <label className="flex items-center gap-2 pb-2 text-sm text-slate-600"><input type="checkbox" checked={history} onChange={(e) => setHistory(e.target.checked)} className="size-4 rounded border-slate-300" />Include completed loans</label>}
         <Button onClick={generate} loading={loading} loadingText="Generating…"><RefreshCw className="size-4" />Generate statement</Button>
         {s && (
-          <div className="ml-auto flex flex-wrap gap-2">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 text-sm text-slate-600" title="The uploaded debit/credit alerts and receipts are added after the statement pages. Available for PDF only."><input type="checkbox" checked={uploads} onChange={(e) => setUploads(e.target.checked)} className="size-4 rounded border-slate-300" />Include uploads (PDF only)</label>
             <Button variant="secondary" onClick={() => window.print()}><Printer className="size-4" />Print</Button>
-            {([['pdf', 'PDF', FileText], ['xlsx', 'Excel (with monthly breakdown)', FileSpreadsheet], ['csv', 'CSV', Download]] as const).map(([f, label, Icon]) => <Button key={f} variant="secondary" loading={exporting === f} onClick={() => exportAs(f)}><Icon className="size-4" />{label}</Button>)}
+            {([['pdf', 'PDF', FileText], ['xlsx', 'Excel (with monthly breakdown)', FileSpreadsheet], ['csv', 'CSV', Download]] as const).map(([f, label, Icon]) => <Button key={f} variant="secondary" loading={exporting === f} disabled={uploads && f !== 'pdf'} title={uploads && f !== 'pdf' ? 'Uploads can only be included in the PDF' : undefined} onClick={() => exportAs(f)}><Icon className="size-4" />{label}</Button>)}
           </div>
         )}
       </div>

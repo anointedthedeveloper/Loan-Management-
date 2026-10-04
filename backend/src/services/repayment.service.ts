@@ -28,7 +28,7 @@ export async function recordRepayment(input: { loanId: string; amount: number; d
   if (diffDays(date, loan.startDate) < -3650) throw AppError.badRequest('Payment date is unrealistic', 'VALIDATION_ERROR', { date: 'Check the date' });
 
   const { state: current } = await recalculateLoan(loan._id);
-  if (toKobo(input.amount) > toKobo(current.outstandingBalance) && rules.repayment.overpaymentPolicy === 'reject')
+  if (toKobo(input.amount) > toKobo(current.outstandingBalance) + toKobo(rules.repayment.overpaymentTolerance ?? 1000) && rules.repayment.overpaymentPolicy === 'reject')
     throw AppError.badRequest(`Payment exceeds the outstanding balance of ₦${current.outstandingBalance.toLocaleString('en-NG', { minimumFractionDigits: 2 })}`, 'OVERPAYMENT', { amount: 'More than the outstanding balance' });
   await assertReference(input, String(loan._id));
 
@@ -76,7 +76,7 @@ export async function editRepayment(id: string, input: { amount: number; date?: 
   const date = input.date ?? orig.date;
   if (!rules.repayment.allowFutureDatedPayments && diffDays(date, todayLagos()) > 0) throw AppError.badRequest('Payment date cannot be in the future', 'VALIDATION_ERROR', { date: 'Cannot be in the future' });
   const { state } = await recalculateLoan(loan._id);
-  if (toKobo(input.amount) > toKobo(state.outstandingBalance) + toKobo(orig.amount) && rules.repayment.overpaymentPolicy === 'reject')
+  if (toKobo(input.amount) > toKobo(state.outstandingBalance) + toKobo(orig.amount) + toKobo(rules.repayment.overpaymentTolerance ?? 1000) && rules.repayment.overpaymentPolicy === 'reject')
     throw AppError.badRequest('The new amount is more than the loan still owes', 'OVERPAYMENT', { amount: 'More than the outstanding balance' });
   const method = input.method ?? orig.method ?? undefined;
   const reference = input.reference ?? orig.reference ?? undefined;

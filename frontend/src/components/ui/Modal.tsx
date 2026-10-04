@@ -3,12 +3,16 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { Button } from './Button'
 
+/** Open dialogs, innermost last: Escape closes only the one on top (e.g. a file preview opened from a form). */
+const openStack: symbol[] = []
+
 export function Modal({ open, title, onClose, children, wide }: { open: boolean; title: string; onClose: () => void; children: ReactNode; wide?: boolean }) {
   useEffect(() => {
     if (!open) return
-    const h = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const id = Symbol('modal'); openStack.push(id)
+    const h = (e: KeyboardEvent) => e.key === 'Escape' && openStack[openStack.length - 1] === id && onClose()
     document.addEventListener('keydown', h)
-    return () => document.removeEventListener('keydown', h)
+    return () => { document.removeEventListener('keydown', h); openStack.splice(openStack.indexOf(id), 1) }
   }, [open, onClose])
   if (!open) return null
   // Rendered on <body> so no parent (transforms, overflow, stacking) can clip or mis-position the dialog.

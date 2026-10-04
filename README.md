@@ -132,3 +132,10 @@ Reports > "Loan book (monthly breakdown)" (or Loans > "Loan book (Excel)") expor
 
 - **Interest is a one-time flat charge** (default rate basis `per_loan`): 5% of ₦1,000,000 = ₦50,000, total ₦1,050,000, regardless of tenor. Products saved earlier are moved to it once; the CEO can still pick another basis per product, and can switch a running loan's basis when editing it. The bank-deduction gross-up (÷ 0.96) still applies if a product sets one; set it to 0 for a plain 5% of the amount.
 - **Downloads use current loans:** the loan book and the loan report list each customer's open loan only; a client statement shows the current loan (the latest completed one if none is open), with "Include completed loans" for the full history.
+
+## Overpayment tolerance, previews and statements with proofs
+
+- A payment may exceed what is owed by up to `repayment.overpaymentTolerance` (default ₦1,000; Settings > Repayment rules): ₦30,000 sent for ₦29,999.82 clears the loan and the excess is held as credit.
+- The schedule shows unpaid installments first (due order) and paid ones below.
+- Uploads preview before saving; clicking a payment shows its proof with preview and download.
+- Statement PDFs can include the uploaded proofs (`?includeUploads=true`, PDF only): images and PDF pages are appended as captioned pages; Word/Excel files are listed on a note page. Responses are capped near 4 MB (serverless limit).

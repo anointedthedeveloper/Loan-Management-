@@ -111,3 +111,12 @@ export async function uploadFile<T>(path: string, file: File): Promise<T> {
     return json.data as T
   } finally { track(-1) }
 }
+
+/** Fetches a protected file as a Blob (for previews) using the signed-in user's token. */
+export async function fetchBlob(path: string): Promise<Blob> {
+  const token = tokenStore.get()
+  let res: Response
+  try { res = await fetch(`${BASE}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} }) } catch { throw new ApiError('Cannot reach the server. Check your connection and try again.', 0, 'NETWORK') }
+  if (!res.ok) { const j = await res.json().catch(() => null); throw new ApiError(j?.message ?? 'Could not load the file', res.status, j?.code ?? 'ERROR') }
+  return res.blob()
+}
