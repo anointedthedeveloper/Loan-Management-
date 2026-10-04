@@ -68,6 +68,17 @@ describe('quoted installment equals the schedule', () => {
   });
 });
 
+describe('installment count and tenor agree for monthly loans', () => {
+  it('a stated number of installments drives the interest, so duration, interest, EMI and end date never disagree', () => {
+    const t = calculateLoan({ ...base, amount: 96000, bankDeductionRate: 4, interestRate: 5, rateBasis: 'per_month', duration: { value: 1, unit: 'months' }, numberOfInstallments: 12 });
+    expect(t.principal).toBe(100000);
+    expect(t.interestAmount).toBe(60000); // 100,000 x 5% x 12
+    expect(t.installmentAmount).toBeCloseTo(13333.33, 2);
+    expect(t.numberOfInstallments).toBe(12);
+    expect(t.durationMonths).toBe(12);
+  });
+});
+
 describe('repayment schedule generation', () => {
   it('monthly: clamps month ends and numbers installments', () => {
     const s = generateSchedule(calculateLoan(base), 'monthly');

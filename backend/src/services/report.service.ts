@@ -73,7 +73,7 @@ async function loanBook(q: ReportQuery): Promise<RunResult> {
   const rows: Row[] = loans.map((l: any, i) => {
     const row: Row = {
       sn: i + 1, clientId: l.customer?.legacyId || l.customer?.customerId || '', clientName: l.customer?.fullName ?? '', ippis: l.customer?.employment?.ippisNumber ?? '', ministry: l.customer?.employment?.ministry ?? '',
-      tenor: l.duration?.unit === 'months' ? l.duration.value : l.numberOfInstallments, paymentDate: l.startDate, balanceBF: l.carriedBalance ?? 0, bankPayment: l.amount, grossPayment: l.grossAmount, principal: l.principal,
+      tenor: l.frequency === 'monthly' ? l.numberOfInstallments : l.duration?.unit === 'months' ? l.duration.value : l.numberOfInstallments, paymentDate: l.startDate, balanceBF: l.carriedBalance ?? 0, bankPayment: l.amount, grossPayment: l.grossAmount, principal: l.principal,
       interest: l.interestAmount, grossLoan: l.totalRepayment, emi: l.installmentAmount, startDate: l.firstPaymentDate ?? l.startDate, endDate: l.dueDate, type: (l.loanType === 'topup' ? 'TOP UP' : l.loanType === 'renewal' ? 'RENEWAL' : 'NEW'),
       repaid: 0, balance: 0, loanStatus: l.status, loanId: l.loanId,
     };

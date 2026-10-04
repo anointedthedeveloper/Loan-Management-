@@ -74,7 +74,8 @@ export function calculateLoan(input: LoanTermsInput): LoanTerms {
   const carriedKobo = toKobo(input.carriedBalance ?? 0);
   const principalKobo = carriedKobo + grossKobo;
   const baseKobo = input.interestBasis === 'new_funds_only' ? grossKobo : principalKobo;
-  const months = durationInMonths(input.duration);
+  // Monthly repayments: the number of installments IS the tenor, so a stated installment count always drives the interest.
+  const months = input.frequency === 'monthly' && input.numberOfInstallments ? input.numberOfInstallments : durationInMonths(input.duration);
   const interestKobo = calculateInterest(baseKobo, input.interestRate, input.rateBasis, months);
   const totalKobo = calculateTotalPayable(principalKobo, interestKobo);
   const n = deriveInstallmentCount(input);
