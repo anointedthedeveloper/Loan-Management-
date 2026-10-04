@@ -9,8 +9,10 @@ export interface LoanMeta {
 export interface CustomerRef { id: string; customerId?: string; fullName?: string; phone?: string; ippisNumber?: string | null; ministry?: string | null }
 
 export interface StatementRow { date: string; reference: string; description: string; debit: number; credit: number; balance: number }
+export interface ScheduleLine { number: number; month: string; dueDate: string; emi: number; principal: number; interest: number; paid: number; remaining: number; status: string }
 export interface LoanStatement {
-  loan: { id: string; loanId: string; status: string; productName: string | null; loanType: string; amountTaken: number; principal: number; interest: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string; paymentDate: string; firstRepaymentDate: string | null; finalDueDate: string; currentOutstanding: number }
+  schedule: ScheduleLine[]
+  loan: { id: string; loanId: string; status: string; productName: string | null; loanType: string; amountTaken: number; principal: number; interest: number; monthlyInterest: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string; paymentDate: string; firstRepaymentDate: string | null; finalDueDate: string; currentOutstanding: number }
   rows: StatementRow[]; totals: { debit: number; credit: number; closingBalance: number }
 }
 export interface Statement {
@@ -25,13 +27,13 @@ export interface Installment {
 }
 export interface Terms {
   amount: number; carriedBalance: number; bankDeductionRate: number; grossAmount: number; principal: number; interestBase: number
-  interestAmount: number; totalRepayment: number; numberOfInstallments: number; installmentAmount: number; finalInstallmentAmount: number
+  interestAmount: number; monthlyInterest: number; totalRepayment: number; numberOfInstallments: number; installmentAmount: number; finalInstallmentAmount: number
   durationMonths: number; startDate: string; dueDate: string
 }
 export interface Loan {
   id: string; loanId: string; status: string; customer: CustomerRef; productName?: string; product: string | null
   amount: number; carriedBalance: number; bankDeductionRate: number; grossAmount: number; principal: number
-  interestRate: number; rateBasis: string; interestAmount: number; totalRepayment: number
+  interestRate: number; rateBasis: string; interestAmount: number; monthlyInterest?: number; totalRepayment: number
   duration: { value: number; unit: string }; frequency: string; customIntervalDays?: number; numberOfInstallments: number; installmentAmount: number
   startDate: string; firstPaymentDate?: string | null; firstPaymentDateIsCustom?: boolean; dueDate: string; loanType?: 'new' | 'renewal' | 'topup'
   nonCashCredits?: number

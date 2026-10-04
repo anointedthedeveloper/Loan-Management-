@@ -1,5 +1,9 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { Landmark, Plus } from 'lucide-react'
+import { FileSpreadsheet, Landmark, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { ApiError } from '../../../services/api'
+import { useToast } from '../../../context/ToastContext'
+import { reportService } from '../../reports/services/reportService'
 import { PERM } from '../../../config/permissions'
 import { useAuth } from '../../../context/AuthContext'
 import { useLoanMeta } from '../../../hooks/useLoanMeta'
@@ -17,6 +21,12 @@ const repaymentStatuses = [{ value: 'unpaid', label: 'Not started' }, { value: '
 
 export default function LoansPage() {
   const { can } = useAuth()
+  const toast = useToast()
+  const [exporting, setExporting] = useState(false)
+  async function exportBook() {
+    setExporting(true)
+    try { await reportService.export('loan-book', 'xlsx', {}) } catch (e) { toast('error', e instanceof ApiError ? e.message : 'Export failed') } finally { setExporting(false) }
+  }
   const nav = useNavigate()
   const meta = useLoanMeta()
   const list = useServerList(loanService.list, { q: '', status: '', repaymentStatus: '', from: '', to: '', minAmount: '', maxAmount: '' }, { key: 'createdAt', order: 'desc' })
@@ -40,7 +50,10 @@ export default function LoansPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h1 className="text-2xl font-bold tracking-tight">Loans</h1><p className="text-sm text-slate-500">Every loan, with balances calculated from the ledger.</p></div>
-        {can(PERM.loans.create) && <Link to="/loans/new"><Button><Plus className="size-4" />New loan</Button></Link>}
+        <div className="flex flex-wrap gap-2">
+          {can(PERM.reports.export) && <Button variant="secondary" onClick={exportBook} loading={exporting} loadingText="Preparing…"><FileSpreadsheet className="size-4" />Loan book (Excel)</Button>}
+          {can(PERM.loans.create) && <Link to="/loans/new"><Button><Plus className="size-4" />New loan</Button></Link>}
+        </div>
       </div>
       <DataTable columns={cols} rows={list.rows} pg={list.pg} error={list.error} onRetry={list.reload} sort={list.sort} onSort={list.toggleSort} onPage={list.setPage}
         onRowClick={(l) => nav(`/loans/${l.id}`)} toolbar={<FilterBar defs={defs} value={list.filters} onChange={list.updateFilters} />}

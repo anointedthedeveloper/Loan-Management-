@@ -7,7 +7,7 @@ import { AppError } from '../utils/AppError.js';
 export interface AuthUser { id: string; name: string; role: Role; permissions: Permission[] }
 
 declare module 'express-serve-static-core' {
-  interface Request { auth?: AuthUser }
+  interface Request { auth?: AuthUser; userDoc?: InstanceType<typeof User> }
 }
 
 /** Verifies JWT, then re-loads the user so deactivation / permission changes apply immediately. */
@@ -22,6 +22,7 @@ export async function authenticate(req: Request, _res: Response, next: NextFunct
     // Tokens issued before a password change/reset are no longer valid.
     if (user.passwordChangedAt && payload.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) throw AppError.unauthorized('Session expired. Please sign in again.', 'TOKEN_INVALID');
     const role = user.role as Role;
+    req.userDoc = user;
     req.auth = { id: String(user._id), name: user.name, role, permissions: effectivePermissions(role, user.permissions) };
     next();
   } catch (e) { next(e); }

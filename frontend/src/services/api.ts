@@ -35,9 +35,18 @@ export const setUnauthorizedHandler = (fn: () => void) => { onUnauthorized = fn 
 
 export interface Pagination { page: number; limit: number; total: number; pages: number }
 
+const MIN_SAVE_MS = 450
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
 async function request(path: string, opts: { method?: string; body?: unknown; silent?: boolean }) {
   if (!opts.silent) track(1)
-  try { return await doRequest(path, opts) } finally { if (!opts.silent) track(-1) }
+  const started = Date.now()
+  try { return await doRequest(path, opts) }
+  finally {
+    // Saves (POST/PATCH/PUT/DELETE) keep their "Saving…" state visible briefly, so a fast network doesn't make it flicker.
+    if (!opts.silent && opts.method && opts.method !== 'GET') { const left = MIN_SAVE_MS - (Date.now() - started); if (left > 0) await sleep(left) }
+    if (!opts.silent) track(-1)
+  }
 }
 
 async function doRequest(path: string, opts: { method?: string; body?: unknown }) {

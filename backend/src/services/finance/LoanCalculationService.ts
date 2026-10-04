@@ -78,7 +78,7 @@ export function calculateLoan(input: LoanTermsInput): LoanTerms {
   return {
     amount: round2(input.amount), carriedBalance: fromKobo(carriedKobo), bankDeductionRate: ded,
     grossAmount: fromKobo(grossKobo), principal: fromKobo(principalKobo), interestBase: fromKobo(baseKobo),
-    interestAmount: fromKobo(interestKobo), totalRepayment: fromKobo(totalKobo), numberOfInstallments: n,
+    interestAmount: fromKobo(interestKobo), monthlyInterest: fromKobo(input.rateBasis === 'per_month' ? Math.round((baseKobo * input.interestRate) / 100) : months > 0 ? Math.round(interestKobo / months) : interestKobo), totalRepayment: fromKobo(totalKobo), numberOfInstallments: n,
     installmentAmount: fromKobo(inst.regular), finalInstallmentAmount: fromKobo(inst.last), durationMonths: months,
     startDate: input.startDate,
     firstPaymentDate: input.firstPaymentDate,

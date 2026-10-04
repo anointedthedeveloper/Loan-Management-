@@ -1,27 +1,28 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { ToastProvider } from './context/ToastContext'
 import { ProtectedRoute, dashboardPathFor } from './routes/ProtectedRoute'
 import AppLayout from './layouts/AppLayout'
 import LoginPage from './features/auth/LoginPage'
-import DashboardPage from './features/dashboard/DashboardPage'
-import StaffListPage from './features/staff/pages/StaffListPage'
-import StaffDetailPage from './features/staff/pages/StaffDetailPage'
-import CustomersPage from './features/customers/pages/CustomersPage'
-import CustomerDetailPage from './features/customers/pages/CustomerDetailPage'
-import CustomerFormPage from './features/customers/pages/CustomerFormPage'
+const DashboardPage = lazy(() => import('./features/dashboard/DashboardPage'))
+const StaffListPage = lazy(() => import('./features/staff/pages/StaffListPage'))
+const StaffDetailPage = lazy(() => import('./features/staff/pages/StaffDetailPage'))
+const CustomersPage = lazy(() => import('./features/customers/pages/CustomersPage'))
+const CustomerDetailPage = lazy(() => import('./features/customers/pages/CustomerDetailPage'))
+const CustomerFormPage = lazy(() => import('./features/customers/pages/CustomerFormPage'))
 import { PERM } from './config/permissions'
-import LoansPage from './features/loans/pages/LoansPage'
-import LoanFormPage from './features/loans/pages/LoanFormPage'
-import LoanDetailPage from './features/loans/pages/LoanDetailPage'
-import RepaymentsPage from './features/repayments/pages/RepaymentsPage'
-import TransactionsPage from './features/transactions/pages/TransactionsPage'
-import TopUpsPage from './features/topups/pages/TopUpsPage'
-import ReportsPage from './features/reports/pages/ReportsPage'
-import AuditLogPage from './features/audit/pages/AuditLogPage'
-import SettingsPage from './features/settings/pages/SettingsPage'
-import ProductsPage from './features/products/pages/ProductsPage'
-import StatementPage from './features/statements/pages/StatementPage'
+const LoansPage = lazy(() => import('./features/loans/pages/LoansPage'))
+const LoanFormPage = lazy(() => import('./features/loans/pages/LoanFormPage'))
+const LoanDetailPage = lazy(() => import('./features/loans/pages/LoanDetailPage'))
+const RepaymentsPage = lazy(() => import('./features/repayments/pages/RepaymentsPage'))
+const TransactionsPage = lazy(() => import('./features/transactions/pages/TransactionsPage'))
+const TopUpsPage = lazy(() => import('./features/topups/pages/TopUpsPage'))
+const ReportsPage = lazy(() => import('./features/reports/pages/ReportsPage'))
+const AuditLogPage = lazy(() => import('./features/audit/pages/AuditLogPage'))
+const SettingsPage = lazy(() => import('./features/settings/pages/SettingsPage'))
+const ProductsPage = lazy(() => import('./features/products/pages/ProductsPage'))
+const StatementPage = lazy(() => import('./features/statements/pages/StatementPage'))
 import NotFound from './pages/NotFound'
 import { LoadingScreen } from './components/ui/feedback'
 import { GlobalLoader } from './components/ui/GlobalLoader'
@@ -38,6 +39,7 @@ export default function App() {
       <ToastProvider>
         <GlobalLoader />
         <AuthProvider>
+          <Suspense fallback={null}>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/" element={<RoleRedirect />} />
@@ -78,6 +80,7 @@ export default function App() {
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
         </AuthProvider>
       </ToastProvider>
     </BrowserRouter>

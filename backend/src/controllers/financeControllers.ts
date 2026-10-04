@@ -103,7 +103,7 @@ export const reportCatalog = asyncHandler(async (_req, res) => ok(res, { reports
 export const reportRun = asyncHandler(async (req, res) => {
   const f = q(res);
   const result = await reports.runReport(String(req.params.type), f);
-  if (f.format === 'json') return ok(res, result);
+  if (f.format === 'json') return ok(res, { ...result, rows: result.rows.map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !k.startsWith('_')))) });
   if (!req.auth!.permissions.includes('reports.export')) throw AppError.forbidden('You do not have permission to export reports');
   const company = (await settings.getSection('company')).name;
   const base = `protech-${result.key}-${new Date().toISOString().slice(0, 10)}`;

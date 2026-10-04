@@ -292,3 +292,21 @@ describe('marking one installment paid, and waived interest', () => {
     expect(full.creditBalance).toBe(0);
   });
 });
+
+describe("the calculator site's worked example (OKOH ABBA EMMANUEL)", () => {
+  it('Gross Payment 100,000.00 -> Principal 136,012.38 -> Interest 81,607.43 -> Gross Loan 217,619.81 -> EMI 18,134.98', () => {
+    const t = calculateLoan({ ...base, amount: 96_000, carriedBalance: 36_012.38, duration: { value: 12, unit: 'months' } });
+    expect(t.grossAmount).toBe(100_000);
+    expect(t.principal).toBe(136_012.38);
+    expect(t.monthlyInterest).toBe(6_800.62); // principal x 5%
+    expect(t.interestAmount).toBe(81_607.43); // principal x 5% x 12, rounded once (interest is on the ORIGINAL principal, never a reducing balance)
+    expect(t.totalRepayment).toBe(217_619.81);
+    expect(t.installmentAmount).toBe(18_134.98);
+  });
+  it('interest is one fixed charge set at the start: repaying early does not change what was charged', () => {
+    const t = calculateLoan(base);
+    const s = generateSchedule(t, 'monthly');
+    expect(Math.round(s.reduce((a, i) => a + i.interestComponent * 100, 0))).toBe(Math.round(t.interestAmount * 100));
+    expect(t.interestAmount).toBe(t.monthlyInterest * 6);
+  });
+});

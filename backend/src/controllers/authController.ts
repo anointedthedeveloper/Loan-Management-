@@ -12,7 +12,7 @@ export const login = asyncHandler(async (req, res) => {
 });
 
 export const me = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.auth!.id);
+  const user = req.userDoc ?? (await User.findById(req.auth!.id)); // already loaded by the auth middleware
   if (!user) throw AppError.unauthorized();
   ok(res, { user: AuthService.publicUser({ ...user.toObject(), role: user.role as 'ceo' | 'accountant' }) });
 });

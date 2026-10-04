@@ -5,7 +5,7 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 30,
-      "includeFiles": "dist/**"
+      "includeFiles": "{dist/**,node_modules/pdfkit/js/**}"
     }
   },
   "rewrites": [
@@ -20,5 +20,8 @@
       "path": "/api/jobs/refresh-overdue",
       "schedule": "0 2 * * *"
     }
+  ],
+  "regions": [
+    "cdg1"
   ]
 }

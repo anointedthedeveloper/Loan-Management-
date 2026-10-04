@@ -6,7 +6,7 @@ import { nextSequence } from '../models/Counter.js';
 import { AppError } from '../utils/AppError.js';
 import { changedFields } from '../utils/diff.js';
 import { skipOf } from '../utils/pagination.js';
-import { todayLagos } from '../utils/dates.js';
+import { isoDate, todayLagos } from '../utils/dates.js';
 import { AUDIT } from '../config/auditActions.js';
 import { LIVE_LOAN_STATUSES, loanStatus, type Frequency } from '../config/loanOptions.js';
 import { CUSTOMER_STATUSES } from '../config/customerOptions.js';
@@ -112,7 +112,7 @@ export async function createLoanRecord(d: Draft, opts: { customerId: Types.Objec
   const loan = await Loan.create({
     loanId: await nextLoanId(), customer: opts.customerId, product: d.product._id, productName: d.product.name, status: opts.status,
     amount: t.amount, carriedBalance: t.carriedBalance, bankDeductionRate: t.bankDeductionRate, grossAmount: t.grossAmount, principal: t.principal,
-    interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestBasis: d.interestBasis, interestAmount: t.interestAmount, totalRepayment: t.totalRepayment,
+    interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestBasis: d.interestBasis, interestAmount: t.interestAmount, monthlyInterest: t.monthlyInterest, totalRepayment: t.totalRepayment,
     duration: d.duration, frequency: d.frequency, customIntervalDays: d.customIntervalDays, numberOfInstallments: t.numberOfInstallments, installmentAmount: t.installmentAmount,
     startDate: t.startDate, firstPaymentDate: t.firstDueDate, firstPaymentDateIsCustom: !!d.firstPaymentDate, dueDate: t.dueDate, outstandingBalance: t.totalRepayment, principalBalance: t.principal, interestBalance: t.interestAmount,
     notes: opts.notes, createdBy: opts.actorId, updatedBy: opts.actorId, ...(opts.extra ?? {}), loanType,
@@ -151,7 +151,7 @@ export async function updateLoan(id: string, input: Partial<PricingInput> & { no
   const d = await buildDraft(merged);
   const t = d.terms;
   loan.set({ product: d.product._id, productName: d.product.name, amount: t.amount, carriedBalance: t.carriedBalance, bankDeductionRate: t.bankDeductionRate, grossAmount: t.grossAmount, principal: t.principal,
-    interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestAmount: t.interestAmount, totalRepayment: t.totalRepayment, duration: d.duration, frequency: d.frequency,
+    interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestAmount: t.interestAmount, monthlyInterest: t.monthlyInterest, totalRepayment: t.totalRepayment, duration: d.duration, frequency: d.frequency,
     customIntervalDays: d.customIntervalDays, numberOfInstallments: t.numberOfInstallments, installmentAmount: t.installmentAmount, startDate: t.startDate, firstPaymentDate: t.firstDueDate, firstPaymentDateIsCustom: !!d.firstPaymentDate, dueDate: t.dueDate,
     outstandingBalance: t.totalRepayment, principalBalance: t.principal, interestBalance: t.interestAmount, ...(input.notes !== undefined && { notes: input.notes }), updatedBy: actor.id });
   await loan.save();
@@ -208,7 +208,9 @@ export const markLoanDefaulted = (id: string, reason: string, actor: Actor) => c
 /* ---------------- reads ---------------- */
 export async function getLoan(id: string) {
   const loan = await findLoan(id);
-  if (!loanStatus(loan.status)?.manual || loan.status === 'defaulted') await recalculateLoan(loan._id); // keep overdue/completed fresh when viewed
+  // Overdue/completed are date-driven, so refresh once per day (and on every payment / nightly job), not on every view.
+  const staleToday = !loan.lastRecalculatedAt || isoDate(todayLagos(loan.lastRecalculatedAt)) !== isoDate(todayLagos());
+  if (staleToday && (!loanStatus(loan.status)?.manual || loan.status === 'defaulted')) await recalculateLoan(loan._id);
   const fresh = await Loan.findById(loan._id).populate(populateLoan);
   const schedule = await RepaymentSchedule.findOne({ loan: loan._id }).lean();
   return { loan: serializeLoan(fresh!), schedule: (schedule?.installments ?? []).map(({ ...i }) => i) };

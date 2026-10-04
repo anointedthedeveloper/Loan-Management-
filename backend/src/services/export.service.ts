@@ -1,5 +1,3 @@
-import ExcelJS from 'exceljs';
-import PDFDocument from 'pdfkit';
 import type { Col, ReportResult, Row } from './report.service.js';
 
 const NAIRA = new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -20,6 +18,7 @@ export function toCsv(r: ReportResult): string {
 }
 
 export async function toXlsx(r: ReportResult, company: string): Promise<Buffer> {
+  const { default: ExcelJS } = await import('exceljs');
   const wb = new ExcelJS.Workbook(); wb.creator = company;
   const ws = wb.addWorksheet(r.title.slice(0, 30));
   ws.addRow([`${company} — ${r.title}`]).font = { bold: true, size: 14 };
@@ -27,13 +26,38 @@ export async function toXlsx(r: ReportResult, company: string): Promise<Buffer> 
   ws.addRow([]);
   const head = ws.addRow(r.columns.map((c) => c.label)); head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   head.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B3D2E' } }; });
-  for (const row of r.rows) ws.addRow(r.columns.map((c) => { const v = raw(c, row[c.key]!); return typeof v === 'string' && /^[=+\-@]/.test(v) ? `'${v}` : v; }));
-  if (r.totals) ws.addRow(r.columns.map((c) => raw(c, r.totals![c.key] ?? ''))).font = { bold: true };
-  r.columns.forEach((c, i) => { const col = ws.getColumn(i + 1); col.width = Math.max(12, c.label.length + 4); if (c.type === 'money') col.numFmt = '#,##0.00'; });
+  const col = (key: string) => { const i = r.columns.findIndex((c) => c.key === key); return i < 0 ? null : ws.getColumn(i + 1).letter; };
+  const L = r.key === 'loan-book' ? { bank: col('bankPayment'), bf: col('balanceBF'), gross: col('grossPayment'), prin: col('principal'), int: col('interest'), loan: col('grossLoan'), emi: col('emi'), tenor: col('tenor'), repaid: col('repaid'), bal: col('balance'),
+    m1: r.columns.find((c) => c.key.startsWith('m_')) ? col(r.columns.find((c) => c.key.startsWith('m_'))!.key) : null, mN: [...r.columns].reverse().find((c) => c.key.startsWith('m_')) ? col([...r.columns].reverse().find((c) => c.key.startsWith('m_'))!.key) : null } : null;
+  const firstDataRow = ws.rowCount + 1;
+  for (const row of r.rows) {
+    const x = ws.addRow(r.columns.map((c) => { const v = raw(c, row[c.key]!); return typeof v === 'string' && /^[=+\-@]/.test(v) ? `'${v}` : v; }));
+    if (!L) continue;
+    // The calculator's own formulas, so the sheet can be audited and recalculated in Excel.
+    const n = x.number; const calc = (row as any)._calc as { ded: number; rate: number } | null; const put = (k: string | null, formula: string, key: string) => { if (k) x.getCell(k).value = { formula, result: Number(row[key]) || 0 }; };
+    if (calc) {
+      const pct = `${Math.round(calc.rate * 1e6) / 1e4}%`;
+      put(L.gross, calc.ded > 0 ? `ROUND(${L.bank}${n}/${Math.round((1 - calc.ded) * 1e6) / 1e6},2)` : `ROUND(${L.bank}${n},2)`, 'grossPayment');
+      put(L.prin, `ROUND(${L.bf}${n}+${L.gross}${n},2)`, 'principal');
+      put(L.int, `ROUND(${L.prin}${n}*${pct}*${L.tenor}${n},2)`, 'interest');
+      put(L.loan, `ROUND(${L.prin}${n}+${L.prin}${n}*${pct}*${L.tenor}${n},2)`, 'grossLoan');
+      put(L.emi, `ROUND((${L.prin}${n}+${L.prin}${n}*${pct}*${L.tenor}${n})/${L.tenor}${n},2)`, 'emi');
+    }
+    if (L.m1 && L.mN && !r.from && !r.to) put(L.repaid, `SUM(${L.m1}${n}:${L.mN}${n})`, 'repaid');
+    put(L.bal, `ROUND(${L.loan}${n}-${L.repaid}${n},2)`, 'balance');
+  }
+  const lastDataRow = ws.rowCount;
+  if (r.totals) {
+    const t = ws.addRow(r.columns.map((c) => raw(c, r.totals![c.key] ?? ''))); t.font = { bold: true };
+    if (L && r.rows.length) r.columns.forEach((c, i) => { if (r.totals![c.key] !== undefined && c.type === 'money') { const cl = ws.getColumn(i + 1).letter; t.getCell(i + 1).value = { formula: `SUM(${cl}${firstDataRow}:${cl}${lastDataRow})`, result: Number(r.totals![c.key]) || 0 }; } });
+  }
+  if (L) { ws.views = [{ state: 'frozen', xSplit: 3, ySplit: head.number }]; ws.autoFilter = { from: { row: head.number, column: 1 }, to: { row: head.number, column: r.columns.length } }; }
+  r.columns.forEach((c, i) => { const cc = ws.getColumn(i + 1); cc.width = Math.max(12, Math.min(c.label.length + 4, c.key === 'clientName' ? 34 : 22)); if (c.type === 'money') cc.numFmt = '#,##0.00'; if (c.type === 'date') cc.numFmt = 'yyyy-mm-dd'; });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-export function toPdf(r: ReportResult, company: string): Promise<Buffer> {
+export async function toPdf(r: ReportResult, company: string): Promise<Buffer> {
+  const { default: PDFDocument } = await import('pdfkit');
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30 });
     const chunks: Buffer[] = []; doc.on('data', (b) => chunks.push(b)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);

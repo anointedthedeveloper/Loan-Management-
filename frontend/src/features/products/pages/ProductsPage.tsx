@@ -68,7 +68,7 @@ export default function ProductsPage() {
                   <div className="min-w-0"><h3 className="truncate font-semibold">{p.name}</h3><p className="font-mono text-xs text-slate-500">{p.code}</p></div>
                   <Badge tone={p.isActive ? 'green' : 'slate'}>{p.isActive ? 'Active' : 'Inactive'}</Badge>
                 </div>
-                <p className="mt-4 text-3xl font-bold tracking-tight text-brand-700">{p.interestRate}%<span className="ml-1 text-sm font-medium text-slate-500">{p.rateBasis === 'per_month' ? 'per month' : p.rateBasis === 'per_annum' ? 'per annum' : 'flat'}</span></p>
+                <p className="mt-4 text-3xl font-bold tracking-tight text-brand-700">{p.interestRate}%<span className="ml-1 text-sm font-medium text-slate-500">{p.rateBasis === 'per_month' ? 'per month, flat' : p.rateBasis === 'per_annum' ? 'per annum, flat' : 'of principal, once'}</span></p>
                 {p.description && <p className="mt-2 line-clamp-2 text-sm text-slate-600">{p.description}</p>}
                 <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                   <div><dt className="text-slate-500">Amount</dt><dd className="font-medium">{formatMoneyShort(p.minAmount)} – {p.maxAmount ? formatMoneyShort(p.maxAmount) : 'no limit'}</dd></div>

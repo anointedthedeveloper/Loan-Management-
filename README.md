@@ -105,3 +105,15 @@ It only works while the database has no users. Create the accountant afterwards 
 - **Workflow**: register client -> enter loan -> record repayments -> balance is calculated from the ledger -> **Generate statement** (loan page, customer page).
 - **Statement** (`GET /api/loans/:id/statement`, `GET /api/customers/:id/statement`; `format=json|pdf|xlsx|csv`, optional `from`/`to`): client information (IPPIS number, name, ministry), loan information (amount taken, principal, interest, total loan, EMI, payment/repayment dates) and the transaction statement with Date, Reference, Description, DR, CR and running Balance. Debit = what the client owes, credit = what reduces it; the closing balance always equals the loan balance (covered by tests). Reversals show as the original credit plus an offsetting debit.
 - **Audit log** (CEO): records page visits (`PAGE_VIEW`), sign-ins/outs, statement generation and every change, each with person, role, time and IP. Filter by what (changes / pages / sign-ins), role, account, action, record type, date and search; export to CSV.
+
+## Performance notes (hosted deployment)
+- **Run the backend in the same region as MongoDB.** The Atlas cluster is in `eu-west-3` (Paris), so `backend/vercel.json` pins the function to `cdg1`. Each database call is then milliseconds instead of ~90 ms across the Atlantic; pages make 3-30 database calls.
+- The dashboard runs its queries concurrently, settings are cached for 30 s per server instance, loans are recalculated once a day / on payment (not on every view), and the Excel/PDF libraries are loaded only when an export is requested (faster cold starts). `npm run measure` prints the database calls per endpoint.
+- Set `VITE_API_URL=https://<backend>/api` on the frontend project to call the backend directly. Without it the frontend proxies `/api` through its own host (works, but adds a hop).
+- The PDF library reads font files at runtime; `vercel.json` bundles them explicitly (`includeFiles`), otherwise PDF exports fail on Vercel.
+
+## Interest (flat, one-time)
+Interest is worked out once on the original principal: monthly interest = principal x rate, total interest = monthly interest x tenor (never on a reducing balance). It is added to the loan (Gross Loan) and repaid through the equal monthly installments (EMI = Gross Loan / tenor). The worked example from the calculator site (OKOH ABBA EMMANUEL: 100,000.00 / 136,012.38 / 81,607.43 / 217,619.81 / 18,134.98) is a test. A product can instead use "% of principal for the whole loan" as its rate basis if a flat single percentage is ever wanted.
+
+## Loan book Excel
+Reports > "Loan book (monthly breakdown)" (or Loans > "Loan book (Excel)") exports one row per loan in Protech's loan-book layout with live calculator formulas (`=ROUND(I5/0.96,2)`, `=ROUND(K5*5%*F5,2)`, ...), a column per month of repayments, Repayment to date and Balance. Every loan statement's Excel also has a "Monthly breakdown" sheet.

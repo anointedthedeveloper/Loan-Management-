@@ -32,6 +32,8 @@ export interface LoanTerms {
   principal: number;
   interestBase: number;
   interestAmount: number;
+  /** Principal x rate for one month (display). The interest charge itself is fixed once, up front: this x tenor. */
+  monthlyInterest: number;
   totalRepayment: number;
   numberOfInstallments: number;
   installmentAmount: number;

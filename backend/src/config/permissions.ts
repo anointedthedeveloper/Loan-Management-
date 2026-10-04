@@ -63,6 +63,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'topups.view',
     'topups.request',
     'reports.view',
+    'reports.export',
   ],
 };
 

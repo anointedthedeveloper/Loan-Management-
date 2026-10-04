@@ -52,7 +52,7 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
         {s && (
           <div className="ml-auto flex flex-wrap gap-2">
             <Button variant="secondary" onClick={() => window.print()}><Printer className="size-4" />Print</Button>
-            {([['pdf', 'PDF', FileText], ['xlsx', 'Excel', FileSpreadsheet], ['csv', 'CSV', Download]] as const).map(([f, label, Icon]) => <Button key={f} variant="secondary" loading={exporting === f} onClick={() => exportAs(f)}><Icon className="size-4" />{label}</Button>)}
+            {([['pdf', 'PDF', FileText], ['xlsx', 'Excel (with monthly breakdown)', FileSpreadsheet], ['csv', 'CSV', Download]] as const).map(([f, label, Icon]) => <Button key={f} variant="secondary" loading={exporting === f} onClick={() => exportAs(f)}><Icon className="size-4" />{label}</Button>)}
           </div>
         )}
       </div>
@@ -70,8 +70,8 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
           {s.loans.length === 0 ? <EmptyState title="No loan transactions yet" hint="A statement appears once a loan has been disbursed." /> : s.loans.map((l) => (
             <section key={l.loan.id} className="space-y-3 break-inside-avoid-page">
               <h2 className="text-xs font-semibold uppercase tracking-wide text-brand-700">Loan information · {l.loan.loanId} <span className="font-normal normal-case text-slate-500">({titleCase(l.loan.status)}{l.loan.loanType !== 'new' ? `, ${l.loan.loanType}` : ''})</span></h2>
-              <dl className="grid gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-4 print:bg-transparent print:p-0">
-                <Item k="Amount Taken" v={formatMoney(l.loan.amountTaken)} /><Item k="Principal" v={formatMoney(l.loan.principal)} /><Item k="Interest" v={formatMoney(l.loan.interest)} /><Item k="Total Loan" v={formatMoney(l.loan.totalLoan)} />
+              <dl className="grid gap-4 rounded-lg bg-slate-50 p-4 sm:grid-cols-2 lg:grid-cols-5 print:bg-transparent print:p-0">
+                <Item k="Amount Taken" v={formatMoney(l.loan.amountTaken)} /><Item k="Principal" v={formatMoney(l.loan.principal)} /><Item k="Monthly interest" v={formatMoney(l.loan.monthlyInterest)} /><Item k="Interest (one-time total)" v={formatMoney(l.loan.interest)} /><Item k="Total Loan" v={formatMoney(l.loan.totalLoan)} />
                 <Item k={`EMI (${l.loan.frequency})`} v={`${formatMoney(l.loan.emi)} × ${l.loan.numberOfInstallments}`} /><Item k="Payment Date" v={formatDate(l.loan.paymentDate)} /><Item k="First Repayment" v={formatDate(l.loan.firstRepaymentDate)} /><Item k="Final Due Date" v={formatDate(l.loan.finalDueDate)} />
               </dl>
               <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -86,6 +86,17 @@ export default function StatementPage({ kind }: { kind: 'loan' | 'client' }) {
                   <tfoot className="border-t-2 border-slate-300 bg-slate-50 text-sm font-bold print:bg-transparent"><tr><td className="px-3 py-2.5" colSpan={3}>Totals · closing balance</td><td className="px-3 py-2.5 text-right">{formatMoney(l.totals.debit)}</td><td className="px-3 py-2.5 text-right">{formatMoney(l.totals.credit)}</td><td className="px-3 py-2.5 text-right">{formatMoney(l.totals.closingBalance)}</td></tr></tfoot>
                 </table>
               </div>
+              {l.schedule.length > 0 && (
+                <details className="rounded-lg border border-slate-200 print:hidden">
+                  <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-semibold text-brand-700">Monthly breakdown ({l.schedule.length} installments) — also in the Excel download</summary>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">No.</th><th className="px-3 py-2">Month</th><th className="px-3 py-2">Due</th><th className="px-3 py-2 text-right">EMI</th><th className="px-3 py-2 text-right">Principal</th><th className="px-3 py-2 text-right">Interest</th><th className="px-3 py-2 text-right">Paid</th><th className="px-3 py-2 text-right">Remaining</th><th className="px-3 py-2">Status</th></tr></thead>
+                      <tbody className="divide-y divide-slate-100 tabular-nums">{l.schedule.map((m) => <tr key={m.number}><td className="px-3 py-1.5">{m.number}</td><td className="px-3 py-1.5">{m.month}</td><td className="px-3 py-1.5">{formatDate(m.dueDate)}</td><td className="px-3 py-1.5 text-right">{formatMoney(m.emi)}</td><td className="px-3 py-1.5 text-right">{formatMoney(m.principal)}</td><td className="px-3 py-1.5 text-right">{formatMoney(m.interest)}</td><td className="px-3 py-1.5 text-right">{formatMoney(m.paid)}</td><td className="px-3 py-1.5 text-right">{formatMoney(m.remaining)}</td><td className="px-3 py-1.5">{titleCase(m.status)}</td></tr>)}</tbody>
+                    </table>
+                  </div>
+                </details>
+              )}
             </section>
           ))}
           {s.loans.length > 1 && <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm font-semibold print:bg-transparent">All loans — debit {formatMoney(s.summary.totalDebit)} · credit {formatMoney(s.summary.totalCredit)} · balance {formatMoney(s.summary.closingBalance)}</p>}

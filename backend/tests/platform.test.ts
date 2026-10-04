@@ -78,9 +78,12 @@ describe('reports', () => {
     const pdf = await api('get', '/api/reports/loans?format=pdf').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
     expect(pdf.body.subarray(0, 4).toString()).toBe('%PDF');
     expect(await AuditLog.countDocuments({ action: 'REPORT_EXPORTED' })).toBe(3);
-    // the default accountant has reports.view but not reports.export
+    // an accountant with only reports.view can read reports but not export them (the CEO can grant reports.export)
+    await User.updateOne({ username: 'accountant' }, { permissions: ['reports.view'] });
     expect((await api('get', '/api/reports/loans', acct)).status).toBe(200);
     expect((await api('get', '/api/reports/loans?format=csv', acct)).status).toBe(403);
+    await User.updateOne({ username: 'accountant' }, { permissions: [] });
+    expect((await api('get', '/api/reports/loans?format=csv', acct)).status).toBe(200); // default accountants may export
   });
   it('neutralises spreadsheet formula injection in CSV', async () => {
     await Customer.updateOne({ customerId: 'PTC-000001' }, { fullName: '=HYPERLINK("http://evil","x")' });

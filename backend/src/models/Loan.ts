@@ -26,7 +26,8 @@ const schema = new Schema(
     interestRate: { type: Number, required: true },
     rateBasis: { type: String, enum: opt(RATE_BASES), default: 'per_month' },
     interestBasis: { type: String, default: 'full_principal' },
-    interestAmount: { type: Number, required: true },
+    interestAmount: { type: Number, required: true }, // one-time charge, fixed at the start: principal x rate x tenor
+    monthlyInterest: money,                            // principal x rate for one month (shown for reference)
     totalRepayment: { type: Number, required: true },
     duration: { value: { type: Number, required: true }, unit: { type: String, enum: opt(DURATION_UNITS), required: true } },
     frequency: { type: String, enum: opt(FREQUENCIES), required: true },

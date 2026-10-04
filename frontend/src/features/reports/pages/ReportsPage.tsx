@@ -56,7 +56,7 @@ export default function ReportsPage() {
               {(from || to) && <button className="pb-2 text-sm font-medium text-brand-600 hover:underline" onClick={() => { setFrom(''); setTo('') }}>Clear dates</button>}
               {can(PERM.reports.export) && (
                 <div className="ml-auto flex flex-wrap gap-2">
-                  {([['csv', 'CSV', Download], ['xlsx', 'Excel', FileSpreadsheet], ['pdf', 'PDF', FileText]] as const).map(([f, label, Icon]) => <Button key={f} variant="secondary" loading={exporting === f} onClick={() => exportAs(f)}><Icon className="size-4" />{label}</Button>)}
+                  {([['csv', 'CSV', Download], ['xlsx', 'Excel', FileSpreadsheet], ['pdf', 'PDF', FileText]] as const).filter(([f]) => !(key === 'loan-book' && f === 'pdf')).map(([f, label, Icon]) => <Button key={f} variant="secondary" loading={exporting === f} onClick={() => exportAs(f)}><Icon className="size-4" />{label}</Button>)}
                 </div>
               )}
             </div>

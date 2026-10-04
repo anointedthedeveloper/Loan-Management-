@@ -9,14 +9,20 @@ import type { Actor } from '../types/index.js';
 
 const isSection = (s: string): s is SettingsSection => (SETTINGS_SECTIONS as string[]).includes(s);
 
+const CACHE_MS = 30_000;
+let cache: { at: number; value: Settings } | null = null;
+
+/** Settings are read on almost every request but change rarely: cached briefly per server instance (cleared on save). */
 export async function getSettings(): Promise<Settings> {
+  if (cache && Date.now() - cache.at < CACHE_MS) return cache.value;
   const rows = await SystemSetting.find().lean();
   const out: Record<string, unknown> = {};
   for (const s of SETTINGS_SECTIONS) {
     const stored = rows.find((r) => r.key === s)?.value as object | undefined;
     out[s] = { ...DEFAULT_SETTINGS[s], ...(stored ?? {}) }; // missing keys fall back to defaults
   }
-  return out as Settings;
+  cache = { at: Date.now(), value: out as Settings };
+  return cache.value;
 }
 export async function getSection<K extends SettingsSection>(s: K): Promise<Settings[K]> {
   return (await getSettings())[s];
@@ -37,6 +43,7 @@ export async function updateSection(section: string, value: unknown, actor: Acto
   }
   const before = (await getSettings())[section];
   await SystemSetting.updateOne({ key: section }, { $set: { value: parsed.data, updatedBy: actor.id } }, { upsert: true });
+  cache = null;
   const d = changedFields(before as Record<string, unknown>, parsed.data as Record<string, unknown>);
   if (d.changed) await auditAs(actor, { action: AUDIT.SETTINGS_CHANGED, entity: 'Settings', entityId: section, entityLabel: section, before: d.before, after: d.after });
   return (await getSettings())[section];

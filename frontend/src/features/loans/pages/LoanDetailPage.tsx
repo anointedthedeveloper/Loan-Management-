@@ -18,6 +18,7 @@ import { ScheduleTable } from '../components/ScheduleTable'
 import { RecordRepaymentModal } from '../components/RecordRepaymentModal'
 import { MarkInstallmentPaidModal, SettleLoanModal } from '../components/MarkPaidModals'
 import type { Installment } from '../../../types/finance'
+import { LoanRepaymentsList } from '../components/LoanRepaymentsList'
 import { TransactionsTable } from '../../transactions/components/TransactionsTable'
 import { TopUpRequestModal } from '../../topups/components/TopUpRequestModal'
 
@@ -85,7 +86,7 @@ export default function LoanDetailPage() {
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-3">
           <h2 className="text-xs font-semibold uppercase tracking-wide text-brand-700">Loan information</h2>
           <dl className="mt-3 grid gap-3 sm:grid-cols-3">
-            {([['Amount Taken', formatMoney(l.amount)], ['Principal', formatMoney(l.principal)], ['Interest', formatMoney(l.interestAmount)], ['Total Loan', formatMoney(l.totalRepayment)], [`EMI (${titleCase(l.frequency)})`, `${formatMoney(l.installmentAmount)} × ${l.numberOfInstallments}`], ['Payment Date', formatDate(l.startDate)], ['First Repayment', formatDate(l.firstPaymentDate)], ['Final Due Date', formatDate(l.dueDate)]] as [string, string][]).map(([k, v]) => <div key={k}><dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{k}</dt><dd className="mt-0.5 text-sm font-semibold tabular-nums">{v}</dd></div>)}
+            {([['Amount Taken', formatMoney(l.amount)], ['Principal', formatMoney(l.principal)], ['Monthly interest', formatMoney(l.monthlyInterest ?? 0)], ['Interest (one-time total)', formatMoney(l.interestAmount)], ['Total Loan', formatMoney(l.totalRepayment)], [`EMI (${titleCase(l.frequency)})`, `${formatMoney(l.installmentAmount)} × ${l.numberOfInstallments}`], ['Payment Date', formatDate(l.startDate)], ['First Repayment', formatDate(l.firstPaymentDate)], ['Final Due Date', formatDate(l.dueDate)]] as [string, string][]).map(([k, v]) => <div key={k}><dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">{k}</dt><dd className="mt-0.5 text-sm font-semibold tabular-nums">{v}</dd></div>)}
           </dl>
         </section>
       </div>
@@ -96,14 +97,15 @@ export default function LoanDetailPage() {
       {(l.nonCashCredits ?? 0) > 0 && <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">Amount paid includes <b>{formatMoney(l.nonCashCredits)}</b> credited without cash (waived interest or a balance settled by a top-up).</p>}
       {live && l.nextInstallmentNumber && <p className="rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm">Next installment: <b>#{l.nextInstallmentNumber}</b> of {formatMoney(l.nextInstallmentAmount)} due <b>{formatDate(l.nextDueDate)}</b>.{l.creditBalance > 0 && <> Customer credit held: <b>{formatMoney(l.creditBalance)}</b>.</>}</p>}
 
-      <Tabs tabs={[{ key: 'schedule', label: 'Repayment schedule' }, { key: 'transactions', label: 'Transactions' }, { key: 'terms', label: 'Terms & history' }]} active={tab} onChange={setTab} />
+      <Tabs tabs={[{ key: 'schedule', label: 'Repayment schedule' }, { key: 'repayments', label: 'Repayments' }, { key: 'transactions', label: 'All transactions' }, { key: 'terms', label: 'Terms & history' }]} active={tab} onChange={setTab} />
       <div key={tab} className="animate-fade-in rounded-xl border border-slate-200 bg-white shadow-sm">
         {tab === 'schedule' && <ScheduleTable rows={schedule} onMarkPaid={live && can(PERM.repayments.record) ? setMarking : undefined} />}
+        {tab === 'repayments' && (tx.error ? <ErrorState message={tx.error} onRetry={tx.reload} /> : tx.loading ? <div className="p-5"><Skeleton className="h-24 w-full" /></div> : <LoanRepaymentsList rows={tx.data?.data ?? []} />)}
         {tab === 'transactions' && (tx.error ? <ErrorState message={tx.error} onRetry={tx.reload} /> : tx.loading ? <div className="p-5"><Skeleton className="h-24 w-full" /></div> : tx.data?.data.length ? <TransactionsTable rows={tx.data.data} onChanged={() => { reload(); tx.reload() }} /> : <EmptyState icon={<FileX className="size-6" />} title="No transactions yet" hint="The disbursement and repayments appear here once recorded." />)}
         {tab === 'terms' && (
           <dl className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
             {([
-              ['Interest', `${l.interestRate}% ${titleCase(l.rateBasis)} (flat)`], ['Interest amount', formatMoney(l.interestAmount)], ['Bank deduction', `${l.bankDeductionRate}%`],
+              ['Interest rate', `${l.interestRate}% ${l.rateBasis === 'per_month' ? 'per month' : l.rateBasis === 'per_annum' ? 'per annum' : 'of principal'}`], ['Interest charge', `${formatMoney(l.interestAmount)} — fixed once, on the original principal`], ['Bank deduction', `${l.bankDeductionRate}%`],
               ['Gross principal', formatMoney(l.principal)], ['Carried balance', formatMoney(l.carriedBalance)], ['Duration', `${l.duration.value} ${l.duration.unit}`],
               ['Frequency', titleCase(l.frequency)], ['Installments', `${l.numberOfInstallments} × ${formatMoney(l.installmentAmount)}`], ['Start date', formatDate(l.startDate)],
               ['First payment due', formatDate(l.firstPaymentDate)], ['Final due date', formatDate(l.dueDate)], ['Created by', l.createdBy?.name ?? '—'], ['Approved by', l.approvedBy?.name ?? '—'],

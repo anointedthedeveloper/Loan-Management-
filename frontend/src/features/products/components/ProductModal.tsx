@@ -45,7 +45,7 @@ export function ProductModal({ product, categories, onClose, onDone }: { product
           </div>
           <div className="sm:col-span-2"><TextareaField label="Description" value={f.description} onChange={set('description')} /></div>
           <Field label="Interest rate (%)" type="number" step="0.01" min="0" value={f.interestRate} onChange={set('interestRate')} error={errs.interestRate} />
-          <SelectField label="Rate basis" options={meta?.rateBases ?? []} value={f.rateBasis} onChange={set('rateBasis')} placeholder="Basis" />
+          <div><SelectField label="Rate basis" options={meta?.rateBases ?? []} value={f.rateBasis} onChange={set('rateBasis')} placeholder="Basis" /><p className="mt-1 text-xs text-slate-500">Flat interest is worked out <b>once</b> on the original principal (principal × rate × months), added to the loan, and repaid through equal installments. It is never recalculated on a reducing balance.</p></div>
           <Field label="Bank deduction (%)" type="number" step="0.01" min="0" value={f.bankDeductionRate} onChange={set('bankDeductionRate')} error={errs.bankDeductionRate} />
           <div />
           <MoneyField label="Minimum amount" value={f.minAmount} onChange={(v) => setF((s) => ({ ...s, minAmount: v }))} /><MoneyField label="Maximum amount" value={f.maxAmount} onChange={(v) => { setF((s) => ({ ...s, maxAmount: v })); setErrs((x) => ({ ...x, maxAmount: '' })) }} error={errs.maxAmount} placeholder="No maximum" />

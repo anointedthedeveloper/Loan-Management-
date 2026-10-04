@@ -1,6 +1,7 @@
 import { Types } from 'mongoose';
 import { Customer } from '../models/Customer.js';
 import { Loan } from '../models/Loan.js';
+import { RepaymentSchedule } from '../models/RepaymentSchedule.js';
 import { Transaction } from '../models/Transaction.js';
 import { AppError } from '../utils/AppError.js';
 import { fromKobo, toKobo } from '../utils/money.js';
@@ -14,13 +15,16 @@ import { getSection } from './settings.service.js';
  * (Balance = Gross loan - repayments).
  */
 export interface StatementRow { date: Date; reference: string; description: string; debit: number; credit: number; balance: number }
+export interface ScheduleLine { number: number; month: string; dueDate: Date; emi: number; principal: number; interest: number; paid: number; remaining: number; status: string }
 export interface LoanStatement {
   loan: {
     id: string; loanId: string; status: string; productName: string | null; loanType: string
-    amountTaken: number; principal: number; interest: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string
+    amountTaken: number; principal: number; interest: number; monthlyInterest: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string
     paymentDate: Date; firstRepaymentDate: Date | null; finalDueDate: Date; currentOutstanding: number
   }
   rows: StatementRow[]
+  /** Month-by-month repayment schedule with what has been paid against each month. */
+  schedule: ScheduleLine[]
   totals: { debit: number; credit: number; closingBalance: number }
 }
 export interface Statement {
@@ -72,15 +76,17 @@ async function loanStatement(loanId: Types.ObjectId | string, from?: Date, to?: 
   if (from && raw.some((r) => r.date < from)) {
     rows.unshift({ date: from, reference: '—', description: 'Balance brought forward', debit: 0, credit: 0, balance: broughtForward });
   }
+  const sched = await RepaymentSchedule.findOne({ loan: loan._id }).lean();
+  const schedule: ScheduleLine[] = (sched?.installments ?? []).map((i) => ({ number: i.number, month: i.dueDate.toISOString().slice(0, 7), dueDate: i.dueDate, emi: i.expectedAmount, principal: i.principalComponent, interest: i.interestComponent, paid: i.amountPaid ?? 0, remaining: i.remaining, status: i.status ?? 'upcoming' }));
   const closing = rows.length ? rows[rows.length - 1]!.balance : broughtForward;
   return {
     loan: {
       id: String(loan._id), loanId: loan.loanId, status: loan.status, productName: loan.productName ?? null, loanType: loan.loanType ?? 'new',
-      amountTaken: loan.amount, principal: loan.principal, interest: loan.interestAmount, totalLoan: loan.totalRepayment, emi: loan.installmentAmount,
+      amountTaken: loan.amount, principal: loan.principal, interest: loan.interestAmount, monthlyInterest: loan.monthlyInterest || Math.round((loan.interestAmount / Math.max(1, loan.duration?.unit === 'months' ? loan.duration.value! : (loan.numberOfInstallments ?? 1))) * 100) / 100, totalLoan: loan.totalRepayment, emi: loan.installmentAmount,
       numberOfInstallments: loan.numberOfInstallments, frequency: loan.frequency, paymentDate: loan.startDate,
       firstRepaymentDate: loan.firstPaymentDate ?? null, finalDueDate: loan.dueDate, currentOutstanding: loan.outstandingBalance,
     },
-    rows,
+    rows, schedule,
     totals: { debit: sum(rows.map((r) => r.debit)), credit: sum(rows.map((r) => r.credit)), closingBalance: closing },
   };
 }

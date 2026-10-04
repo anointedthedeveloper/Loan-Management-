@@ -45,13 +45,13 @@ export function TransactionsTable({ rows, onChanged }: { rows: Transaction[]; on
     <>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Transaction</th><th className="px-4 py-3">Date</th><th className="hidden px-4 py-3 md:table-cell">Customer</th><th className="px-4 py-3">Type</th><th className="hidden px-4 py-3 lg:table-cell">Reference</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3">State</th></tr></thead>
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Transaction</th><th className="px-4 py-3">Date</th><th className="hidden px-4 py-3 md:table-cell">Customer</th><th className="hidden px-4 py-3 lg:table-cell">Loan</th><th className="px-4 py-3">Type</th><th className="hidden px-4 py-3 lg:table-cell">Method / reference</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3">State</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
             {rows.map((t) => (
               <tr key={t.id} onClick={() => setSel(t)} className="cursor-pointer hover:bg-slate-50">
                 <td className="px-4 py-3 font-mono text-xs">{t.transactionId}</td><td className="px-4 py-3">{formatDate(t.date)}</td>
-                <td className="hidden px-4 py-3 md:table-cell">{t.customer?.fullName}</td><td className="px-4 py-3"><TxTypeBadge type={t.type} /></td>
-                <td className="hidden px-4 py-3 text-slate-500 lg:table-cell">{t.reference ?? '—'}</td>
+                <td className="hidden px-4 py-3 md:table-cell">{t.customer?.fullName}</td><td className="hidden px-4 py-3 font-mono text-xs lg:table-cell">{t.loan?.loanId ?? '—'}</td><td className="px-4 py-3"><TxTypeBadge type={t.type} /></td>
+                <td className="hidden px-4 py-3 text-slate-500 lg:table-cell">{[t.method ? titleCase(t.method) : '', t.reference].filter(Boolean).join(' · ') || '—'}</td>
                 <td className={`px-4 py-3 text-right tabular-nums ${t.state === 'reversed' ? 'text-slate-400 line-through' : ''}`}>{formatMoney(t.amount)}</td>
                 <td className="px-4 py-3"><TxStateBadge state={t.state} /></td>
               </tr>

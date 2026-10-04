@@ -1,5 +1,3 @@
-import ExcelJS from 'exceljs';
-import PDFDocument from 'pdfkit';
 import type { Statement } from './statement.service.js';
 
 const NAIRA = new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -8,7 +6,7 @@ const ymd = (d: Date | null | undefined) => (d ? d.toISOString().slice(0, 10) : 
 const dmy = (d: Date | null | undefined) => (d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'UTC' }) : '—');
 const clientLines = (s: Statement): [string, string][] => [['IPPIS Number', s.client.ippisNumber ?? '—'], ['Client Name', s.client.name], ['Ministry / Organization', s.client.ministry ?? '—'], ['Client ID', s.client.customerId], ['Phone', s.client.phone]];
 const loanLines = (l: Statement['loans'][number]['loan']): [string, string][] => [
-  ['Loan ID', l.loanId], ['Amount Taken', money(l.amountTaken)], ['Principal', money(l.principal)], ['Interest', money(l.interest)], ['Total Loan', money(l.totalLoan)],
+  ['Loan ID', l.loanId], ['Amount Taken', money(l.amountTaken)], ['Principal', money(l.principal)], ['Monthly Interest (principal x rate)', money(l.monthlyInterest)], ['Interest (one-time total)', money(l.interest)], ['Total Loan', money(l.totalLoan)],
   ['EMI (repayment per period)', `${money(l.emi)} × ${l.numberOfInstallments}`], ['Payment Date', dmy(l.paymentDate)], ['First Repayment Date', dmy(l.firstRepaymentDate)], ['Final Due Date', dmy(l.finalDueDate)],
 ];
 const periodText = (s: Statement) => (s.period.from || s.period.to ? `Period: ${s.period.from ? dmy(s.period.from) : 'start'} to ${s.period.to ? dmy(s.period.to) : 'date'}` : 'Period: all transactions');
@@ -26,6 +24,7 @@ export function statementToCsv(s: Statement): string {
 }
 
 export async function statementToXlsx(s: Statement, generatedBy: string): Promise<Buffer> {
+  const { default: ExcelJS } = await import('exceljs');
   const wb = new ExcelJS.Workbook(); wb.creator = s.company.name;
   for (const l of s.loans.length ? s.loans : [null]) {
     const ws = wb.addWorksheet(l ? l.loan.loanId : 'Statement');
@@ -44,11 +43,29 @@ export async function statementToXlsx(s: Statement, generatedBy: string): Promis
     }
     ws.addRow([]); ws.addRow([`Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC by ${generatedBy}`]);
     [14, 22, 56, 16, 16, 16].forEach((w, i) => { const c = ws.getColumn(i + 1); c.width = w; if (i >= 3) c.numFmt = '#,##0.00'; });
+    if (l) {
+      // Monthly breakdown: the repayment schedule month by month, with what has been paid against each month.
+      const ms = wb.addWorksheet(`${l.loan.loanId} monthly`.slice(0, 31));
+      ms.addRow([`${s.company.name} - Monthly breakdown - ${l.loan.loanId}`]).font = { bold: true, size: 14 };
+      ms.addRow([`${s.client.name} (IPPIS ${s.client.ippisNumber ?? '-'}) · Total loan ${money(l.loan.totalLoan)} · EMI ${money(l.loan.emi)}`]); ms.addRow([]);
+      const mh = ms.addRow(['No.', 'Month', 'Due Date', 'EMI (Repayment)', 'Principal part', 'Interest part', 'Paid', 'Remaining', 'Status']);
+      mh.font = { bold: true, color: { argb: 'FFFFFFFF' } }; mh.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B3D2E' } }; });
+      const first = ms.rowCount + 1;
+      for (const m of l.schedule) ms.addRow([m.number, m.month, ymd(m.dueDate), m.emi, m.principal, m.interest, m.paid, m.remaining, m.status.replace(/_/g, ' ')]);
+      const last = ms.rowCount;
+      if (l.schedule.length) {
+        const t = ms.addRow(['', '', 'Totals']); t.font = { bold: true };
+        ['D', 'E', 'F', 'G', 'H'].forEach((col) => { t.getCell(col).value = { formula: `SUM(${col}${first}:${col}${last})` }; });
+      }
+      [6, 12, 14, 18, 16, 16, 16, 16, 16].forEach((w, i) => { const c = ms.getColumn(i + 1); c.width = w; if (i >= 3 && i <= 7) c.numFmt = '#,##0.00'; });
+      ms.views = [{ state: 'frozen', ySplit: 4 }];
+    }
   }
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
-export function statementToPdf(s: Statement, generatedBy: string): Promise<Buffer> {
+export async function statementToPdf(s: Statement, generatedBy: string): Promise<Buffer> {
+  const { default: PDFDocument } = await import('pdfkit');
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ size: 'A4', margin: 36 });
     const chunks: Buffer[] = []; doc.on('data', (b) => chunks.push(b)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);
