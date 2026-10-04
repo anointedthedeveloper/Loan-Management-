@@ -6,10 +6,12 @@ import { PERM } from '../../../config/permissions'
 import { useLoanMeta } from '../../../hooks/useLoanMeta'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
+import { MoneyField } from '../../../components/ui/MoneyField'
+import { AttachmentPicker } from '../../attachments/AttachmentComponents'
 import { SelectField } from '../../../components/ui/FormControls'
 import { Modal, ModalActions } from '../../../components/ui/Modal'
 import { formatDate, formatMoney } from '../../../utils/format'
-import type { Installment, Loan, SettlementQuote } from '../../../types/finance'
+import type { Attachment, Installment, Loan, SettlementQuote } from '../../../types/finance'
 import { loanService } from '../services/loanService'
 
 function usePayFields() {
@@ -25,27 +27,33 @@ export function MarkInstallmentPaidModal({ loan, installment, onClose, onDone }:
   const toast = useToast()
   const { meta, f, errs, setErrs, set } = usePayFields()
   const [busy, setBusy] = useState(false)
+  const [amount, setAmount] = useState(String(installment.remaining))
+  const [files, setFiles] = useState<Attachment[]>([])
   async function submit(e: FormEvent) {
-    e.preventDefault(); setBusy(true); setErrs({})
-    try { await loanService.markInstallmentPaid(loan.id, installment.number, { date: f.date || undefined, method: f.method || undefined, reference: f.reference || undefined }); toast('success', `Installment ${installment.number} marked as paid`); onDone() }
+    e.preventDefault()
+    if (!Number(amount)) return setErrs({ amount: 'Enter the amount paid' })
+    setBusy(true); setErrs({})
+    try { await loanService.markInstallmentPaid(loan.id, installment.number, { amount: Number(amount), date: f.date || undefined, method: f.method || undefined, reference: f.reference || undefined, attachmentIds: files.length ? files.map((a) => a.id) : undefined }); toast('success', Number(amount) < installment.remaining ? `Part payment recorded on installment ${installment.number}` : `Installment ${installment.number} marked as paid`); onDone() }
     catch (err) { if (err instanceof ApiError && err.fields) setErrs(err.fields); toast('error', err instanceof ApiError ? err.message : 'Could not record payment') }
     finally { setBusy(false) }
   }
   return (
-    <Modal open onClose={onClose} title={`Mark installment ${installment.number} as paid`}>
+    <Modal open onClose={onClose} title={`Installment ${installment.number}: record payment`}>
       <form onSubmit={submit} className="space-y-4" noValidate>
         <div className="rounded-lg bg-slate-50 p-4 text-sm">
           <p className="text-slate-500">{loan.loanId} · due {formatDate(installment.dueDate)}</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums">{formatMoney(installment.remaining)}</p>
-          <p className="text-xs text-slate-500">The amount still owed on this installment. This is recorded as a repayment in the ledger.</p>
+          <p className="mt-1 text-sm">Still owed on this installment: <b className="tabular-nums">{formatMoney(installment.remaining)}</b></p>
         </div>
+        <MoneyField label="Amount paid" autoFocus value={amount} onChange={(v) => { setAmount(v); setErrs((x) => ({ ...x, amount: '' })) }} error={errs.amount} placeholder="0.00" />
+        <p className="-mt-2 text-xs text-slate-500">Pre-filled with what is owed. Change it if the customer paid a different amount; it is recorded in the ledger as a repayment.</p>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Payment date" type="date" value={f.date} onChange={set('date')} error={errs.date} />
           <SelectField label="Method" options={meta?.paymentMethods ?? []} value={f.method} onChange={set('method')} placeholder="Choose method" error={errs.method} />
         </div>
         <Field label="Reference" value={f.reference} onChange={set('reference')} error={errs.reference} placeholder="Transfer / receipt reference" />
-        <p className="text-xs text-slate-500">Leave the date empty for today. Other months are not affected.</p>
-        <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">Mark as paid</Button></ModalActions>
+        <AttachmentPicker value={files} onChange={setFiles} loanId={loan.id} />
+        <p className="text-xs text-slate-500">Leave the date empty for today.</p>
+        <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">Record payment</Button></ModalActions>
       </form>
     </Modal>
   )
@@ -59,6 +67,7 @@ export function SettleLoanModal({ loan, onClose, onDone }: { loan: Loan; onClose
   const [quote, setQuote] = useState<SettlementQuote | null>(null)
   const [qErr, setQErr] = useState('')
   const [busy, setBusy] = useState(false)
+  const [files, setFiles] = useState<Attachment[]>([])
 
   useEffect(() => {
     let live = true
@@ -70,7 +79,7 @@ export function SettleLoanModal({ loan, onClose, onDone }: { loan: Loan; onClose
   const needsApproval = !!quote && quote.interestWaived > 0 && !can(PERM.loans.approve)
   async function submit(e: FormEvent) {
     e.preventDefault(); setBusy(true); setErrs({})
-    try { await loanService.settle(loan.id, { date: f.date || undefined, method: f.method || undefined, reference: f.reference || undefined }); toast('success', `${loan.loanId} settled`); onDone() }
+    try { await loanService.settle(loan.id, { date: f.date || undefined, method: f.method || undefined, reference: f.reference || undefined, attachmentIds: files.length ? files.map((a) => a.id) : undefined }); toast('success', `${loan.loanId} settled`); onDone() }
     catch (err) { if (err instanceof ApiError && err.fields) setErrs(err.fields); toast('error', err instanceof ApiError ? err.message : 'Could not settle the loan') }
     finally { setBusy(false) }
   }
@@ -91,6 +100,7 @@ export function SettleLoanModal({ loan, onClose, onDone }: { loan: Loan; onClose
           <SelectField label="Method" options={meta?.paymentMethods ?? []} value={f.method} onChange={set('method')} placeholder="Choose method" error={errs.method} />
         </div>
         <Field label="Reference" value={f.reference} onChange={set('reference')} error={errs.reference} placeholder="Transfer / receipt reference" />
+        <AttachmentPicker value={files} onChange={setFiles} loanId={loan.id} />
         <p className="text-xs text-slate-500">The loan is marked completed and every remaining installment is closed. This is recorded in the ledger and audit log.</p>
         <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Settling…" disabled={!quote || needsApproval}>Settle loan</Button></ModalActions>
       </form>

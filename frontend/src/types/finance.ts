@@ -64,7 +64,9 @@ export interface Transaction {
   description: string | null; isCash: boolean; affectsLoanBalance: boolean; allocations: { number: number; principal: number; interest: number }[]
   customer: CustomerRef | null; loan: { id: string; loanId?: string } | null; createdBy: { id: string; name?: string } | null
   reversalOf: string | null; reversedAt: string | null; reversalReason: string | null; state: 'posted' | 'reversed'; createdAt: string
+  attachments?: Attachment[]; editedFrom?: string | null; supersededBy?: string | null; targetInstallment?: number | null
 }
+export interface Attachment { id: string; filename: string; mimeType: string; size: number; createdAt: string }
 
 export interface TopUpCalc {
   mode: string; carriedBalance: number; newFunds: number; percentRepaid: number; eligible: boolean; ineligibleReason?: string

@@ -11,9 +11,9 @@ export const PERM = {
   audit: { view: 'audit.view' },
   settings: { manage: 'settings.manage' },
   reports: { view: 'reports.view', export: 'reports.export' },
-  loans: { view: 'loans.view', create: 'loans.create', edit: 'loans.edit', approve: 'loans.approve' },
+  loans: { view: 'loans.view', create: 'loans.create', edit: 'loans.edit', editActive: 'loans.editActive', approve: 'loans.approve' },
   products: { manage: 'products.manage' },
-  repayments: { view: 'repayments.view', record: 'repayments.record' },
+  repayments: { view: 'repayments.view', record: 'repayments.record', edit: 'repayments.edit' },
   transactions: { view: 'transactions.view', create: 'transactions.create', reverse: 'transactions.reverse' },
   topups: { view: 'topups.view', request: 'topups.request', approve: 'topups.approve' },
 } as const

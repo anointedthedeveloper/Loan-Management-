@@ -3,6 +3,7 @@ import type { LoanDetail, Transaction } from '../../../types/finance'
 
 export const repaymentService = {
   list: (p: Record<string, string | number>) => apiPage<Transaction>(`/repayments${qs(p)}`),
+  edit: (id: string, body: unknown) => api<LoanDetail & { transaction: Transaction }>(`/repayments/${id}/edit`, { method: 'POST', body }),
   record: (body: unknown) => api<LoanDetail & { transaction: Transaction }>('/repayments', { method: 'POST', body }),
 }
 export const transactionService = {

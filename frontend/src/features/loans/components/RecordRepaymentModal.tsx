@@ -8,6 +8,8 @@ import { MoneyField } from '../../../components/ui/MoneyField'
 import { SelectField } from '../../../components/ui/FormControls'
 import { Modal, ModalActions } from '../../../components/ui/Modal'
 import { LoanPicker, type Hit } from '../../../components/ui/Pickers'
+import { AttachmentPicker } from '../../attachments/AttachmentComponents'
+import type { Attachment } from '../../../types/finance'
 import { repaymentService } from '../../repayments/services/repaymentService'
 import { formatMoney } from '../../../utils/format'
 
@@ -18,6 +20,7 @@ export function RecordRepaymentModal({ loan, onClose, onDone }: { loan?: { id: s
   const [picked, setPicked] = useState<Hit | null>(loan ? { id: loan.id, title: loan.loanId, sub: `Outstanding ${formatMoney(loan.outstandingBalance)}` } : null)
   const [f, setF] = useState({ amount: '', date: '', method: 'bank_transfer', reference: '', description: '' })
   const [errs, setErrs] = useState<Record<string, string>>({})
+  const [files, setFiles] = useState<Attachment[]>([])
   const [busy, setBusy] = useState(false)
   const set = (k: keyof typeof f) => (e: { target: { value: string } }) => { setF((s) => ({ ...s, [k]: e.target.value })); setErrs((x) => ({ ...x, [k]: '' })) }
 
@@ -27,7 +30,7 @@ export function RecordRepaymentModal({ loan, onClose, onDone }: { loan?: { id: s
     if (!f.amount) return setErrs({ amount: 'Enter the amount received' })
     setBusy(true); setErrs({})
     try {
-      await repaymentService.record({ loanId: picked.id, amount: Number(f.amount), date: f.date || undefined, method: f.method || undefined, reference: f.reference || undefined, description: f.description || undefined })
+      await repaymentService.record({ loanId: picked.id, amount: Number(f.amount), date: f.date || undefined, method: f.method || undefined, reference: f.reference || undefined, description: f.description || undefined, attachmentIds: files.length ? files.map((a) => a.id) : undefined })
       toast('success', 'Repayment recorded'); onDone()
     } catch (err) {
       if (err instanceof ApiError && err.fields) setErrs(err.fields)
@@ -46,6 +49,7 @@ export function RecordRepaymentModal({ loan, onClose, onDone }: { loan?: { id: s
         </div>
         <Field label="Reference" value={f.reference} onChange={set('reference')} error={errs.reference} placeholder="Transfer / receipt reference" />
         <Field label="Note (optional)" value={f.description} onChange={set('description')} />
+        <AttachmentPicker value={files} onChange={setFiles} loanId={picked?.id} />
         <p className="text-xs text-slate-500">Balances, the schedule and the loan status are updated automatically. Leave the date empty for today.</p>
         <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Saving…">Record repayment</Button></ModalActions>
       </form>

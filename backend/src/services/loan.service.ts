@@ -107,7 +107,13 @@ export async function assertEligible(customerId: string, opts: { newLoan?: boole
   return c;
 }
 
-export async function previewLoan(input: PricingInput & { customerId?: string }) {
+export async function previewLoan(input: PricingInput & { customerId?: string; loanId?: string; interestRate?: number; bankDeductionRate?: number }) {
+  if (input.loanId) { // previewing an edit of an existing loan
+    const loan = await findLoan(input.loanId);
+    const running = RUNNING_EDITABLE.includes(loan.status);
+    return draftView(await buildDraft(input, { carriedBalance: loan.carriedBalance || undefined, interestBasis: loan.interestBasis as any, skipLimits: running,
+      rates: running ? { interestRate: input.interestRate ?? loan.interestRate, bankDeductionRate: input.bankDeductionRate ?? loan.bankDeductionRate, rateBasis: loan.rateBasis } : undefined }));
+  }
   if (input.customerId) await assertEligible(input.customerId, { newLoan: true });
   return draftView(await buildDraft(input));
 }

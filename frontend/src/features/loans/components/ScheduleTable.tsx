@@ -3,6 +3,9 @@ import type { Installment } from '../../../types/finance'
 import { InstallmentBadge } from '../../../components/ui/StatusBadge'
 import { formatDate, formatMoney } from '../../../utils/format'
 
+/** Payment window opens on the 25th of the due month (monthly cycle). */
+const opens = (due: string) => { const d = new Date(due); return d.getUTCDate() >= 25 ? formatDate(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 25)).toISOString()) : null }
+
 export function ScheduleTable({ rows, showPaid = true, compact = false, onMarkPaid }: { rows: Installment[]; showPaid?: boolean; compact?: boolean; /** When provided, unpaid rows get a "Mark paid" button. */ onMarkPaid?: (i: Installment) => void }) {
   return (
     <div className="overflow-x-auto">
@@ -14,7 +17,7 @@ export function ScheduleTable({ rows, showPaid = true, compact = false, onMarkPa
         <tbody className="divide-y divide-slate-100 tabular-nums">
           {rows.map((i) => (
             <tr key={i.number}>
-              <td className="px-4 py-2.5 font-medium">{i.number}</td><td className="whitespace-nowrap px-4 py-2.5">{formatDate(i.dueDate)}</td>
+              <td className="px-4 py-2.5 font-medium">{i.number}</td><td className="whitespace-nowrap px-4 py-2.5">{formatDate(i.dueDate)}{opens(i.dueDate) && <span className="block text-[10px] font-normal text-slate-400">window opens {opens(i.dueDate)}</span>}</td>
               <td className="px-4 py-2.5 text-right">{formatMoney(i.expectedAmount)}</td>
               {!compact && <><td className="hidden px-4 py-2.5 text-right md:table-cell">{formatMoney(i.principalComponent)}</td><td className="hidden px-4 py-2.5 text-right md:table-cell">{formatMoney(i.interestComponent)}</td></>}
               {showPaid && <><td className="px-4 py-2.5 text-right">{formatMoney(i.amountPaid)}</td><td className="px-4 py-2.5 text-right">{formatMoney(i.remaining)}</td><td className="px-4 py-2.5"><InstallmentBadge status={i.status} /></td></>}

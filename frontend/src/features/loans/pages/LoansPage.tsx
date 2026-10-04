@@ -19,7 +19,7 @@ import { loanService } from '../services/loanService'
 
 const repaymentStatuses = [{ value: 'unpaid', label: 'Not started' }, { value: 'partial', label: 'Partly paid' }, { value: 'paid', label: 'Fully paid' }, { value: 'overdue', label: 'Overdue' }]
 
-export default function LoansPage() {
+export default function LoansPage({ completed = false }: { completed?: boolean }) {
   const { can } = useAuth()
   const toast = useToast()
   const [exporting, setExporting] = useState(false)
@@ -29,11 +29,13 @@ export default function LoansPage() {
   }
   const nav = useNavigate()
   const meta = useLoanMeta()
-  const list = useServerList(loanService.list, { q: '', status: '', repaymentStatus: '', from: '', to: '', minAmount: '', maxAmount: '' }, { key: 'createdAt', order: 'desc' })
+  const list = useServerList(completed ? loanService.listCompleted : loanService.list, { q: '', status: '', repaymentStatus: '', from: '', to: '', minAmount: '', maxAmount: '' }, { key: 'createdAt', order: 'desc' })
   const defs: FilterDef[] = [
     { key: 'q', type: 'search', placeholder: 'Search loan ID, customer name, phone or ID' },
-    { key: 'status', type: 'select', label: 'Status', options: meta?.statuses ?? [], all: 'All statuses' },
-    { key: 'repaymentStatus', type: 'select', label: 'Repayment', options: repaymentStatuses, all: 'Any' },
+    ...(completed ? [] : [
+      { key: 'status', type: 'select', label: 'Status', options: (meta?.statuses ?? []).filter((s) => s.value !== 'completed'), all: 'All open statuses' } as FilterDef,
+      { key: 'repaymentStatus', type: 'select', label: 'Repayment', options: repaymentStatuses.filter((s) => s.value !== 'paid'), all: 'Any' } as FilterDef,
+    ]),
     { key: 'from', type: 'date', label: 'Start from' }, { key: 'to', type: 'date', label: 'Start to' },
     { key: 'minAmount', type: 'money', label: 'Min amount', placeholder: '0' }, { key: 'maxAmount', type: 'money', label: 'Max amount' },
   ]
@@ -49,15 +51,15 @@ export default function LoansPage() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h1 className="text-2xl font-bold tracking-tight">Loans</h1><p className="text-sm text-slate-500">Every loan, with balances calculated from the ledger.</p></div>
+        <div><h1 className="text-2xl font-bold tracking-tight">{completed ? 'Completed loans' : 'Loans'}</h1><p className="text-sm text-slate-500">{completed ? 'Fully repaid loans, kept here as a record. Open any to see its schedule, repayments and statement.' : 'Pending, running and overdue loans. Fully repaid loans move to Completed loans.'}</p></div>
         <div className="flex flex-wrap gap-2">
           {can(PERM.reports.export) && <Button variant="secondary" onClick={exportBook} loading={exporting} loadingText="Preparing…"><FileSpreadsheet className="size-4" />Loan book (Excel)</Button>}
-          {can(PERM.loans.create) && <Link to="/loans/new"><Button><Plus className="size-4" />New loan</Button></Link>}
+          {!completed && can(PERM.loans.create) && <Link to="/loans/new"><Button><Plus className="size-4" />New loan</Button></Link>}
         </div>
       </div>
       <DataTable columns={cols} rows={list.rows} pg={list.pg} error={list.error} onRetry={list.reload} sort={list.sort} onSort={list.toggleSort} onPage={list.setPage}
         onRowClick={(l) => nav(`/loans/${l.id}`)} toolbar={<FilterBar defs={defs} value={list.filters} onChange={list.updateFilters} />}
-        empty={<EmptyState icon={<Landmark className="size-6" />} title={list.filtered ? 'No loans match your filters' : 'No loans yet'} hint={list.filtered ? 'Try different filters or clear them.' : 'Create the first loan to see it here.'} />} />
+        empty={<EmptyState icon={<Landmark className="size-6" />} title={list.filtered ? 'No loans match your filters' : completed ? 'No completed loans yet' : 'No open loans'} hint={list.filtered ? 'Try different filters or clear them.' : completed ? 'A loan appears here once it is fully repaid.' : 'Create a loan to see it here.'} />} />
     </div>
   )
 }

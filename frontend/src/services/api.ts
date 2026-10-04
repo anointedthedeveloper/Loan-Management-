@@ -97,3 +97,17 @@ export async function download(path: string, fallbackName: string): Promise<void
   const url = URL.createObjectURL(await res.blob())
   const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
 }
+
+/** Uploads one file as the raw request body (proof of payment). Returns the stored file's details. */
+export async function uploadFile<T>(path: string, file: File): Promise<T> {
+  const token = tokenStore.get()
+  track(1)
+  try {
+    let res: Response
+    try { res = await fetch(`${BASE}${path}`, { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: file }) }
+    catch { throw new ApiError('Cannot reach the server. Check your connection and try again.', 0, 'NETWORK') }
+    const json = await res.json().catch(() => null)
+    if (!res.ok || !json?.success) throw new ApiError(res.status === 413 ? 'The file is too large (maximum 4 MB)' : (json?.message ?? 'Upload failed. Please try again.'), res.status, json?.code ?? 'ERROR', json?.errors)
+    return json.data as T
+  } finally { track(-1) }
+}

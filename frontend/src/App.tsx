@@ -53,11 +53,12 @@ export default function App() {
                 </Route>
                 <Route element={<ProtectedRoute permission={PERM.loans.view} />}>
                   <Route path="/loans" element={<LoansPage />} />
+                  <Route path="/loans/completed" element={<LoansPage completed />} />
                   <Route path="/loans/:id" element={<LoanDetailPage />} />
                   <Route path="/loans/:id/statement" element={<StatementPage kind="loan" />} />
                 </Route>
                 <Route element={<ProtectedRoute permission={PERM.loans.create} />}><Route path="/loans/new" element={<LoanFormPage />} /></Route>
-                <Route element={<ProtectedRoute permission={PERM.loans.edit} />}><Route path="/loans/:id/edit" element={<LoanFormPage />} /></Route>
+                <Route element={<ProtectedRoute permission={[PERM.loans.edit, PERM.loans.editActive]} />}><Route path="/loans/:id/edit" element={<LoanFormPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.products.manage} />}><Route path="/products" element={<ProductsPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.repayments.view} />}><Route path="/repayments" element={<RepaymentsPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.transactions.view} />}><Route path="/transactions" element={<TransactionsPage />} /></Route>

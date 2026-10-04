@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Undo2 } from 'lucide-react'
+import { Paperclip, Pencil, Undo2 } from 'lucide-react'
 import { PERM } from '../../../config/permissions'
 import { ApiError } from '../../../services/api'
 import { useAuth } from '../../../context/AuthContext'
@@ -14,6 +14,8 @@ import { TxStateBadge } from '../../../components/ui/StatusBadge'
 import { formatDate, formatDateTime, formatMoney, titleCase } from '../../../utils/format'
 import type { Transaction } from '../../../types/finance'
 import { transactionService } from '../../repayments/services/repaymentService'
+import { AttachmentLinks, AttachmentPicker } from '../../attachments/AttachmentComponents'
+import { EditRepaymentModal } from '../../loans/components/EditRepaymentModal'
 
 export const useTxType = () => {
   const meta = useLoanMeta()
@@ -32,6 +34,7 @@ export function TransactionsTable({ rows, onChanged }: { rows: Transaction[]; on
   const typeOf = useTxType()
   const [sel, setSel] = useState<Transaction | null>(null)
   const [reversing, setReversing] = useState<Transaction | null>(null)
+  const [editing, setEditing] = useState<Transaction | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function reverse(reason: string) {
@@ -51,7 +54,7 @@ export function TransactionsTable({ rows, onChanged }: { rows: Transaction[]; on
               <tr key={t.id} onClick={() => setSel(t)} className="cursor-pointer hover:bg-slate-50">
                 <td className="px-4 py-3 font-mono text-xs">{t.transactionId}</td><td className="px-4 py-3">{formatDate(t.date)}</td>
                 <td className="hidden px-4 py-3 md:table-cell">{t.customer?.fullName}</td><td className="hidden px-4 py-3 font-mono text-xs lg:table-cell">{t.loan?.loanId ?? '—'}</td><td className="px-4 py-3"><TxTypeBadge type={t.type} /></td>
-                <td className="hidden px-4 py-3 text-slate-500 lg:table-cell">{[t.method ? titleCase(t.method) : '', t.reference].filter(Boolean).join(' · ') || '—'}</td>
+                <td className="hidden px-4 py-3 text-slate-500 lg:table-cell">{[t.method ? titleCase(t.method) : '', t.reference].filter(Boolean).join(' · ') || '—'}{t.attachments?.length ? <span className="ml-2 inline-flex items-center gap-0.5 text-xs text-brand-700" title="Proof of payment attached"><Paperclip className="size-3" />{t.attachments.length}</span> : null}</td>
                 <td className={`px-4 py-3 text-right tabular-nums ${t.state === 'reversed' ? 'text-slate-400 line-through' : ''}`}>{formatMoney(t.amount)}</td>
                 <td className="px-4 py-3"><TxStateBadge state={t.state} /></td>
               </tr>
@@ -72,9 +75,21 @@ export function TransactionsTable({ rows, onChanged }: { rows: Transaction[]; on
               ['Affects loan balance', sel.affectsLoanBalance ? 'Yes' : 'No'], ['Cash movement', sel.isCash ? 'Yes' : 'No (non-cash settlement)'],
               ...(sel.state === 'reversed' ? [['Reversal reason', sel.reversalReason] as [string, string | null]] : []),
             ]} />
+            {(sel.attachments?.length || sel.type === 'repayment') ? (
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Proof of payment</p>
+                <AttachmentLinks files={sel.attachments} />
+                {!sel.attachments?.length && <p className="text-sm text-slate-400">No files attached.</p>}
+                {sel.state === 'posted' && can(PERM.repayments.record) && <AttachmentPicker label="Add a file" value={[]} transactionId={sel.id} onChange={(f) => { setSel({ ...sel, attachments: [...(sel.attachments ?? []), ...f] }); onChanged() }} />}
+              </div>
+            ) : null}
+            {(sel.editedFrom || sel.supersededBy) && <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800">{sel.editedFrom ? 'This entry replaces a repayment that was corrected.' : 'This entry was corrected; see the replacement entry.'}</p>}
             {sel.allocations.length > 0 && (
               <div><p className="mb-2 text-xs font-medium uppercase tracking-wide text-slate-500">Applied to</p>
                 <ul className="space-y-1 text-sm">{sel.allocations.map((a) => <li key={a.number} className="flex justify-between rounded-lg bg-slate-50 px-3 py-2"><span>Installment {a.number}</span><span className="tabular-nums">Principal {formatMoney(a.principal)} · Interest {formatMoney(a.interest)}</span></li>)}</ul></div>
+            )}
+            {sel.state === 'posted' && sel.type === 'repayment' && can(PERM.repayments.edit) && (
+              <Button variant="secondary" onClick={() => { setEditing(sel); setSel(null) }}><Pencil className="size-4" />Edit repayment</Button>
             )}
             {sel.state === 'posted' && typeOf(sel.type)?.reversible && can(PERM.transactions.reverse) && (
               <Button variant="danger" onClick={() => setReversing(sel)}><Undo2 className="size-4" />Reverse transaction</Button>
@@ -83,6 +98,7 @@ export function TransactionsTable({ rows, onChanged }: { rows: Transaction[]; on
           </div>
         )}
       </Drawer>
+      {editing && <EditRepaymentModal tx={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onChanged() }} />}
       {reversing && <ReasonDialog open danger loading={busy} title={`Reverse ${reversing.transactionId}?`} confirmLabel="Reverse" message={`This reverses ${formatMoney(reversing.amount)}${reversing.loan ? ` on ${reversing.loan.loanId}` : ''}. The loan balance, schedule and status are recalculated. Recorded in the audit log.`} onConfirm={reverse} onCancel={() => setReversing(null)} />}
     </>
   )

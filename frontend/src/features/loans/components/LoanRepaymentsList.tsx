@@ -1,4 +1,5 @@
 import { Banknote } from 'lucide-react'
+import { AttachmentLinks } from '../../attachments/AttachmentComponents'
 import { EmptyState } from '../../../components/ui/feedback'
 import { TxStateBadge } from '../../../components/ui/StatusBadge'
 import { formatDate, formatMoney, titleCase } from '../../../utils/format'
@@ -18,7 +19,7 @@ export function LoanRepaymentsList({ rows }: { rows: Transaction[] }) {
       </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Reference</th><th className="hidden px-4 py-3 md:table-cell">Method</th><th className="px-4 py-3 text-right">Amount</th><th className="hidden px-4 py-3 lg:table-cell">Applied to</th><th className="hidden px-4 py-3 lg:table-cell">Recorded by</th><th className="px-4 py-3">State</th></tr></thead>
+          <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">#</th><th className="px-4 py-3">Date</th><th className="px-4 py-3">Reference</th><th className="hidden px-4 py-3 md:table-cell">Method</th><th className="px-4 py-3 text-right">Amount</th><th className="hidden px-4 py-3 lg:table-cell">Applied to</th><th className="hidden px-4 py-3 lg:table-cell">Recorded by</th><th className="hidden px-4 py-3 xl:table-cell">Proof</th><th className="px-4 py-3">State</th></tr></thead>
           <tbody className="divide-y divide-slate-100 tabular-nums">
             {repayments.map((t, i) => (
               <tr key={t.id} className={t.state === 'reversed' ? 'text-slate-400' : ''}>
@@ -28,7 +29,8 @@ export function LoanRepaymentsList({ rows }: { rows: Transaction[] }) {
                 <td className={`px-4 py-2.5 text-right font-medium ${t.state === 'reversed' ? 'line-through' : ''}`}>{formatMoney(t.amount)}</td>
                 <td className="hidden px-4 py-2.5 text-xs lg:table-cell">{t.allocations.length ? t.allocations.map((a) => `#${a.number}`).join(', ') : '—'}</td>
                 <td className="hidden px-4 py-2.5 lg:table-cell">{t.createdBy?.name ?? '—'}</td>
-                <td className="px-4 py-2.5"><TxStateBadge state={t.state} /></td>
+                <td className="hidden px-4 py-2.5 xl:table-cell"><AttachmentLinks files={t.attachments} /></td>
+                <td className="px-4 py-2.5"><TxStateBadge state={t.state} />{t.editedFrom && <span className="ml-1 text-[10px] text-amber-700">corrected</span>}</td>
               </tr>
             ))}
           </tbody>

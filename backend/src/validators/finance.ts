@@ -52,7 +52,12 @@ const pricing = {
   startDate: date,
   firstPaymentDate: optDate,
 };
-export const previewLoanSchema = z.object({ ...pricing, customerId: objectId.optional() });
+/** `loanId` (+ optional rate overrides) previews an edit of a running loan: its carried balance and own rates are kept. */
+export const previewLoanSchema = z.object({
+  ...pricing, customerId: objectId.optional(), loanId: objectId.optional(),
+  interestRate: z.preprocess(blank, z.coerce.number().min(0).max(100).optional()),
+  bankDeductionRate: z.preprocess(blank, z.coerce.number().min(0).max(99).optional()),
+});
 export const createLoanSchema = z.object({ ...pricing, customerId: objectId, notes: text(1000) });
 /** `interestRate` / `bankDeductionRate` / `reason` are only honoured when editing a running loan (needs loans.editActive). */
 export const updateLoanSchema = z.object({

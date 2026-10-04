@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowUpRight, Ban, Banknote, Check, FileText, FileX, Flag, Pencil, Send, ShieldAlert, X } from 'lucide-react'
+import { ArrowUpRight, Ban, Banknote, Check, Download, FileText, FileX, Flag, Pencil, Send, ShieldAlert, X } from 'lucide-react'
 import { PERM } from '../../../config/permissions'
-import { ApiError } from '../../../services/api'
+import { ApiError, download } from '../../../services/api'
 import { useAuth } from '../../../context/AuthContext'
 import { useToast } from '../../../context/ToastContext'
 import { useAsync } from '../../../hooks/useAsync'
@@ -35,6 +35,7 @@ export default function LoanDetailPage() {
   const [modal, setModal] = useState<'repay' | 'topup' | 'settle' | Action | null>(null)
   const [marking, setMarking] = useState<Installment | null>(null)
   const [busy, setBusy] = useState(false)
+  const [dl, setDl] = useState<string | null>(null)
 
   if (error) return <ErrorState message={error} onRetry={reload} />
   if (loading || !data) return <div className="space-y-4"><Skeleton className="h-28 w-full" /><Skeleton className="h-64 w-full" /></div>
@@ -46,6 +47,10 @@ export default function LoanDetailPage() {
     try { await loanService.action(id, action, reason); toast('success', { approve: 'Loan approved', disburse: 'Loan disbursed', reject: 'Loan rejected', cancel: 'Loan cancelled', default: 'Loan marked as defaulted' }[action]); setModal(null); reload(); tx.reload() }
     catch (e) { toast('error', e instanceof ApiError ? e.message : 'Action failed'); setModal(null) }
     finally { setBusy(false) }
+  }
+  async function downloadSchedule(fmt: 'pdf' | 'xlsx' | 'csv') {
+    setDl(fmt)
+    try { await download(`/loans/${id}/schedule/export?format=${fmt}`, `schedule-${l.loanId}.${fmt}`) } catch (e) { toast('error', e instanceof ApiError ? e.message : 'Download failed') } finally { setDl(null) }
   }
   const done = () => { setModal(null); reload(); tx.reload() }
 
@@ -65,7 +70,7 @@ export default function LoanDetailPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {l.status === 'pending' && can(PERM.loans.approve) && <><Button onClick={() => setModal('approve')}><Check className="size-4" />Approve</Button><Button variant="secondary" onClick={() => setModal('reject')}><X className="size-4" />Reject</Button></>}
-          {l.status === 'pending' && can(PERM.loans.edit) && <Button variant="secondary" onClick={() => nav(`/loans/${l.id}/edit`)}><Pencil className="size-4" />Edit</Button>}
+          {((l.status === 'pending' && can(PERM.loans.edit)) || (['approved', 'active', 'overdue', 'defaulted'].includes(l.status) && can(PERM.loans.editActive))) && <Button variant="secondary" onClick={() => nav(`/loans/${l.id}/edit`)}><Pencil className="size-4" />Edit loan</Button>}
           {l.status === 'approved' && can(PERM.loans.approve) && <Button onClick={() => setModal('disburse')}><Send className="size-4" />Disburse</Button>}
           {['pending', 'approved'].includes(l.status) && (can(PERM.loans.edit) || can(PERM.loans.approve)) && <Button variant="ghost" onClick={() => setModal('cancel')}><Ban className="size-4" />Cancel loan</Button>}
           {live && can(PERM.repayments.record) && <Button onClick={() => setModal('repay')}><Banknote className="size-4" />Record repayment</Button>}
@@ -99,7 +104,20 @@ export default function LoanDetailPage() {
 
       <Tabs tabs={[{ key: 'schedule', label: 'Repayment schedule' }, { key: 'repayments', label: 'Repayments' }, { key: 'transactions', label: 'All transactions' }, { key: 'terms', label: 'Terms & history' }]} active={tab} onChange={setTab} />
       <div key={tab} className="animate-fade-in rounded-xl border border-slate-200 bg-white shadow-sm">
-        {tab === 'schedule' && <ScheduleTable rows={schedule} onMarkPaid={live && can(PERM.repayments.record) ? setMarking : undefined} />}
+        {tab === 'schedule' && (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
+              <p className="text-xs text-slate-500">Payment window opens on the 25th; each installment is due on the 30th (28/29 in February).</p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs text-slate-500">Download schedule:</span>
+                {(['pdf', 'xlsx', 'csv'] as const).map((fmt) => (
+                  <Button key={fmt} variant="secondary" className="!px-3 !py-1.5 !text-xs" loading={dl === fmt} loadingText="…" onClick={() => downloadSchedule(fmt)}><Download className="size-3.5" />{fmt === 'xlsx' ? 'Excel' : fmt.toUpperCase()}</Button>
+                ))}
+              </div>
+            </div>
+            <ScheduleTable rows={schedule} onMarkPaid={live && can(PERM.repayments.record) ? setMarking : undefined} />
+          </>
+        )}
         {tab === 'repayments' && (tx.error ? <ErrorState message={tx.error} onRetry={tx.reload} /> : tx.loading ? <div className="p-5"><Skeleton className="h-24 w-full" /></div> : <LoanRepaymentsList rows={tx.data?.data ?? []} />)}
         {tab === 'transactions' && (tx.error ? <ErrorState message={tx.error} onRetry={tx.reload} /> : tx.loading ? <div className="p-5"><Skeleton className="h-24 w-full" /></div> : tx.data?.data.length ? <TransactionsTable rows={tx.data.data} onChanged={() => { reload(); tx.reload() }} /> : <EmptyState icon={<FileX className="size-6" />} title="No transactions yet" hint="The disbursement and repayments appear here once recorded." />)}
         {tab === 'terms' && (

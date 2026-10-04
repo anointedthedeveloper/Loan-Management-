@@ -23,7 +23,7 @@ export const loansRouter = mk();
 loansRouter.use(authenticate);
 loansRouter.get('/meta', perm('loans.view', 'loans.create', 'repayments.view', 'transactions.view', 'topups.view', 'reports.view', 'products.manage'), c.loanMeta);
 loansRouter.get('/', perm('loans.view'), query(v.listLoansSchema), c.loanList);
-loansRouter.post('/preview', perm('loans.create', 'loans.edit'), body(v.previewLoanSchema), c.loanPreview);
+loansRouter.post('/preview', perm('loans.create', 'loans.edit', 'loans.editActive'), body(v.previewLoanSchema), c.loanPreview);
 loansRouter.post('/', perm('loans.create'), body(v.createLoanSchema), c.loanCreate);
 loansRouter.get('/:id', perm('loans.view'), c.loanGet);
 loansRouter.patch('/:id', perm('loans.edit', 'loans.editActive'), body(v.updateLoanSchema), c.loanUpdate);

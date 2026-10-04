@@ -3,6 +3,8 @@ import type { Loan, LoanDetail, LoanPreview, Product, SettlementQuote, Transacti
 
 export const loanService = {
   list: (p: Record<string, string | number>) => apiPage<Loan>(`/loans${qs(p)}`),
+  /** Fully repaid loans are kept on their own page. */
+  listCompleted: (p: Record<string, string | number>) => apiPage<Loan>(`/loans${qs({ ...p, scope: 'completed' })}`),
   preview: (body: unknown) => api<LoanPreview>('/loans/preview', { method: 'POST', body }),
   create: (body: unknown) => api<LoanDetail>('/loans', { method: 'POST', body }),
   get: (id: string) => api<LoanDetail>(`/loans/${id}`),

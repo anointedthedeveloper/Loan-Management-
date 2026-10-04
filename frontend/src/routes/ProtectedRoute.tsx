@@ -4,12 +4,12 @@ import { LoadingScreen } from '../components/ui/feedback'
 import Forbidden from '../pages/Forbidden'
 
 /** Requires a signed-in user; optionally requires a permission (UI guard only — API enforces too). */
-export function ProtectedRoute({ permission }: { permission?: string }) {
+export function ProtectedRoute({ permission }: { permission?: string | string[] }) {
   const { user, loading, can } = useAuth()
   const loc = useLocation()
   if (loading) return <LoadingScreen />
   if (!user) return <Navigate to="/login" replace state={{ from: loc.pathname }} />
-  if (permission && !can(permission)) return <Forbidden />
+  if (permission && ![permission].flat().some((p) => can(p))) return <Forbidden />
   return <Outlet />
 }
 
