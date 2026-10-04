@@ -1,4 +1,5 @@
 import type { Col, ReportResult, Row } from './report.service.js';
+import { BRAND, pdfBand, pdfFooters, pdfRunningHead, pdfTable, utcDateOf, xlFooter, xlHeaderRow, xlPrint, xlStyleBody, xlTitleBlock, xlTotalsRow } from './exportStyle.js';
 
 const NAIRA = new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const ymd = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d ?? ''));
@@ -20,18 +21,15 @@ export function toCsv(r: ReportResult): string {
 export async function toXlsx(r: ReportResult, company: string): Promise<Buffer> {
   const { default: ExcelJS } = await import('exceljs');
   const wb = new ExcelJS.Workbook(); wb.creator = company;
-  const ws = wb.addWorksheet(r.title.slice(0, 30));
-  ws.addRow([`${company} — ${r.title}`]).font = { bold: true, size: 14 };
-  ws.addRow([`Period: ${r.from ? ymd(r.from) : 'start'} to ${r.to ? ymd(r.to) : 'today'}`]);
-  ws.addRow([]);
-  const head = ws.addRow(r.columns.map((c) => c.label)); head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  head.eachCell((cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B3D2E' } }; });
+  const ws = wb.addWorksheet(r.title.replace(/[\\/?*[\]:]/g, ' ').slice(0, 30));
+  xlTitleBlock(ws, company, r.title, `Period: ${r.from ? ymd(r.from) : 'start'} to ${r.to ? ymd(r.to) : 'today'}`, r.columns.length);
+  const head = ws.addRow(r.columns.map((c) => c.label)); xlHeaderRow(head, r.columns.length);
   const col = (key: string) => { const i = r.columns.findIndex((c) => c.key === key); return i < 0 ? null : ws.getColumn(i + 1).letter; };
   const L = r.key === 'loan-book' ? { bank: col('bankPayment'), bf: col('balanceBF'), gross: col('grossPayment'), prin: col('principal'), int: col('interest'), loan: col('grossLoan'), emi: col('emi'), tenor: col('tenor'), repaid: col('repaid'), bal: col('balance'),
     m1: r.columns.find((c) => c.key.startsWith('m_')) ? col(r.columns.find((c) => c.key.startsWith('m_'))!.key) : null, mN: [...r.columns].reverse().find((c) => c.key.startsWith('m_')) ? col([...r.columns].reverse().find((c) => c.key.startsWith('m_'))!.key) : null } : null;
   const firstDataRow = ws.rowCount + 1;
   for (const row of r.rows) {
-    const x = ws.addRow(r.columns.map((c) => { const v = raw(c, row[c.key]!); return typeof v === 'string' && /^[=+\-@]/.test(v) ? `'${v}` : v; }));
+    const x = ws.addRow(r.columns.map((c) => { const v = raw(c, row[c.key]!); if (c.type === 'date') return utcDateOf(v) ?? v; return typeof v === 'string' && /^[=+\-@]/.test(v) ? `'${v}` : v; }));
     if (!L) continue;
     // The calculator's own formulas, so the sheet can be audited and recalculated in Excel.
     const n = x.number; const calc = (row as any)._calc as { ded: number; rate: number } | null; const put = (k: string | null, formula: string, key: string) => { if (k) x.getCell(k).value = { formula, result: Number(row[key]) || 0 }; };
@@ -47,41 +45,37 @@ export async function toXlsx(r: ReportResult, company: string): Promise<Buffer> 
     put(L.bal, `ROUND(${L.loan}${n}-${L.repaid}${n},2)`, 'balance');
   }
   const lastDataRow = ws.rowCount;
+  const kinds = r.columns.map((c) => (c.type === 'money' ? 'money' : c.type === 'date' ? 'date' : c.type === 'status' ? 'status' : c.type === 'number' ? 'number' : 'text')) as ('text' | 'money' | 'date' | 'number' | 'status')[];
+  xlStyleBody(ws, firstDataRow, lastDataRow, kinds);
   if (r.totals) {
-    const t = ws.addRow(r.columns.map((c) => raw(c, r.totals![c.key] ?? ''))); t.font = { bold: true };
+    const t = ws.addRow(r.columns.map((c) => raw(c, r.totals![c.key] ?? ''))); xlTotalsRow(t, r.columns.length, kinds);
     if (L && r.rows.length) r.columns.forEach((c, i) => { if (r.totals![c.key] !== undefined && c.type === 'money') { const cl = ws.getColumn(i + 1).letter; t.getCell(i + 1).value = { formula: `SUM(${cl}${firstDataRow}:${cl}${lastDataRow})`, result: Number(r.totals![c.key]) || 0 }; } });
   }
-  if (L) { ws.views = [{ state: 'frozen', xSplit: 3, ySplit: head.number }]; ws.autoFilter = { from: { row: head.number, column: 1 }, to: { row: head.number, column: r.columns.length } }; }
-  r.columns.forEach((c, i) => { const cc = ws.getColumn(i + 1); cc.width = Math.max(12, Math.min(c.label.length + 4, c.key === 'clientName' ? 34 : 22)); if (c.type === 'money') cc.numFmt = '#,##0.00'; if (c.type === 'date') cc.numFmt = 'yyyy-mm-dd'; });
+  if (!r.rows.length) { const e = ws.addRow(['No records for this period.']); e.getCell(1).font = { italic: true, color: { argb: `FF${BRAND.mute}` } }; }
+  xlFooter(ws, `Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`, r.columns.length);
+  xlPrint(ws, { company, headerRow: head.number });
+  ws.views = [{ showGridLines: false, state: 'frozen', xSplit: L ? 3 : 0, ySplit: head.number }];
+  if (L) { ws.autoFilter = { from: { row: head.number, column: 1 }, to: { row: head.number, column: r.columns.length } }; }
+  r.columns.forEach((c, i) => { const cc = ws.getColumn(i + 1); cc.width = c.type === 'money' ? 18 : c.type === 'date' ? 14 : c.type === 'status' ? 14 : c.type === 'number' ? 11 : Math.max(14, Math.min(c.label.length + 6, c.key === 'clientName' ? 34 : 30)); });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 export async function toPdf(r: ReportResult, company: string): Promise<Buffer> {
   const { default: PDFDocument } = await import('pdfkit');
   return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 30 });
+    const wide = r.columns.length > 12; // wide reports (e.g. the loan book) get an A3 sheet and smaller type
+    const doc = new PDFDocument({ size: wide ? 'A3' : 'A4', layout: 'landscape', margin: 32, bufferPages: true });
     const chunks: Buffer[] = []; doc.on('data', (b) => chunks.push(b)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);
-    const W = doc.page.width - 60; const n = r.columns.length;
-    const weights = r.columns.map((c) => (c.type === 'money' ? 1.2 : c.type === 'text' ? 1.6 : 1)); const total = weights.reduce((a, b) => a + b, 0);
-    const widths = weights.map((w) => (w / total) * W);
-    const header = () => {
-      doc.font('Helvetica-Bold').fontSize(14).fillColor('#0B3D2E').text(`${company} — ${r.title}`, 30, 30);
-      doc.font('Helvetica').fontSize(9).fillColor('#555').text(`Period: ${r.from ? ymd(r.from) : 'start'} to ${r.to ? ymd(r.to) : 'today'}   ·   Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`);
-      doc.moveDown(0.8);
-    };
-    const line = (cells: string[], bold = false, y = doc.y) => {
-      let x = 30; doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(8).fillColor('#111');
-      cells.forEach((t, i) => { const right = r.columns[i]!.type === 'money' || r.columns[i]!.type === 'number'; doc.text(t, x, y, { width: widths[i]! - 6, align: right ? 'right' : 'left', lineBreak: false, ellipsis: true }); x += widths[i]!; });
-      doc.y = y + 14;
-    };
-    header(); line(r.columns.map((c) => c.label), true);
-    doc.moveTo(30, doc.y - 3).lineTo(30 + W, doc.y - 3).strokeColor('#999').stroke();
-    for (const row of r.rows) {
-      if (doc.y > doc.page.height - 50) { doc.addPage(); header(); line(r.columns.map((c) => c.label), true); }
-      line(r.columns.map((c) => shown(c, row[c.key]!)));
-    }
-    if (r.totals) line(r.columns.map((c) => shown(c, r.totals![c.key] ?? '')), true);
-    if (!r.rows.length) doc.fontSize(10).fillColor('#666').text('No records for this period.', 30);
-    void n; doc.end();
+    const period = `Period: ${r.from ? ymd(r.from) : 'start'} to ${r.to ? ymd(r.to) : 'today'}`;
+    pdfBand(doc, company, r.title, [period]);
+    const weights = r.columns.map((c) => (c.type === 'money' ? 1.25 : c.type === 'text' ? 1.7 : c.type === 'number' ? 0.7 : 1));
+    const cols = r.columns.map((c, i) => ({ label: c.label, width: weights[i]!, align: (c.type === 'money' || c.type === 'number' ? 'right' : 'left') as 'left' | 'right' }));
+    const statusCol = r.columns.findIndex((c) => c.type === 'status');
+    const hasLabel = !!r.totals && Object.values(r.totals).some((v) => typeof v === 'string' && v !== '');
+    if (!r.rows.length) doc.font('Helvetica').fontSize(10).fillColor(`#${BRAND.mute}`).text('No records for this period.');
+    else pdfTable(doc, cols, r.rows.map((row) => r.columns.map((c) => shown(c, row[c.key]!))), { statusCol: statusCol >= 0 ? statusCol : undefined, totals: r.totals ? r.columns.map((c, i) => (i === Math.max(0, r.columns.findIndex((x) => x.type === 'text')) && !hasLabel ? 'Totals' : shown(c, r.totals![c.key] ?? ''))) : undefined, onPage: () => pdfRunningHead(doc, company, r.title), fontSize: wide ? 6.5 : 7.5 });
+    if (r.truncated) doc.moveDown(0.5).font('Helvetica-Oblique').fontSize(8).fillColor(`#${BRAND.amber}`).text('Showing the first rows only. Narrow the date range to see the rest.');
+    pdfFooters(doc, `${company} · ${r.title} · Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`);
+    doc.end();
   });
 }
