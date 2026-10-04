@@ -1,6 +1,8 @@
 import { Types } from 'mongoose';
 import { Customer } from '../models/Customer.js';
-import { nextSequence } from '../models/Counter.js';
+import { ensureSequenceAtLeast, nextSequence } from '../models/Counter.js';
+import { CLIENT_ID_FLOOR } from '../config/customerOptions.js';
+import { profileGaps } from './customerProfile.js';
 import { AppError } from '../utils/AppError.js';
 import { changedFields } from '../utils/diff.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -15,6 +17,7 @@ const ID_PREFIX = 'PTC-';
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export async function nextCustomerId() {
+  await ensureSequenceAtLeast('customer', CLIENT_ID_FLOOR); // new customers continue after the old loan book's client numbers (641, 642, ...)
   return `${ID_PREFIX}${String(await nextSequence('customer')).padStart(6, '0')}`;
 }
 
@@ -25,7 +28,8 @@ const fullNameOf = (c: { firstName?: string; middleName?: string; lastName?: str
 export function serialize(doc: any) {
   const o = typeof doc.toObject === 'function' ? doc.toObject() : doc;
   const { __v, isArchived, archivedAt, archivedBy, ...rest } = o;
-  return { ...rest, id: String(o._id), _id: undefined, createdBy: nameRef(o.createdBy), updatedBy: nameRef(o.updatedBy) };
+  const missing = profileGaps(o);
+  return { ...rest, profileMissing: undefined, profile: { complete: missing.length === 0, missing }, id: String(o._id), _id: undefined, createdBy: nameRef(o.createdBy), updatedBy: nameRef(o.updatedBy) };
 }
 const nameRef = (u: any) => (u && typeof u === 'object' && 'name' in u ? { id: String(u._id), name: u.name } : u ? String(u) : null);
 
@@ -94,9 +98,8 @@ export async function updateCustomer(id: string, input: Partial<CustomerInput>, 
   const merged = { phone: next.phone ?? c.phone, email: 'email' in next ? next.email : c.email, nin: 'nin' in next ? next.nin : c.nin, bvn: 'bvn' in next ? next.bvn : c.bvn };
   const emp = (next.employment ?? (c.get('employment') as any)?.toObject?.() ?? {}) as { sector?: string; ippisNumber?: string; ministry?: string };
   if (next.employment) {
-    const sector = emp.sector ?? (emp.ippisNumber ? 'government' : undefined);
-    if (!sector) throw new AppError(422, 'Choose government or non-government worker', 'VALIDATION_ERROR', { 'employment.sector': 'Choose government or non-government worker' });
-    next.employment = { ...emp, sector };
+    const sector = emp.sector ?? (emp.ippisNumber ? 'government' : undefined); // profiles imported without a worker type can be completed bit by bit
+    next.employment = { ...emp, ...(sector ? { sector } : {}) };
     const errs: Record<string, string> = {};
     if (sector === 'government') {
       if (!emp.ippisNumber) errs['employment.ippisNumber'] = 'Enter the IPPIS number (required for government workers)';
@@ -138,6 +141,8 @@ export async function deleteCustomer(id: string, actor: Actor) {
 export async function listCustomers(q: ListCustomersQuery) {
   const filter: Record<string, any> = { isArchived: false };
   if (q.status?.length) filter.status = { $in: q.status };
+  if (q.profile === 'incomplete') filter['profileMissing.0'] = { $exists: true };
+  if (q.profile === 'complete') filter.profileMissing = { $size: 0 };
   if (q.from || q.to) filter.registrationDate = { ...(q.from && { $gte: q.from }), ...(q.to && { $lte: q.to }) };
   if (q.q) {
     const term = escapeRe(q.q);

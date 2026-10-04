@@ -36,7 +36,7 @@ export function customerPayload(over: Record<string, unknown> = {}) {
   return {
     firstName: 'Chinedu', middleName: 'Emeka', lastName: `Okafor${n}`,
     phone: `0803${String(1000000 + n)}`, email: `chinedu${n}@example.com`,
-    address: '12 Allen Avenue, Ikeja', state: 'Lagos', lga: 'Ikeja', gender: 'male',
+    address: '12 Allen Avenue, Ikeja', state: 'Lagos', lga: 'Ikeja', gender: 'male', maritalStatus: 'married',
     dateOfBirth: '1988-04-12', nin: String(70000000000 + n), bvn: String(22000000000 + n),
     employment: { sector: 'government', employerName: 'Zenith Logistics', occupation: 'Driver', ippisNumber: `IP${100000 + n}`, ministry: 'OSGF' },
     emergencyContact: { name: 'Ada Okafor', relationship: 'Spouse', phone: '08098765432' },

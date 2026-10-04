@@ -117,7 +117,7 @@ export const REPORTS: ReportDef[] = [
       const cs = await Customer.find({ isArchived: false, ...range(q, 'registrationDate') }).sort({ registrationDate: -1 }).limit(q.limit + 1);
       const agg = await Loan.aggregate([{ $match: { customer: { $in: cs.map((x) => x._id) } } }, { $group: { _id: '$customer', loans: { $sum: { $cond: [{ $in: ['$status', ['active', 'overdue', 'defaulted']] }, 1, 0] } }, outstanding: { $sum: { $cond: [{ $in: ['$status', ['active', 'overdue', 'defaulted']] }, '$outstandingBalance', 0] } } } }]);
       const by = new Map(agg.map((a) => [String(a._id), a]));
-      return cs.map((x) => ({ customerId: x.customerId, fullName: x.fullName, phone: x.phone, status: x.status, registrationDate: x.registrationDate, loans: by.get(String(x._id))?.loans ?? 0, outstanding: round2(by.get(String(x._id))?.outstanding ?? 0) }));
+      return cs.map((x) => ({ customerId: x.customerId, fullName: x.fullName, phone: x.phone ?? '', status: x.status, registrationDate: x.registrationDate, loans: by.get(String(x._id))?.loans ?? 0, outstanding: round2(by.get(String(x._id))?.outstanding ?? 0) }));
     } },
   { key: 'collections-daily', label: 'Daily collection', description: 'Cash repayments collected per day (default: last 30 days).', sums: ['payments', 'amount'], columns: [c('period', 'Date'), c('payments', 'Payments', 'number'), c('amount', 'Collected', 'money')], run: collections('day', 29) },
   { key: 'collections-weekly', label: 'Weekly collection', description: 'Cash repayments per ISO week (default: last 12 weeks).', sums: ['payments', 'amount'], columns: [c('period', 'Week'), c('payments', 'Payments', 'number'), c('amount', 'Collected', 'money')], run: collections('week', 83) },

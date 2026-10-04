@@ -95,7 +95,7 @@ async function header(customerId: Types.ObjectId | string) {
   const c = await Customer.findById(customerId);
   if (!c) throw AppError.notFound('Customer not found', 'CUSTOMER_NOT_FOUND');
   const company = await getSection('company');
-  return { company, client: { id: String(c._id), customerId: c.customerId, name: c.fullName, phone: c.phone, email: c.email ?? null, ippisNumber: c.employment?.ippisNumber ?? null, ministry: c.employment?.ministry ?? null } };
+  return { company, client: { id: String(c._id), customerId: c.customerId, name: c.fullName, phone: c.phone ?? '', email: c.email ?? null, ippisNumber: c.employment?.ippisNumber ?? null, ministry: c.employment?.ministry ?? null } };
 }
 const finish = (h: Awaited<ReturnType<typeof header>>, loans: LoanStatement[], from?: Date, to?: Date): Statement => ({
   generatedAt: new Date(), period: { from: from ?? null, to: to ?? null }, ...h, loans,

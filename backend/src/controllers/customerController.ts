@@ -3,7 +3,7 @@ import { asyncHandler, ok } from '../utils/http.js';
 import { sendPage } from '../utils/pagination.js';
 import { paginationSchema } from '../validators/common.js';
 import * as svc from '../services/customer.service.js';
-import { CUSTOMER_STATUSES, GENDERS, ID_TYPES, EMPLOYMENT_TYPES } from '../config/customerOptions.js';
+import { CUSTOMER_STATUSES, GENDERS, ID_TYPES, EMPLOYMENT_TYPES, MARITAL_STATUSES } from '../config/customerOptions.js';
 import type { Actor } from '../types/index.js';
 
 export const actorOf = (req: Request): Actor => ({ id: req.auth!.id, name: req.auth!.name, ip: req.ip, role: req.auth!.role });
@@ -11,7 +11,7 @@ const id = (req: Request) => String(req.params.id);
 const paging = (req: Request) => paginationSchema.parse(req.query);
 
 export const meta = asyncHandler(async (_req, res) => {
-  ok(res, { statuses: CUSTOMER_STATUSES, idTypes: ID_TYPES, genders: GENDERS, employmentTypes: EMPLOYMENT_TYPES });
+  ok(res, { statuses: CUSTOMER_STATUSES, idTypes: ID_TYPES, genders: GENDERS, employmentTypes: EMPLOYMENT_TYPES, maritalStatuses: MARITAL_STATUSES });
 });
 export const list = asyncHandler(async (_req, res) => {
   const q = res.locals.query;

@@ -86,11 +86,13 @@ describe('reports', () => {
     expect((await api('get', '/api/reports/loans?format=csv', acct)).status).toBe(200); // default accountants may export
   });
   it('neutralises spreadsheet formula injection in CSV', async () => {
-    await Customer.updateOne({ customerId: 'PTC-000001' }, { fullName: '=HYPERLINK("http://evil","x")' });
+    const open = (await Loan.findOne({ status: { $in: ['active', 'overdue', 'defaulted'] } }).populate('customer'))!; // the loan report lists current loans
+    const cid = (open.customer as any).customerId as string; const original = (open.customer as any).fullName as string;
+    await Customer.updateOne({ customerId: cid }, { fullName: '=HYPERLINK("http://evil","x")' });
     const csv = (await api('get', '/api/reports/loans?format=csv')).text;
     expect(csv).not.toMatch(/,=HYPERLINK/);
     expect(csv).toContain("'=HYPERLINK");
-    await Customer.updateOne({ customerId: 'PTC-000001' }, { fullName: 'Adebayo Ogunleye' });
+    await Customer.updateOne({ customerId: cid }, { fullName: original });
   });
 });
 

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { GENDERS, isCustomerStatus } from '../config/customerOptions.js';
+import { GENDERS, MARITAL_STATUSES, isCustomerStatus } from '../config/customerOptions.js';
 import { normalizePhone } from '../utils/phone.js';
 import { pageQuery } from './common.js';
 
@@ -47,6 +47,7 @@ const body = {
   lga: text(80),
   dateOfBirth: requiredDob,
   gender: requiredOneOf(GENDERS, 'gender'),
+  maritalStatus: requiredOneOf(MARITAL_STATUSES, 'marital status'),
   nin: digits11('NIN', 'National Identification Number (NIN)'),
   bvn: digits11('BVN', 'Bank Verification Number (BVN)'),
   employment: z.object({
@@ -85,6 +86,7 @@ export const listCustomersSchema = z.object({
   ...pageQuery,
   q: z.string().trim().max(100).optional(),
   status: csv(isCustomerStatus),
+  profile: z.enum(['incomplete', 'complete']).optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   sort: z.enum(SORT_FIELDS).default('fullName'),

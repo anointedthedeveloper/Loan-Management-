@@ -12,6 +12,7 @@ export const PERMISSION_MODULES = [
       'customers.create': 'Create customers',
       'customers.update': 'Edit customers',
       'customers.delete': 'Delete / archive customers',
+      'customers.import': 'Import customers from Excel',
       'customers.viewFinancials': 'View financial information',
     },
   },

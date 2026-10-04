@@ -33,3 +33,14 @@ export const EMPLOYMENT_TYPES = [
   { value: 'self_employed', label: 'Self-employed / business owner' },
   { value: 'other', label: 'Other' },
 ] as const;
+
+export const MARITAL_STATUSES = [
+  { value: 'single', label: 'Single' },
+  { value: 'married', label: 'Married' },
+  { value: 'divorced', label: 'Divorced' },
+  { value: 'widowed', label: 'Widowed' },
+  { value: 'separated', label: 'Separated' },
+] as const;
+
+/** Customer IDs are the client numbers from Protech's loan book (PTC-000640 = client 640); new customers continue after this. */
+export const CLIENT_ID_FLOOR = 640;
