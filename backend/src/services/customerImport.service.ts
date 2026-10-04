@@ -6,6 +6,7 @@ import { AUDIT } from '../config/auditActions.js';
 import { normalizePhone } from '../utils/phone.js';
 import { AppError } from '../utils/AppError.js';
 import { auditAs } from './AuditService.js';
+import { ensureCustomerIndexes } from '../models/customerIndexes.js';
 import type { Actor } from '../types/index.js';
 
 /**
@@ -68,6 +69,7 @@ async function readRows(buf: Buffer): Promise<Row[]> {
 }
 
 export async function importCustomers(buf: Buffer, opts: { dryRun: boolean; actor: Actor }): Promise<ImportReport> {
+  await ensureCustomerIndexes(true);
   const rows = await readRows(buf);
   if (!rows.length) throw AppError.badRequest('The sheet has no customers to import', 'IMPORT_EMPTY');
   const report: ImportReport = { dryRun: opts.dryRun, total: rows.length, created: 0, updated: 0, unchanged: 0, idChanges: [], skipped: [], warnings: [], nextCustomerId: '' };

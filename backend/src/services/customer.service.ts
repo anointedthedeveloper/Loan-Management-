@@ -3,6 +3,7 @@ import { Customer } from '../models/Customer.js';
 import { ensureSequenceAtLeast, nextSequence } from '../models/Counter.js';
 import { CLIENT_ID_FLOOR } from '../config/customerOptions.js';
 import { profileGaps } from './customerProfile.js';
+import { ensureCustomerIndexes } from '../models/customerIndexes.js';
 import { AppError } from '../utils/AppError.js';
 import { changedFields } from '../utils/diff.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -61,6 +62,7 @@ function mapDuplicateKey(err: any): never {
 }
 
 export async function createCustomer(input: CustomerInput, actor: Actor) {
+  await ensureCustomerIndexes();
   const data = { ...input, fullName: fullNameOf(input) };
   await assertNoDuplicate({ ...data, ippisNumber: data.employment.ippisNumber });
   try {

@@ -14,6 +14,7 @@ export function ImportCustomersModal({ onClose, onDone }: { onClose: () => void;
   const [file, setFile] = useState<File | null>(null)
   const [report, setReport] = useState<ImportReport | null>(null)
   const [busy, setBusy] = useState(false)
+  const [result, setResult] = useState<ImportReport | null>(null) // shown after a real import so nothing is hidden
 
   async function check(f: File) {
     setFile(f); setReport(null); setBusy(true)
@@ -22,7 +23,10 @@ export function ImportCustomersModal({ onClose, onDone }: { onClose: () => void;
   async function run() {
     if (!file) return
     setBusy(true)
-    try { const r = await customerService.importSheet(file, false); toast('success', `Imported: ${r.created} created, ${r.updated} updated`); onDone() } catch (e) { toast('error', e instanceof ApiError ? e.message : 'Import failed') } finally { setBusy(false) }
+    try {
+      const r = await customerService.importSheet(file, false)
+      if (r.skipped.length) { setResult(r); toast('error', `${r.created} imported, ${r.skipped.length} skipped. See the list.`) } else { toast('success', `Imported: ${r.created} created, ${r.updated} updated`); onDone() }
+    } catch (e) { toast('error', e instanceof ApiError ? e.message : 'Import failed') } finally { setBusy(false) }
   }
   return (
     <Modal open wide title="Import customers from Excel" onClose={onClose}>
@@ -31,7 +35,14 @@ export function ImportCustomersModal({ onClose, onDone }: { onClose: () => void;
         <input ref={input} type="file" accept=".xlsx" className="sr-only" id="import-file" onChange={(e) => e.target.files?.[0] && check(e.target.files[0])} />
         <label htmlFor="import-file" className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-slate-600 hover:border-brand-500 hover:text-brand-700"><FileSpreadsheet className="size-4" />{file ? file.name : 'Choose the .xlsx file'}</label>
         {busy && !report && <p className="text-slate-500">Checking the file…</p>}
-        {report && (
+        {result && (
+          <div className="space-y-2 rounded-lg border border-slate-200 p-3">
+            <p className="font-medium">Imported {result.created} customer(s); {result.skipped.length} row(s) were skipped:</p>
+            <ul className="max-h-48 space-y-1 overflow-y-auto text-xs text-red-800">{result.skipped.map((c) => <li key={c.row}>Row {c.row} · {c.name}: {c.reason}</li>)}</ul>
+            <Button type="button" onClick={onDone}>Done</Button>
+          </div>
+        )}
+        {report && !result && (
           <div className="space-y-3">
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {([['Rows', report.total], ['Will be created', report.created], ['Already there', report.updated + report.unchanged], ['Skipped', report.skipped.length]] as [string, number][]).map(([k, v]) => <div key={k} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] uppercase tracking-wide text-slate-500">{k}</p><p className="text-xl font-bold tabular-nums">{v}</p></div>)}

@@ -71,3 +71,17 @@ describe('customer import', () => {
     expect((await request(app).post('/api/customers/import').set(as(ceo)).set('Content-Type', 'application/octet-stream').send(Buffer.from('not excel'))).body.code).toBe('IMPORT_BAD_FILE');
   });
 });
+
+describe('older databases', () => {
+  it('imports many customers without phone numbers even when the old phone index exists', async () => {
+    await Customer.deleteMany({});
+    const { ensureCustomerIndexes } = await import('../src/models/customerIndexes.js');
+    // recreate the old index definition (unique on every live customer, no phone filter)
+    await Customer.collection.dropIndex('uniq_phone').catch(() => undefined);
+    await Customer.collection.createIndex({ phone: 1 }, { unique: true, partialFilterExpression: { isArchived: false }, name: 'uniq_phone' });
+    void ensureCustomerIndexes;
+    const buf = await sheet([[700, 'A ONE', 111, 'OSGF'], [701, 'B TWO', 222, 'CCB'], [702, 'C THREE', 333, 'NCC']]);
+    const r = (await post(buf)).body.data.report;
+    expect(r).toMatchObject({ created: 3, skipped: [] });
+  });
+});
