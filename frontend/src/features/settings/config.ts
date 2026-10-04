@@ -23,7 +23,7 @@ export const SETTING_SECTIONS: SettingSection[] = [
     { key: 'requireApproval', label: 'Require approval before disbursement', type: 'toggle', help: 'When off, new loans are approved and disbursed immediately.' },
     { key: 'preventSelfApproval', label: 'Block approving your own loans', type: 'toggle' },
     { key: 'autoDisburseOnApproval', label: 'Disburse automatically on approval', type: 'toggle', help: 'When off, approval and disbursement are separate steps.' },
-    { key: 'maxActiveLoansPerCustomer', label: 'Maximum open loans per customer', type: 'number', nullable: true, help: 'Leave empty for no limit.' },
+    { key: 'maxActiveLoansPerCustomer', label: 'Maximum open loans per customer', type: 'number', nullable: true, help: 'Empty means 1: a customer with a pending or running loan gets a top-up instead of a second loan.' },
     { key: 'allowBackdatedStart', label: 'Allow loan start dates in the past', type: 'toggle' } ] },
   { key: 'repayment', label: 'Repayment rules', description: 'How a payment is applied to a loan.', fields: [
     { key: 'allocationOrder', label: 'Allocation order', type: 'select', options: [{ value: 'oldest_first', label: 'Oldest installment first' }, { value: 'interest_first_overall', label: 'All interest first, then principal' }] },

@@ -87,21 +87,26 @@ export const draftView = (d: Draft) => ({
 });
 
 /* ---------------- eligibility (extension point) ---------------- */
-export async function assertEligible(customerId: string) {
+export async function assertEligible(customerId: string, opts: { newLoan?: boolean } = {}) {
   const c = await Customer.findOne({ _id: customerId, isArchived: false });
   if (!c) throw AppError.notFound('Customer not found', 'CUSTOMER_NOT_FOUND');
   const status = CUSTOMER_STATUSES.find((s) => s.value === c.status);
   if (!status?.canBorrow) throw AppError.badRequest(`${c.fullName} is ${status?.label.toLowerCase() ?? c.status} and cannot be given a loan`, 'LOAN_NOT_ELIGIBLE');
+  if (!opts.newLoan) return c;
+  // A customer with a pending or running loan gets a top-up, not a second loan (limit is configurable; default 1).
   const { loans } = await getFinanceRules();
-  if (loans.maxActiveLoansPerCustomer) {
-    const open = await Loan.countDocuments({ customer: c._id, status: { $in: NON_TERMINAL } });
-    if (open >= loans.maxActiveLoansPerCustomer) throw AppError.badRequest(`This customer already has ${open} open loan(s); the limit is ${loans.maxActiveLoansPerCustomer}`, 'LOAN_NOT_ELIGIBLE');
+  const limit = loans.maxActiveLoansPerCustomer || 1;
+  const open = await Loan.find({ customer: c._id, status: { $in: NON_TERMINAL } }).select('loanId status').sort({ createdAt: -1 }).limit(5);
+  if (open.length >= limit) {
+    const l = open[0]!;
+    throw new AppError(409, `${c.fullName} already has a ${l.status} loan (${l.loanId}). Please do a top-up on that loan instead of creating another one.`, 'EXISTING_LOAN',
+      { existingLoanId: String(l._id), existingLoanRef: l.loanId, existingStatus: l.status });
   }
   return c;
 }
 
 export async function previewLoan(input: PricingInput & { customerId?: string }) {
-  if (input.customerId) await assertEligible(input.customerId);
+  if (input.customerId) await assertEligible(input.customerId, { newLoan: true });
   return draftView(await buildDraft(input));
 }
 
@@ -123,7 +128,7 @@ export async function createLoanRecord(d: Draft, opts: { customerId: Types.Objec
 
 /** `autoApprove`: set by the API when the creator holds loans.approve (e.g. the CEO), so approvers never approve their own work. */
 export async function createLoan(input: PricingInput & { customerId: string; notes?: string }, actor: Actor, opts: { autoApprove?: boolean } = {}) {
-  await assertEligible(input.customerId);
+  await assertEligible(input.customerId, { newLoan: true });
   const draft = await buildDraft(input);
   const loan = await createLoanRecord(draft, { customerId: input.customerId, status: 'pending', actorId: actor.id, notes: input.notes });
   await auditAs(actor, { action: AUDIT.LOAN_CREATED, entity: 'Loan', entityId: String(loan._id), entityLabel: loan.loanId, after: { customer: input.customerId, product: draft.product.code, amount: draft.terms.amount, totalRepayment: draft.terms.totalRepayment, installments: draft.terms.numberOfInstallments } });

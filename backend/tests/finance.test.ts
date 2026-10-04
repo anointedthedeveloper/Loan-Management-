@@ -6,6 +6,7 @@ import {
 } from '../src/services/finance/index.js';
 import { utcDate, addMonths } from '../src/utils/dates.js';
 import { toKobo, splitEvenly } from '../src/utils/money.js';
+import { windowOpens } from '../src/config/loanOptions.js';
 
 const start = utcDate(2026, 0, 31);
 const base: LoanTermsInput = { amount: 960_000, bankDeductionRate: 4, interestRate: 5, rateBasis: 'per_month', duration: { value: 6, unit: 'months' }, frequency: 'monthly', startDate: start };
@@ -71,9 +72,17 @@ describe('repayment schedule generation', () => {
   it('monthly: clamps month ends and numbers installments', () => {
     const s = generateSchedule(calculateLoan(base), 'monthly');
     expect(s.map((i) => i.number)).toEqual([1, 2, 3, 4, 5, 6]);
-    expect(s[0]!.dueDate.toISOString().slice(0, 10)).toBe('2026-02-28'); // 31 Jan + 1 month
-    expect(s[5]!.dueDate.toISOString().slice(0, 10)).toBe('2026-07-31');
+    expect(s[0]!.dueDate.toISOString().slice(0, 10)).toBe('2026-02-28'); // due on the 30th, February ends on the 28th
+    expect(s[1]!.dueDate.toISOString().slice(0, 10)).toBe('2026-03-30');
+    expect(s[5]!.dueDate.toISOString().slice(0, 10)).toBe('2026-07-30');
     expect(addMonths(utcDate(2024, 0, 31), 1).toISOString().slice(0, 10)).toBe('2024-02-29'); // leap year
+  });
+  it('monthly cycle is the same whatever day of the month the loan started on (due 30th; Feb 28/29)', () => {
+    const due = (y: number, m: number, d: number) => generateSchedule(calculateLoan({ ...base, startDate: utcDate(y, m, d) }), 'monthly').map((i) => i.dueDate.toISOString().slice(0, 10));
+    expect(due(2026, 0, 1)).toEqual(due(2026, 0, 30));
+    expect(due(2026, 0, 1).slice(0, 3)).toEqual(['2026-02-28', '2026-03-30', '2026-04-30']);
+    expect(due(2027, 11, 15)[1]).toBe('2028-02-29'); // leap year
+    expect(windowOpens(utcDate(2026, 2, 30))?.toISOString().slice(0, 10)).toBe('2026-03-25');
   });
   it('weekly, bi-weekly, daily and custom frequencies derive counts and dates', () => {
     const w = calculateLoan({ ...base, frequency: 'weekly', duration: { value: 8, unit: 'weeks' } });

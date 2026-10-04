@@ -10,8 +10,8 @@ export interface Customer {
   phone: string; altPhone?: string; email?: string
   address: string; state?: string; lga?: string
   dateOfBirth?: string; gender?: string
-  idType?: string; idNumber?: string
-  employment?: { sector?: 'government' | 'non_government'; employmentType?: string; employerName?: string; occupation?: string; ippisNumber?: string; ministry?: string }
+  nin?: string; bvn?: string
+  employment?: { sector?: 'government' | 'non_government'; employerName?: string; occupation?: string; ippisNumber?: string; ministry?: string }
   legacyId?: string
   emergencyContact?: { name?: string; relationship?: string; phone?: string }
   registrationDate: string

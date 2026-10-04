@@ -18,7 +18,9 @@ const customerSchema = new Schema(
     lga: str,
     dateOfBirth: Date,
     gender: str,
-    idType: str,
+    nin: str,
+    bvn: str,
+    idType: str, // legacy: generic ID captured before NIN and BVN became separate required fields
     idNumber: str,
     employment: { sector: { ...str, enum: ['government', 'non_government'] }, employmentType: str, employerName: str, occupation: str, ippisNumber: str, ministry: str }, // IPPIS no. / ministry as used in the loan book
     legacyId: str, // client number from the previous loan book
@@ -42,6 +44,8 @@ const live = { isArchived: false };
 customerSchema.index({ phone: 1 }, { unique: true, partialFilterExpression: live, name: 'uniq_phone' });
 customerSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { ...live, email: { $type: 'string' } }, name: 'uniq_email' });
 customerSchema.index({ 'employment.ippisNumber': 1 }, { unique: true, partialFilterExpression: { ...live, 'employment.ippisNumber': { $type: 'string' } }, name: 'uniq_ippis' });
+customerSchema.index({ nin: 1 }, { unique: true, partialFilterExpression: { ...live, nin: { $type: 'string' } }, name: 'uniq_nin' });
+customerSchema.index({ bvn: 1 }, { unique: true, partialFilterExpression: { ...live, bvn: { $type: 'string' } }, name: 'uniq_bvn' });
 customerSchema.index({ idType: 1, idNumber: 1 }, { unique: true, partialFilterExpression: { ...live, idNumber: { $type: 'string' } }, name: 'uniq_identification' });
 // Listing / search / filter paths.
 customerSchema.index({ isArchived: 1, status: 1, registrationDate: -1 });

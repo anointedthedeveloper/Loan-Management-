@@ -62,14 +62,13 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, d
         {text('lga', 'Local government area (LGA)')}
       </FormSection>
 
-      <FormSection title="Identification" description="NIN or BVN must be 11 digits. Each identification number can be registered to one customer only.">
-        <SelectField label="Identification type *" options={meta.idTypes} value={v.idType} onChange={set('idType')} error={err('idType')} />
-        {text('idNumber', 'Identification number *', { inputMode: 'numeric' })}
+      <FormSection title="Identification" description="Both are required: 11 digits each. A NIN or BVN can be registered to one customer only.">
+        {text('nin', 'NIN (National Identification Number) *', { inputMode: 'numeric', maxLength: 11 })}
+        {text('bvn', 'BVN (Bank Verification Number) *', { inputMode: 'numeric', maxLength: 11 })}
       </FormSection>
 
       <FormSection title="Employment / business" description="Government workers must have an IPPIS number; it identifies them across the portal. Non-government workers do not need one.">
         <SelectField label="Worker type *" options={[{ value: 'government', label: 'Government worker' }, { value: 'non_government', label: 'Non-government worker' }]} value={v.sector} onChange={set('sector')} error={err('sector')} />
-        <SelectField label="Employment type" options={meta.employmentTypes} value={v.employmentType} onChange={set('employmentType')} error={err('employmentType')} />
         {text('occupation', 'Occupation')}
         <div className="sm:col-span-2">{text('employerName', 'Employer / business name')}</div>
         {v.sector === 'government' && <>

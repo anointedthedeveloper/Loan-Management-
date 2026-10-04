@@ -56,6 +56,24 @@ describe('loan products', () => {
   });
 });
 
+describe('one open loan per customer (top-up instead)', () => {
+  it('refuses a second loan while one is pending or running, and points to a top-up', async () => {
+    const put = (m: number | string) => api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: m, allowBackdatedStart: true });
+    await put('');
+    const c = await newCustomer();
+    const first = (await api('post', '/api/loans', acct).send(loanBody({ customerId: c }))).body.data.loan; // pending
+    const again = await api('post', '/api/loans').send(loanBody({ customerId: c }));
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('EXISTING_LOAN');
+    expect(again.body.message).toMatch(/top-up/i);
+    expect(again.body.errors).toMatchObject({ existingLoanRef: first.loanId, existingStatus: 'pending' });
+    expect((await api('post', '/api/loans/preview').send(loanBody({ customerId: c }))).status).toBe(409);
+    expect((await api('post', `/api/loans/${first.id}/cancel`).send({ reason: 'Test' })).status).toBe(200);
+    const free = await api('post', '/api/loans').send(loanBody({ customerId: c })); expect(free.status).toBe(201); // free again once the first is closed
+    await put(100);
+  });
+});
+
 describe('loan creation and calculation (done by the backend)', () => {
   it('previews terms from the central engine', async () => {
     const r = await api('post', '/api/loans/preview').send(loanBody());
@@ -156,20 +174,20 @@ describe('approval workflow and disbursement', () => {
     expect(await Transaction.countDocuments({ loan: { $in: [a.id, b.id] } })).toBe(0);
   });
   it('can block someone approving a loan they submitted (setting)', async () => {
-    await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: true, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: '', allowBackdatedStart: true });
+    await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: true, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: 100, allowBackdatedStart: true });
     const l = (await pendingLoan()).loan; // submitted by the accountant while she had no approval right
     await User.updateOne({ username: 'accountant' }, { permissions: ['loans.view', 'loans.approve'] });
     expect((await api('post', `/api/loans/${l.id}/approve`, acct)).body.code).toBe('SELF_APPROVAL_BLOCKED');
     await User.updateOne({ username: 'accountant' }, { permissions: [] });
-    await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: '', allowBackdatedStart: true });
+    await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: 100, allowBackdatedStart: true });
   });
   it('supports approval without auto-disbursement (separate disburse step)', async () => {
-    await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: false, maxActiveLoansPerCustomer: '', allowBackdatedStart: true });
+    await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: false, maxActiveLoansPerCustomer: 100, allowBackdatedStart: true });
     const l = (await api('post', '/api/loans').send(loanBody())).body.data.loan; // CEO: auto-approved, awaiting disbursement
     const ap = { body: { data: { loan: l } } };
     expect(ap.body.data.loan.status).toBe('approved');
     expect((await api('post', `/api/loans/${l.id}/disburse`)).body.data.loan.status).toBe('active');
-    await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: '', allowBackdatedStart: true });
+    await api('put', '/api/settings/loans').send({ requireApproval: true, preventSelfApproval: false, autoDisburseOnApproval: true, maxActiveLoansPerCustomer: 100, allowBackdatedStart: true });
   });
 });
 
@@ -301,7 +319,7 @@ describe('early settlement (paying a loan off before its term ends)', () => {
 
   it('only already-elapsed months pay their interest when interest is waived', async () => {
     await setMode('waive_future_interest');
-    const l = await activeLoan({ startDate: isoDate(addDays(addMonths(today, -2), -1)) }); // installments 1 & 2 are overdue, 3-6 are future
+    const l = await activeLoan({ startDate: isoDate(addDays(addMonths(today, -2), -1)), firstPaymentDate: isoDate(addMonths(addDays(addMonths(today, -2), -1), 1)) }); // installments 1 & 2 are overdue, 3-6 are future
     const q = (await api('get', `/api/loans/${l.id}/settlement-quote`)).body.data.quote;
     expect(q.waivers.map((w: any) => w.number)).toEqual([3, 4, 5, 6]);
     expect(q.interestWaived).toBe(200_000);
@@ -331,7 +349,7 @@ describe('early settlement (paying a loan off before its term ends)', () => {
 
 describe('overdue detection and automation', () => {
   it('a loan past its due dates becomes overdue and shows days/amount overdue', async () => {
-    const l = await activeLoan({ startDate: isoDate(addDays(addMonths(today, -3), -1)) }); // installments 1-3 are past due
+    const l = await activeLoan({ startDate: isoDate(addDays(addMonths(today, -3), -1)), firstPaymentDate: isoDate(addMonths(addDays(addMonths(today, -3), -1), 1)) }); // installments 1-3 are past due
     const g = await api('get', `/api/loans/${l.id}`);
     expect(g.body.data.loan.status).toBe('overdue');
     expect(g.body.data.loan.overdueAmount).toBeCloseTo(650000, 0);

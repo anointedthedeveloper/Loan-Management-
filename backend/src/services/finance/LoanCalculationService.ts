@@ -1,7 +1,7 @@
-import { addDays, addMonths, diffDays } from '../../utils/dates.js';
+import { addDays, addMonths, diffDays, monthDay } from '../../utils/dates.js';
 import { fromKobo, round2, splitEvenly, toKobo } from '../../utils/money.js';
 import type { LoanTerms, LoanTermsInput, RateBasis, ScheduleInstallment, WorkingInstallment } from './types.js';
-import type { Frequency } from '../../config/loanOptions.js';
+import { REPAYMENT_CYCLE, type Frequency } from '../../config/loanOptions.js';
 
 /**
  * Flat-interest loan pricing, modelled on the reference calculator
@@ -55,10 +55,14 @@ export function deriveInstallmentCount(input: LoanTermsInput): number {
   return Math.max(1, Math.floor(days / step));
 }
 
-/** Due date of installment k. By default the first falls one period after `start`; `firstPaymentDate` overrides that (as in the loan book, where repayments begin on a set date). */
+/**
+ * Due date of installment k. Monthly loans follow Protech's cycle: the first installment is due in the month after
+ * the loan starts (whatever day it started) on the 30th, or the last day of February, and so on each month.
+ * `firstPaymentDate` overrides that (as in the loan book, where repayments begin on a set date).
+ */
 export function installmentDueDate(start: Date, frequency: Frequency, k: number, customDays?: number, firstPaymentDate?: Date): Date {
   if (firstPaymentDate) return frequency === 'monthly' ? addMonths(firstPaymentDate, k - 1) : addDays(firstPaymentDate, (k - 1) * stepDays(frequency, customDays));
-  return frequency === 'monthly' ? addMonths(start, k) : addDays(start, k * stepDays(frequency, customDays));
+  return frequency === 'monthly' ? monthDay(start, k, REPAYMENT_CYCLE.dueDay) : addDays(start, k * stepDays(frequency, customDays));
 }
 
 export function calculateLoan(input: LoanTermsInput): LoanTerms {

@@ -1,13 +1,11 @@
 import { z } from 'zod';
-import { GENDERS, ID_TYPES, EMPLOYMENT_TYPES, isCustomerStatus } from '../config/customerOptions.js';
+import { GENDERS, isCustomerStatus } from '../config/customerOptions.js';
 import { normalizePhone } from '../utils/phone.js';
 import { pageQuery } from './common.js';
 
 /** Blank strings from forms become "not provided". */
 const blank = (v: unknown) => (typeof v === 'string' && v.trim() === '' ? undefined : v);
 const text = (max = 200) => z.preprocess(blank, z.string().trim().max(max).optional());
-const oneOf = (values: readonly { value: string }[], label: string) =>
-  z.preprocess(blank, z.string().refine((v) => values.some((o) => o.value === v), `Choose a valid ${label}`).optional());
 
 const phone = (required: boolean) => {
   const base = z.string().transform((v, ctx) => {
@@ -26,12 +24,15 @@ const requiredPhone = (label: string) => z.string({ error: `Enter ${label}` }).t
   return n ?? v;
 });
 const requiredDob = z.preprocess(blank, z.coerce.date({ error: 'Enter date of birth' }).refine((d) => d < new Date(), 'Date of birth must be in the past'));
+/** NIN and BVN are required for every customer: exactly 11 digits. */
+const digits11 = (short: string, label: string) =>
+  z.string({ error: `Enter the ${label}` }).trim().min(1, `Enter the ${label}`).regex(/^\d{11}$/, `A ${short} is exactly 11 digits`);
 const requiredOneOf = (values: readonly { value: string }[], label: string) =>
   z.string({ error: `Choose ${label}` }).refine((v) => values.some((o) => o.value === v), `Choose ${label}`);
 
 /**
  * Required for every customer: identity (name, date of birth, gender), contact (phone, email, address, state),
- * identification (type + number), payroll (IPPIS number, ministry) and an emergency contact.
+ * NIN and BVN, payroll (IPPIS number, ministry) and an emergency contact.
  * Optional: middle name, alternative phone, LGA, employment type/occupation/employer, notes.
  */
 const body = {
@@ -46,10 +47,10 @@ const body = {
   lga: text(80),
   dateOfBirth: requiredDob,
   gender: requiredOneOf(GENDERS, 'gender'),
-  idType: requiredOneOf(ID_TYPES, 'identification type'),
-  idNumber: z.string({ error: 'Enter the identification number' }).trim().toUpperCase().min(1, 'Enter the identification number').regex(/^[A-Z0-9\-/]{4,30}$/, 'Enter a valid identification number'),
+  nin: digits11('NIN', 'National Identification Number (NIN)'),
+  bvn: digits11('BVN', 'Bank Verification Number (BVN)'),
   employment: z.object({
-    employmentType: oneOf(EMPLOYMENT_TYPES, 'employment type'), employerName: text(120), occupation: text(120),
+    employerName: text(120), occupation: text(120),
     sector: z.enum(['government', 'non_government'], { error: 'Choose government or non-government worker' }),
     ippisNumber: z.preprocess(blank, z.string().trim().toUpperCase().max(40).optional()),
     ministry: text(120),
@@ -68,19 +69,13 @@ export const sectorRules = (e: { sector?: string; ippisNumber?: string; ministry
   if (!e.ministry) ctx.addIssue({ code: 'custom', path: ['employment', 'ministry'], message: 'Enter ministry / department' });
 };
 
-/** NIN and BVN are exactly 11 digits. */
-const idFormat = (v: { idType?: string; idNumber?: string }, ctx: z.RefinementCtx) => {
-  if ((v.idType === 'nin' || v.idType === 'bvn') && v.idNumber && !/^\d{11}$/.test(v.idNumber))
-    ctx.addIssue({ code: 'custom', path: ['idNumber'], message: `A ${v.idType.toUpperCase()} is exactly 11 digits` });
-};
-
-export const createCustomerSchema = z.object(body).superRefine((v, ctx) => { idFormat(v, ctx); sectorRules(v.employment, ctx); });
+export const createCustomerSchema = z.object(body).superRefine((v, ctx) => { sectorRules(v.employment, ctx); });
 /** On update every field is optional, but any field that is sent must still be valid (required fields cannot be blanked); sector rules are re-checked on the merged record in the service. */
 export const updateCustomerSchema = z.object({
   ...body,
   employment: body.employment.partial(),
   emergencyContact: body.emergencyContact.partial(),
-}).partial().superRefine(idFormat);
+}).partial();
 
 const csv = (allowed: (v: string) => boolean) =>
   z.preprocess((v) => (typeof v === 'string' && v ? v.split(',').map((s) => s.trim()) : undefined), z.array(z.string().refine(allowed, 'Unknown status')).optional());

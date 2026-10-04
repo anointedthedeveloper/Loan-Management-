@@ -34,10 +34,10 @@ export function OverviewTab({ c }: { c: Customer }) {
         <div className="sm:col-span-2"><Item label="Address" value={c.address} /></div>
       </Panel>
       <Panel title="Identification">
-        <Item label="Type" value={label(meta?.idTypes, c.idType)} /><Item label="Number" value={c.idNumber} />
+        <Item label="NIN" value={c.nin} /><Item label="BVN" value={c.bvn} />
       </Panel>
       <Panel title="Employment / business">
-        <Item label="Employment type" value={label(meta?.employmentTypes, c.employment?.employmentType)} /><Item label="Occupation" value={c.employment?.occupation} />
+        <Item label="Occupation" value={c.employment?.occupation} />
         <div className="sm:col-span-2"><Item label="Employer / business" value={c.employment?.employerName} /></div>
         <Item label="Worker type" value={c.employment?.sector === 'non_government' ? 'Non-government worker' : c.employment?.sector || c.employment?.ippisNumber ? 'Government worker' : undefined} />
         <Item label="IPPIS number" value={c.employment?.ippisNumber} /><Item label="Ministry / department" value={c.employment?.ministry} />

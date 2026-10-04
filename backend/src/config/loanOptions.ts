@@ -54,3 +54,11 @@ export const TRANSACTION_TYPES = [
   { value: 'other', label: 'Other', direction: 'none', manual: true, reversible: true },
 ] as const;
 export const transactionType = (v: string) => TRANSACTION_TYPES.find((t) => t.value === v);
+
+/**
+ * Protech's monthly repayment cycle: deductions are collected from the 25th, and the installment is due on the
+ * 30th (the last day of the month in February: 28/29), whatever day in the previous month the loan started.
+ */
+export const REPAYMENT_CYCLE = { opensDay: 25, dueDay: 30 } as const;
+/** Day the payment window opens for the cycle that ends on `due` (undefined for loans on a custom first-payment date). */
+export const windowOpens = (due: Date) => (due.getUTCDate() >= REPAYMENT_CYCLE.opensDay ? new Date(Date.UTC(due.getUTCFullYear(), due.getUTCMonth(), REPAYMENT_CYCLE.opensDay)) : undefined);

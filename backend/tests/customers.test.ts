@@ -40,14 +40,14 @@ describe('customer creation', () => {
     expect(bad.status).toBe(400);
     expect(bad.body.code).toBe('VALIDATION_ERROR');
     expect(Object.keys(bad.body.errors)).toEqual(expect.arrayContaining(['phone', 'email', 'firstName']));
-    const idOnly = await create(customerPayload({ idType: 'nin', idNumber: '' }));
-    expect(idOnly.body.errors.idNumber).toBeTruthy();
+    const noIds = await create(customerPayload({ nin: '', bvn: '' }));
+    expect(Object.keys(noIds.body.errors)).toEqual(expect.arrayContaining(['nin', 'bvn']));
   });
 
   it('requires the essential details (identity, contact, ID, IPPIS, emergency contact)', async () => {
     const r = await create({ firstName: 'Minimal', lastName: 'Person', phone: '07011112222', address: '1 Short St' } as any);
     expect(r.status).toBe(400);
-    expect(Object.keys(r.body.errors)).toEqual(expect.arrayContaining(['email', 'state', 'dateOfBirth', 'gender', 'idType', 'idNumber', 'employment', 'emergencyContact']));
+    expect(Object.keys(r.body.errors)).toEqual(expect.arrayContaining(['email', 'state', 'dateOfBirth', 'gender', 'nin', 'bvn', 'employment', 'emergencyContact']));
     const blanks = await create(customerPayload({ employment: { sector: 'government', ippisNumber: '', ministry: '' }, emergencyContact: { name: '', phone: '' }, email: '' }));
     expect(Object.keys(blanks.body.errors)).toEqual(expect.arrayContaining(['employment.ippisNumber', 'employment.ministry', 'emergencyContact.name', 'emergencyContact.phone', 'email']));
   });
@@ -90,9 +90,8 @@ describe('customer creation', () => {
   it('accepts only male or female, and validates NIN/BVN as 11 digits', async () => {
     expect((await create(customerPayload({ gender: 'other' }))).body.errors.gender).toBeTruthy();
     expect((await create(customerPayload({ gender: 'female' }))).status).toBe(201);
-    expect((await create(customerPayload({ idType: 'nin', idNumber: '12345' }))).body.errors.idNumber).toMatch(/11 digits/);
-    expect((await create(customerPayload({ idType: 'bvn', idNumber: '1234567890A' }))).body.errors.idNumber).toBeTruthy();
-    expect((await create(customerPayload({ idType: 'drivers_license', idNumber: 'ABC12345678' }))).status).toBe(201);
+    expect((await create(customerPayload({ nin: '12345' }))).body.errors.nin).toMatch(/11 digits/);
+    expect((await create(customerPayload({ bvn: '1234567890A' }))).body.errors.bvn).toMatch(/11 digits/);
   });
 
   it('rejects duplicates by phone, email and identification (server-side)', async () => {
@@ -103,7 +102,8 @@ describe('customer creation', () => {
     expect(byPhone.body.code).toBe('DUPLICATE_CUSTOMER');
     expect(byPhone.body.errors.phone).toBeTruthy();
     expect((await create(customerPayload({ email: base.email }))).body.errors.email).toBeTruthy();
-    expect((await create(customerPayload({ idNumber: base.idNumber }))).body.errors.idNumber).toBeTruthy();
+    expect((await create(customerPayload({ nin: base.nin }))).body.errors.nin).toBeTruthy();
+    expect((await create(customerPayload({ bvn: base.bvn }))).body.errors.bvn).toBeTruthy();
   });
 
   it('ignores a client-supplied customerId', async () => {

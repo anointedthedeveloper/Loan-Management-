@@ -29,18 +29,20 @@ export function serialize(doc: any) {
 }
 const nameRef = (u: any) => (u && typeof u === 'object' && 'name' in u ? { id: String(u._id), name: u.name } : u ? String(u) : null);
 
-const FIELD_LABEL: Record<string, string> = { phone: 'phone number', email: 'email address', idNumber: 'identification number', idType: 'identification number', ippisNumber: 'IPPIS number' };
+const FIELD_LABEL: Record<string, string> = { phone: 'phone number', email: 'email address', nin: 'NIN', bvn: 'BVN', idNumber: 'identification number', idType: 'identification number', ippisNumber: 'IPPIS number' };
 
-async function assertNoDuplicate(c: { phone?: string; email?: string; idType?: string; idNumber?: string; ippisNumber?: string }, excludeId?: Types.ObjectId) {
+async function assertNoDuplicate(c: { phone?: string; email?: string; nin?: string; bvn?: string; idType?: string; idNumber?: string; ippisNumber?: string }, excludeId?: Types.ObjectId) {
   const or: Record<string, unknown>[] = [];
   if (c.phone) or.push({ phone: c.phone });
   if (c.email) or.push({ email: c.email });
   if (c.idType && c.idNumber) or.push({ idType: c.idType, idNumber: c.idNumber });
+  if (c.nin) or.push({ nin: c.nin });
+  if (c.bvn) or.push({ bvn: c.bvn });
   if (c.ippisNumber) or.push({ 'employment.ippisNumber': c.ippisNumber });
   if (!or.length) return;
   const existing = await Customer.findOne({ isArchived: false, $or: or, ...(excludeId ? { _id: { $ne: excludeId } } : {}) });
   if (!existing) return;
-  const field = existing.phone === c.phone ? 'phone' : existing.email && existing.email === c.email ? 'email' : c.ippisNumber && existing.employment?.ippisNumber === c.ippisNumber ? 'ippisNumber' : 'idNumber';
+  const field = existing.phone === c.phone ? 'phone' : existing.email && existing.email === c.email ? 'email' : c.ippisNumber && existing.employment?.ippisNumber === c.ippisNumber ? 'ippisNumber' : c.nin && existing.nin === c.nin ? 'nin' : c.bvn && existing.bvn === c.bvn ? 'bvn' : 'idNumber';
   const errKey = field === 'ippisNumber' ? 'employment.ippisNumber' : field;
   throw new AppError(409, `A customer with this ${FIELD_LABEL[field]} already exists (${existing.customerId} – ${existing.fullName})`, 'DUPLICATE_CUSTOMER', { [errKey]: `Already registered to ${existing.customerId}` });
 }
@@ -89,7 +91,7 @@ export async function updateCustomer(id: string, input: Partial<CustomerInput>, 
   for (const k of ['employment', 'emergencyContact'] as const) {
     if (next[k]) next[k] = { ...((c.get(k) as { toObject?: () => object } | undefined)?.toObject?.() ?? c.get(k) ?? {}), ...next[k] };
   }
-  const merged = { phone: next.phone ?? c.phone, email: 'email' in next ? next.email : c.email, idType: 'idType' in next ? next.idType : c.idType, idNumber: 'idNumber' in next ? next.idNumber : c.idNumber };
+  const merged = { phone: next.phone ?? c.phone, email: 'email' in next ? next.email : c.email, nin: 'nin' in next ? next.nin : c.nin, bvn: 'bvn' in next ? next.bvn : c.bvn };
   const emp = (next.employment ?? (c.get('employment') as any)?.toObject?.() ?? {}) as { sector?: string; ippisNumber?: string; ministry?: string };
   if (next.employment) {
     const sector = emp.sector ?? (emp.ippisNumber ? 'government' : undefined);
@@ -139,7 +141,7 @@ export async function listCustomers(q: ListCustomersQuery) {
   if (q.from || q.to) filter.registrationDate = { ...(q.from && { $gte: q.from }), ...(q.to && { $lte: q.to }) };
   if (q.q) {
     const term = escapeRe(q.q);
-    const or: Record<string, unknown>[] = [{ customerId: new RegExp(term, 'i') }, { fullName: new RegExp(term, 'i') }, { email: new RegExp(term, 'i') }, { 'employment.ippisNumber': new RegExp(term, 'i') }];
+    const or: Record<string, unknown>[] = [{ customerId: new RegExp(term, 'i') }, { nin: new RegExp(term) }, { bvn: new RegExp(term) }, { fullName: new RegExp(term, 'i') }, { email: new RegExp(term, 'i') }, { 'employment.ippisNumber': new RegExp(term, 'i') }];
     const phone = normalizePhone(q.q);
     const digits = q.q.replace(/\D/g, '');
     if (phone) or.push({ phone }); else if (digits.length >= 3) or.push({ phone: new RegExp(escapeRe(digits.replace(/^(234)/, '0'))) });

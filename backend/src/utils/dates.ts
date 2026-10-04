@@ -24,3 +24,11 @@ export function addMonths(d: Date, n: number): Date {
 }
 export const diffDays = (a: Date, b: Date) => Math.round((a.getTime() - b.getTime()) / DAY_MS);
 export const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Day `day` of the month `n` months after `d`'s month, clamped to month end (30 -> 28/29 Feb). Independent of d's own day. */
+export function monthDay(d: Date, n: number, day: number): Date {
+  const total = d.getUTCMonth() + n;
+  const y = d.getUTCFullYear() + Math.floor(total / 12);
+  const m = ((total % 12) + 12) % 12;
+  return utcDate(y, m, Math.min(day, new Date(Date.UTC(y, m + 1, 0)).getUTCDate()));
+}
