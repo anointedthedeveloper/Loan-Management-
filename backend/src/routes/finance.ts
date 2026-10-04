@@ -26,7 +26,7 @@ loansRouter.get('/', perm('loans.view'), query(v.listLoansSchema), c.loanList);
 loansRouter.post('/preview', perm('loans.create', 'loans.edit'), body(v.previewLoanSchema), c.loanPreview);
 loansRouter.post('/', perm('loans.create'), body(v.createLoanSchema), c.loanCreate);
 loansRouter.get('/:id', perm('loans.view'), c.loanGet);
-loansRouter.patch('/:id', perm('loans.edit'), body(v.updateLoanSchema), c.loanUpdate);
+loansRouter.patch('/:id', perm('loans.edit', 'loans.editActive'), body(v.updateLoanSchema), c.loanUpdate);
 loansRouter.post('/:id/approve', perm('loans.approve'), c.loanApprove);
 loansRouter.post('/:id/disburse', perm('loans.approve'), c.loanDisburse);
 loansRouter.post('/:id/reject', perm('loans.approve'), body(v.reasonSchema), c.loanReject);
@@ -37,6 +37,7 @@ loansRouter.post('/:id/installments/:number/pay', perm('repayments.record'), bod
 loansRouter.get('/:id/settlement-quote', perm('repayments.record', 'loans.approve'), query(v.settlementQuerySchema), c.settlementQuote);
 loansRouter.post('/:id/settle', perm('repayments.record', 'loans.approve'), body(v.settleSchema), c.loanSettle);
 loansRouter.get('/:id/statement', perm('loans.view'), query(v.statementQuerySchema), c.loanStatement);
+loansRouter.get('/:id/schedule/export', perm('loans.view'), query(v.scheduleExportSchema), c.loanScheduleExport);
 loansRouter.get('/:id/transactions', perm('transactions.view', 'loans.view'), c.loanTransactions);
 
 export const repaymentsRouter = mk();

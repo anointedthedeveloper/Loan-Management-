@@ -1,4 +1,5 @@
 import { Types } from 'mongoose';
+import { Transaction } from '../models/Transaction.js';
 import { Loan } from '../models/Loan.js';
 import { Customer } from '../models/Customer.js';
 import { RepaymentSchedule } from '../models/RepaymentSchedule.js';
@@ -56,10 +57,10 @@ export function assertWithinProduct(p: ProductDoc, i: { amount: number; duration
   if (!p.allowedFrequencies.includes(i.frequency)) throw err('frequency', `${p.name} does not allow ${i.frequency} repayments`);
 }
 
-export interface Draft { firstPaymentDate?: Date; product: ProductDoc; terms: LoanTerms; frequency: Frequency; duration: { value: number; unit: string }; customIntervalDays?: number; interestBasis: string; schedule: ReturnType<typeof generateSchedule> }
+export interface Draft { firstPaymentDate?: Date; product: ProductDoc; rates: { interestRate: number; bankDeductionRate: number; rateBasis: string }; terms: LoanTerms; frequency: Frequency; duration: { value: number; unit: string }; customIntervalDays?: number; interestBasis: string; schedule: ReturnType<typeof generateSchedule> }
 
 /** Prices a loan from a product + request using the central engine. Used by preview, create and edit. */
-export async function buildDraft(input: PricingInput, extra: { carriedBalance?: number; interestBasis?: LoanTermsInput['interestBasis']; skipLimits?: boolean } = {}): Promise<Draft> {
+export async function buildDraft(input: PricingInput, extra: { carriedBalance?: number; interestBasis?: LoanTermsInput['interestBasis']; skipLimits?: boolean; rates?: { interestRate: number; bankDeductionRate: number; rateBasis: string } } = {}): Promise<Draft> {
   const product = await getProduct(input.productId);
   const duration = (input.duration ?? { value: product.minDuration, unit: product.durationUnit }) as { value: number; unit: string };
   const frequency = (input.frequency ?? product.defaultFrequency) as Frequency;
@@ -69,15 +70,16 @@ export async function buildDraft(input: PricingInput, extra: { carriedBalance?: 
   if (input.firstPaymentDate && input.firstPaymentDate < input.startDate) throw AppError.badRequest('The first payment cannot be before the start date', 'VALIDATION_ERROR', { firstPaymentDate: 'Cannot be before the start date' });
   if (!rules.loans.allowBackdatedStart && input.startDate < todayLagos()) throw AppError.badRequest('Start date cannot be in the past', 'VALIDATION_ERROR', { startDate: 'Cannot be in the past' });
   const interestBasis = extra.interestBasis ?? 'full_principal';
+  const rates = extra.rates ?? { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate, rateBasis: product.rateBasis };
   let terms: LoanTerms;
   try {
     terms = calculateLoan({
-      amount: input.amount, carriedBalance: extra.carriedBalance, bankDeductionRate: product.bankDeductionRate, interestRate: product.interestRate,
-      rateBasis: product.rateBasis as any, duration: duration as any, frequency, customIntervalDays: input.customIntervalDays,
+      amount: input.amount, carriedBalance: extra.carriedBalance, bankDeductionRate: rates.bankDeductionRate, interestRate: rates.interestRate,
+      rateBasis: rates.rateBasis as any, duration: duration as any, frequency, customIntervalDays: input.customIntervalDays,
       numberOfInstallments: input.numberOfInstallments, interestBasis, startDate: input.startDate, firstPaymentDate: input.firstPaymentDate,
     });
   } catch (e) { throw AppError.badRequest((e as Error).message, 'CALCULATION_ERROR'); }
-  return { product, terms, frequency, duration, customIntervalDays: input.customIntervalDays, interestBasis, firstPaymentDate: input.firstPaymentDate, schedule: generateSchedule(terms, frequency, input.customIntervalDays) };
+  return { product, terms, rates, frequency, duration, customIntervalDays: input.customIntervalDays, interestBasis, firstPaymentDate: input.firstPaymentDate, schedule: generateSchedule(terms, frequency, input.customIntervalDays) };
 }
 
 export const draftView = (d: Draft) => ({
@@ -143,9 +145,18 @@ async function findLoan(id: string) {
   return l;
 }
 
-export async function updateLoan(id: string, input: Partial<PricingInput> & { notes?: string }, actor: Actor) {
+const RUNNING_EDITABLE = ['approved', 'active', 'overdue', 'defaulted'];
+
+/**
+ * Pending loans are edited by anyone with loans.edit. Running loans (approved/active/overdue/defaulted) can be edited by
+ * those with loans.editActive (the CEO): terms are re-priced, the schedule is rebuilt and every recorded repayment is
+ * replayed over it, so balances and statuses stay consistent. The change is audited with before/after values and a reason.
+ */
+export async function updateLoan(id: string, input: Partial<PricingInput> & { notes?: string; interestRate?: number; bankDeductionRate?: number; reason?: string }, actor: Actor, canEditRunning = false) {
   const loan = await findLoan(id);
-  if (loan.status !== 'pending') throw AppError.conflict('Only pending loans can be edited. Reject or cancel this loan and create a new one instead.', 'LOAN_NOT_EDITABLE');
+  const running = RUNNING_EDITABLE.includes(loan.status);
+  if (loan.status !== 'pending' && !running) throw AppError.conflict(`A ${loan.status} loan cannot be edited.`, 'LOAN_NOT_EDITABLE');
+  if (running && !canEditRunning) throw AppError.forbidden('Only an administrator can edit a loan that has already been approved. You can edit it while it is pending.', 'LOAN_NOT_EDITABLE');
   const before = serializeLoan(loan);
   const merged: PricingInput = {
     productId: input.productId ?? String(loan.product), amount: input.amount ?? loan.amount, duration: input.duration ?? { value: loan.duration!.value!, unit: loan.duration!.unit! },
@@ -153,17 +164,26 @@ export async function updateLoan(id: string, input: Partial<PricingInput> & { no
     numberOfInstallments: input.numberOfInstallments, startDate: input.startDate ?? loan.startDate,
     firstPaymentDate: input.firstPaymentDate ?? (loan.firstPaymentDateIsCustom ? loan.firstPaymentDate ?? undefined : undefined),
   };
-  const d = await buildDraft(merged);
+  const d = await buildDraft(merged, { carriedBalance: loan.carriedBalance || undefined, interestBasis: loan.interestBasis as any, skipLimits: running, rates: running ? { interestRate: input.interestRate ?? loan.interestRate, bankDeductionRate: input.bankDeductionRate ?? loan.bankDeductionRate, rateBasis: loan.rateBasis } : undefined });
   const t = d.terms;
   loan.set({ product: d.product._id, productName: d.product.name, amount: t.amount, carriedBalance: t.carriedBalance, bankDeductionRate: t.bankDeductionRate, grossAmount: t.grossAmount, principal: t.principal,
     interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestAmount: t.interestAmount, monthlyInterest: t.monthlyInterest, totalRepayment: t.totalRepayment, duration: d.duration, frequency: d.frequency,
     customIntervalDays: d.customIntervalDays, numberOfInstallments: t.numberOfInstallments, installmentAmount: t.installmentAmount, startDate: t.startDate, firstPaymentDate: t.firstDueDate, firstPaymentDateIsCustom: !!d.firstPaymentDate, dueDate: t.dueDate,
     outstandingBalance: t.totalRepayment, principalBalance: t.principal, interestBalance: t.interestAmount, ...(input.notes !== undefined && { notes: input.notes }), updatedBy: actor.id });
+  if (running) loan.set({ interestRate: d.rates.interestRate, bankDeductionRate: d.rates.bankDeductionRate });
   await loan.save();
   await RepaymentSchedule.updateOne({ loan: loan._id }, { $set: { installments: d.schedule.map((s) => ({ ...s, paidPrincipal: 0, paidInterest: 0, amountPaid: 0, remaining: s.expectedAmount, status: 'upcoming' })) } });
-  const after = serializeLoan(loan);
+  if (running) {
+    // The payout entry follows the loan's amount and start date (same ledger row, change recorded in the audit trail).
+    const payout = await Transaction.findOne({ loan: loan._id, type: 'disbursement', reversedAt: { $exists: false } });
+    const today = todayLagos();
+    if (payout) await Transaction.updateOne({ _id: payout._id }, { amount: loan.amount, date: loan.startDate < today ? loan.startDate : today });
+    await recalculateLoan(loan._id);
+  }
+  const fresh = running ? await Loan.findById(loan._id) : loan;
+  const after = serializeLoan(fresh);
   const diff = changedFields(before, after, ['updatedAt', 'updatedBy', 'dueDate', 'startDate', 'duration']);
-  await auditAs(actor, { action: AUDIT.LOAN_UPDATED, entity: 'Loan', entityId: after.id, entityLabel: loan.loanId, before: diff.before, after: diff.after });
+  await auditAs(actor, { action: AUDIT.LOAN_UPDATED, entity: 'Loan', entityId: after.id, entityLabel: loan.loanId, before: diff.before, after: running ? { ...diff.after, ...(input.reason ? { reason: input.reason } : {}), editedWhileStatus: loan.status } : diff.after });
   return getLoan(id);
 }
 
@@ -224,6 +244,8 @@ export async function getLoan(id: string) {
 export async function listLoans(q: any) {
   const f: Record<string, any> = {};
   if (q.status?.length) f.status = { $in: q.status };
+  else if (q.scope === 'completed') f.status = 'completed'; // fully repaid loans live on their own page
+  else if (q.scope !== 'all') f.status = { $ne: 'completed' };
   if (q.customer) f.customer = q.customer;
   if (q.createdBy) f.createdBy = q.createdBy;
   if (q.product) f.product = q.product;

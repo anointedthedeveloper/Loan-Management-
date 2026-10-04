@@ -43,7 +43,7 @@ export const loanCreate = asyncHandler(async (req, res) => {
   ok(res, await loans.createLoan(req.body, actorOf(req), { autoApprove }), autoApprove ? 'Loan created and approved' : 'Loan submitted for approval', 201);
 });
 export const loanGet = asyncHandler(async (req, res) => ok(res, await loans.getLoan(id(req))));
-export const loanUpdate = asyncHandler(async (req, res) => ok(res, await loans.updateLoan(id(req), req.body, actorOf(req)), 'Loan updated'));
+export const loanUpdate = asyncHandler(async (req, res) => ok(res, await loans.updateLoan(id(req), req.body, actorOf(req), req.auth!.permissions.includes('loans.editActive')), 'Loan updated'));
 export const loanApprove = asyncHandler(async (req, res) => ok(res, await loans.approveLoan(id(req), actorOf(req)), 'Loan approved'));
 export const loanDisburse = asyncHandler(async (req, res) => ok(res, await loans.disburseLoan(id(req), actorOf(req)), 'Loan disbursed'));
 export const loanReject = asyncHandler(async (req, res) => ok(res, await loans.rejectLoan(id(req), req.body.reason, actorOf(req)), 'Loan rejected'));
@@ -89,6 +89,15 @@ async function sendStatement(req: Request, res: any, s: Awaited<ReturnType<typeo
   res.type('application/pdf').attachment(`${base}.pdf`).send(await statementExport.statementToPdf(s, req.auth!.name));
 }
 export const loanStatement = asyncHandler(async (req, res) => { const s = await statements.buildLoanStatement(id(req), res.locals.query); await sendStatement(req, res, s, 'Loan', id(req), s.loans[0]!.loan.loanId); });
+export const loanScheduleExport = asyncHandler(async (req, res) => {
+  const f = res.locals.query; const s = await statements.buildLoanStatement(id(req), {});
+  const ref = s.loans[0]!.loan.loanId;
+  await auditAs(actorOf(req), { action: A.STATEMENT_GENERATED, entity: 'Loan', entityId: id(req), entityLabel: ref, after: { document: 'repayment schedule', format: f.format } });
+  const base = `protech-schedule-${ref}`;
+  if (f.format === 'csv') return void res.type('text/csv').attachment(`${base}.csv`).send(statementExport.scheduleToCsv(s));
+  if (f.format === 'xlsx') return void res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet').attachment(`${base}.xlsx`).send(await statementExport.scheduleToXlsx(s, req.auth!.name));
+  res.type('application/pdf').attachment(`${base}.pdf`).send(await statementExport.scheduleToPdf(s, req.auth!.name));
+});
 export const clientStatement = asyncHandler(async (req, res) => { const s = await statements.buildClientStatement(id(req), res.locals.query); await sendStatement(req, res, s, 'Customer', id(req), s.client.customerId); });
 
 /* page-view tracking (who looked at what, when) */

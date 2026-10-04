@@ -25,7 +25,7 @@ const provider: CustomerFinancialProvider = {
       activeLoans: live.length, completedLoans: loans.filter((l) => l.status === 'completed').length, overdueLoans: loans.filter((l) => l.status === 'overdue').length,
     };
   },
-  async listLoans(id, skip, limit) { const r = await listLoans({ customer: id, page: Math.floor(skip / limit) + 1, limit, sort: 'createdAt', order: 'desc' }); return { items: r.items, total: r.total }; },
+  async listLoans(id, skip, limit) { const r = await listLoans({ customer: id, scope: 'all', page: Math.floor(skip / limit) + 1, limit, sort: 'createdAt', order: 'desc' }); return { items: r.items, total: r.total }; },
   async listRepayments(id, skip, limit) { const r = await listTransactions({ customer: id, type: 'repayment', page: Math.floor(skip / limit) + 1, limit, sort: 'date', order: 'desc' }); return r; },
   async listTransactions(id, skip, limit) { const r = await listTransactions({ customer: id, page: Math.floor(skip / limit) + 1, limit, sort: 'date', order: 'desc' }); return r; },
 };

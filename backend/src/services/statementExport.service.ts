@@ -1,4 +1,5 @@
 import type { Statement } from './statement.service.js';
+import { windowOpens } from '../config/loanOptions.js';
 
 const NAIRA = new Intl.NumberFormat('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const money = (n: number) => NAIRA.format(n);
@@ -102,6 +103,73 @@ export async function statementToPdf(s: Statement, generatedBy: string): Promise
     if (!s.loans.length) doc.font('Helvetica').fontSize(10).fillColor('#666').text('No loan transactions to report.');
     if (s.loans.length > 1) { doc.font('Helvetica-Bold').fontSize(9).fillColor('#111').text(`ALL LOANS - Total debit ${money(s.summary.totalDebit)}   Total credit ${money(s.summary.totalCredit)}   Balance ${money(s.summary.closingBalance)}`); }
     doc.moveDown(1).font('Helvetica').fontSize(7).fillColor('#777').text(`Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC by ${generatedBy}. Balance = amount still owed (debits less credits).`);
+    doc.end();
+  });
+}
+
+/* ---------- repayment schedule (one loan): the month-by-month plan with what has been paid ---------- */
+const SCHED_HEAD = ['No.', 'Month', 'Payment window opens', 'Due date', 'EMI (Repayment)', 'Principal part', 'Interest part', 'Paid', 'Remaining', 'Status'];
+const schedRow = (m: Statement['loans'][number]['schedule'][number]) => [m.number, m.month, ymd(windowOpens(new Date(m.dueDate))), ymd(m.dueDate), m.emi, m.principal, m.interest, m.paid, m.remaining, m.status.replace(/_/g, ' ')];
+const oneLoan = (s: Statement) => { const l = s.loans[0]; if (!l) throw new Error('No loan'); return l; };
+
+export function scheduleToCsv(s: Statement): string {
+  const l = oneLoan(s);
+  const esc = (v: unknown) => { const t = String(v ?? ''); return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
+  const out = [esc(`${s.company.name} - Repayment schedule - ${l.loan.loanId}`), '', ...clientLines(s).map(([k, v]) => `${esc(k)},${esc(v)}`), '', ...loanLines(l.loan).map(([k, v]) => `${esc(k)},${esc(v)}`), '', SCHED_HEAD.join(',')];
+  for (const m of l.schedule) out.push(schedRow(m).map(esc).join(','));
+  out.push(['', '', '', 'Totals', ...[4, 5, 6, 7, 8].map((i) => l.schedule.reduce((a, m) => a + Number(schedRow(m)[i]), 0)), ''].map(esc).join(','));
+  return '﻿' + out.join('\r\n');
+}
+
+export async function scheduleToXlsx(s: Statement, generatedBy: string): Promise<Buffer> {
+  const { default: ExcelJS } = await import('exceljs');
+  const l = oneLoan(s);
+  const wb = new ExcelJS.Workbook(); wb.creator = s.company.name;
+  const ws = wb.addWorksheet(`${l.loan.loanId} schedule`.slice(0, 31));
+  ws.addRow([`${s.company.name} - Repayment schedule - ${l.loan.loanId}`]).font = { bold: true, size: 14 };
+  ws.addRow([]);
+  for (const [k, v] of clientLines(s)) ws.addRow([k, v]).getCell(1).font = { bold: true };
+  ws.addRow([]);
+  for (const [k, v] of loanLines(l.loan)) ws.addRow([k, v]).getCell(1).font = { bold: true };
+  ws.addRow([]);
+  const head = ws.addRow(SCHED_HEAD); head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  head.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B3D2E' } }; });
+  const first = ws.rowCount + 1;
+  for (const m of l.schedule) ws.addRow(schedRow(m));
+  const last = ws.rowCount;
+  if (l.schedule.length) { const t = ws.addRow(['', '', '', 'Totals']); t.font = { bold: true }; ['E', 'F', 'G', 'H', 'I'].forEach((c) => { t.getCell(c).value = { formula: `SUM(${c}${first}:${c}${last})` }; }); }
+  ws.addRow([]); ws.addRow([`Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC by ${generatedBy}`]);
+  [34, 12, 20, 14, 18, 16, 16, 16, 16, 16].forEach((w, i) => { const c = ws.getColumn(i + 1); c.width = w; if (i >= 4 && i <= 8) c.numFmt = '#,##0.00'; });
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+export async function scheduleToPdf(s: Statement, generatedBy: string): Promise<Buffer> {
+  const { default: PDFDocument } = await import('pdfkit');
+  const l = oneLoan(s);
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ size: 'A4', margin: 36, layout: 'landscape' });
+    const chunks: Buffer[] = []; doc.on('data', (b) => chunks.push(b)); doc.on('end', () => resolve(Buffer.concat(chunks))); doc.on('error', reject);
+    const W = doc.page.width - 72; const green = '#0B3D2E';
+    doc.font('Helvetica-Bold').fontSize(16).fillColor(green).text(s.company.name, 36, 36);
+    doc.font('Helvetica-Bold').fontSize(12).fillColor('#111').text(`REPAYMENT SCHEDULE - ${l.loan.loanId}`);
+    doc.font('Helvetica').fontSize(8.5).fillColor('#333').moveDown(0.4)
+      .text(`${s.client.name}  ·  ${s.client.customerId}  ·  IPPIS ${s.client.ippisNumber ?? '—'}  ·  ${s.client.ministry ?? '—'}`)
+      .text(`Amount taken ${money(l.loan.amountTaken)}  ·  Principal ${money(l.loan.principal)}  ·  Interest (one-time) ${money(l.loan.interest)}  ·  Total loan ${money(l.loan.totalLoan)}  ·  EMI ${money(l.loan.emi)} × ${l.loan.numberOfInstallments}`)
+      .text('Payment window opens on the 25th; each installment is due on the 30th (28/29 in February).').moveDown(0.8);
+    const widths = [28, 62, 82, 70, 82, 82, 82, 82, 82, W - 28 - 62 - 82 - 70 - 82 * 5]; const aligns = ['left', 'left', 'left', 'left', 'right', 'right', 'right', 'right', 'right', 'left'] as const;
+    const row = (cells: string[], bold = false, fill?: string) => {
+      if (doc.y > doc.page.height - 60) { doc.addPage(); doc.y = 36; }
+      const y = doc.y; if (fill) doc.save().rect(36, y - 2, W, 14).fill(fill).restore();
+      let x = 36; doc.font(bold ? 'Helvetica-Bold' : 'Helvetica').fontSize(7.5).fillColor(fill ? '#fff' : '#111');
+      cells.forEach((t, i) => { doc.text(t, x + 2, y, { width: widths[i]! - 6, align: aligns[i], lineBreak: false, ellipsis: true }); x += widths[i]!; });
+      doc.y = y + 14;
+    };
+    row(SCHED_HEAD, true, green);
+    for (const m of l.schedule) row([String(m.number), m.month, dmy(windowOpens(new Date(m.dueDate))), dmy(m.dueDate), money(m.emi), money(m.principal), money(m.interest), money(m.paid), money(m.remaining), m.status.replace(/_/g, ' ')]);
+    const tot = (k: 'emi' | 'principal' | 'interest' | 'paid' | 'remaining') => money(l.schedule.reduce((a, m) => a + m[k], 0));
+    doc.moveTo(36, doc.y).lineTo(36 + W, doc.y).strokeColor('#999').stroke(); doc.y += 3;
+    row(['', '', '', 'TOTALS', tot('emi'), tot('principal'), tot('interest'), tot('paid'), tot('remaining'), ''], true);
+    doc.moveDown(1).font('Helvetica').fontSize(7).fillColor('#777').text(`Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC by ${generatedBy}.`);
     doc.end();
   });
 }

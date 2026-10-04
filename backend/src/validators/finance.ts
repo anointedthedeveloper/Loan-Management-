@@ -54,13 +54,21 @@ const pricing = {
 };
 export const previewLoanSchema = z.object({ ...pricing, customerId: objectId.optional() });
 export const createLoanSchema = z.object({ ...pricing, customerId: objectId, notes: text(1000) });
-export const updateLoanSchema = z.object({ ...pricing, notes: text(1000) }).partial();
+/** `interestRate` / `bankDeductionRate` / `reason` are only honoured when editing a running loan (needs loans.editActive). */
+export const updateLoanSchema = z.object({
+  ...pricing, notes: text(1000),
+  interestRate: z.preprocess(blank, z.coerce.number().min(0).max(100).optional()),
+  bankDeductionRate: z.preprocess(blank, z.coerce.number().min(0).max(99).optional()),
+  reason: text(300),
+}).partial();
 export const reasonSchema = z.object({ reason: z.string().trim().min(3, 'Please give a reason').max(500) });
 export const optionalReasonSchema = z.object({ reason: text(500) });
 
 export const listLoansSchema = z.object({
   ...pageQuery,
   q: z.string().trim().max(100).optional(),
+  /** `open` (default) hides completed loans, `completed` shows only them. An explicit status filter overrides it. */
+  scope: z.enum(['open', 'completed', 'all']).default('open'),
   status: csv, customer: objectId.optional(), createdBy: objectId.optional(), product: objectId.optional(),
   repaymentStatus: z.enum(['unpaid', 'partial', 'paid', 'overdue']).optional(),
   from: optDate, to: optDate,
@@ -82,6 +90,7 @@ const txCommon = {
 export const markPaidSchema = z.object({ ...txCommon, amount: z.preprocess(blank, money('Amount paid').optional()) });
 export const editRepaymentSchema = z.object({ ...txCommon, amount: money('Amount paid'), reason: z.string({ error: 'Enter the reason for the change' }).trim().min(3, 'Enter the reason for the change').max(300) });
 export const settleSchema = z.object({ ...txCommon });
+export const scheduleExportSchema = z.object({ format: z.enum(['pdf', 'xlsx', 'csv']).default('pdf') });
 export const settlementQuerySchema = z.object({ date: optDate });
 export const recordRepaymentSchema = z.object({ loanId: objectId, amount: money('Payment amount'), ...txCommon });
 export const manualTransactionSchema = z.object({

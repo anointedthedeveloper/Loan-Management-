@@ -87,3 +87,38 @@ describe('editing amounts', () => {
     expect(audit.body.data.length).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('repayment schedule download', () => {
+  it('downloads as PDF, Excel and CSV, with the 25th/30th cycle', async () => {
+    const l = await activeLoan();
+    const bin = (r: any) => Buffer.from(r.body);
+    const pdf = await api('get', `/api/loans/${l.id}/schedule/export?format=pdf`).buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    expect(pdf.status).toBe(200);
+    expect(bin(pdf).subarray(0, 4).toString()).toBe('%PDF');
+    expect(pdf.headers['content-disposition']).toMatch(/protech-schedule-LN-\d+\.pdf/);
+    const xlsx = await api('get', `/api/loans/${l.id}/schedule/export?format=xlsx`).buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    expect(bin(xlsx).subarray(0, 2).toString()).toBe('PK');
+    const csv = await api('get', `/api/loans/${l.id}/schedule/export?format=csv`);
+    expect(csv.text).toContain('Payment window opens');
+    const lines = csv.text.split('\r\n').filter((x: string) => /^\d+,/.test(x));
+    expect(lines).toHaveLength(6);
+    expect(lines[0]!.split(',')[2]!.endsWith('-25')).toBe(true); // window opens on the 25th
+    expect((await api('get', `/api/loans/${l.id}/schedule/export?format=csv`, acct)).status).toBe(200);
+  });
+});
+
+describe('completed loans live on their own list', () => {
+  it('are hidden from the default loan list and shown under scope=completed', async () => {
+    const l = await activeLoan();
+    await api('post', '/api/repayments').send({ loanId: l.id, amount: l.totalRepayment });
+    expect((await api('get', `/api/loans/${l.id}`)).body.data.loan.status).toBe('completed');
+    const ids = (r: any) => r.body.data.map((x: any) => x.id);
+    expect(ids(await api('get', '/api/loans?limit=100'))).not.toContain(l.id);
+    expect(ids(await api('get', '/api/loans?limit=100&scope=completed'))).toContain(l.id);
+    expect(ids(await api('get', '/api/loans?limit=100&scope=all'))).toContain(l.id);
+    expect(ids(await api('get', '/api/loans?limit=100&status=completed'))).toContain(l.id);
+    // the customer's own page still shows the full history
+    const cust = (await api('get', `/api/loans/${l.id}`)).body.data.loan.customer.id;
+    expect((await api('get', `/api/customers/${cust}/loans`)).body.data.map((x: any) => x.id)).toContain(l.id);
+  });
+});

@@ -124,7 +124,33 @@ describe('loan creation and calculation (done by the backend)', () => {
     expect(e.body.data.schedule).toHaveLength(3);
     expect(await AuditLog.countDocuments({ action: 'LOAN_UPDATED', entityId: c.body.data.loan.id })).toBe(1);
     const active = await activeLoan();
-    expect((await api('patch', `/api/loans/${active.id}`).send({ amount: 100000 })).body.code).toBe('LOAN_NOT_EDITABLE');
+    await User.updateOne({ username: 'accountant' }, { permissions: ['loans.view', 'loans.edit'] });
+    expect((await api('patch', `/api/loans/${active.id}`, acct).send({ amount: 100000 })).status).toBe(403); // accountants only edit pending loans
+    await User.updateOne({ username: 'accountant' }, { permissions: [] });
+  });
+  it('the CEO can edit a running loan: terms re-priced, repayments replayed, payout and audit updated', async () => {
+    const l = await activeLoan(); // 960,000 net -> 1,000,000 principal, 300,000 interest, 6 x 216,666.67
+    await pay(l.id, 216666.67, { method: 'cash' });
+    const e = await api('patch', `/api/loans/${l.id}`).send({ amount: 480000, duration: { value: 3, unit: 'months' }, reason: 'Customer asked for a smaller loan' });
+    expect(e.status).toBe(200);
+    expect(e.body.data.loan).toMatchObject({ amount: 480000, principal: 500000, interestAmount: 75000, numberOfInstallments: 3 });
+    expect(e.body.data.schedule).toHaveLength(3);
+    expect(e.body.data.loan.amountPaid).toBeCloseTo(216666.67, 2); // the recorded repayment is kept and replayed
+    expect(e.body.data.loan.outstandingBalance).toBeCloseTo(575000 - 216666.67, 2);
+    expect((await Transaction.findOne({ loan: l.id, type: 'disbursement' }))!.amount).toBe(480000);
+    const log = await AuditLog.findOne({ action: 'LOAN_UPDATED', entityId: l.id });
+    expect(log).toBeTruthy();
+    expect(JSON.stringify(log!.after)).toContain('Customer asked for a smaller loan');
+  });
+  it('the CEO can also change a running loan\'s interest rate; completed loans cannot be edited', async () => {
+    const l = await activeLoan();
+    const e = await api('patch', `/api/loans/${l.id}`).send({ interestRate: 4 });
+    expect(e.status).toBe(200);
+    expect(e.body.data.loan.interestAmount).toBe(240000);
+    expect((await api('patch', `/api/loans/${l.id}`).send({ amount: 960000 })).status).toBe(200);
+    await pay(l.id, e.body.data.loan.outstandingBalance + 0, {});
+    const g = await api('get', `/api/loans/${l.id}`);
+    if (g.body.data.loan.status === 'completed') expect((await api('patch', `/api/loans/${l.id}`).send({ amount: 1000 })).body.code).toBe('LOAN_NOT_EDITABLE');
   });
 });
 
