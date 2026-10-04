@@ -117,3 +117,13 @@ Interest is worked out once on the original principal: monthly interest = princi
 
 ## Loan book Excel
 Reports > "Loan book (monthly breakdown)" (or Loans > "Loan book (Excel)") exports one row per loan in Protech's loan-book layout with live calculator formulas (`=ROUND(I5/0.96,2)`, `=ROUND(K5*5%*F5,2)`, ...), a column per month of repayments, Repayment to date and Balance. Every loan statement's Excel also has a "Monthly breakdown" sheet.
+
+## Repayment cycle, proof of payment and loan rules
+
+- **Monthly cycle:** the first installment is due in the month after the loan starts (whatever day it started), the payment window opens on the 25th and the due date is the 30th (28/29 in February). Set in `REPAYMENT_CYCLE` (`backend/src/config/loanOptions.ts`). Loans with a custom first-payment date keep it.
+- **Proof of payment:** repayments, "mark installment paid" and settlements accept uploaded files (PDF, PNG/JPG, Word, Excel; 4 MB each, 5 per payment). Files are stored in MongoDB (`Attachment`) because serverless hosting has no disk, and are downloadable from the payment.
+- **Editing money:** the amount in "mark as paid" is editable. A recorded repayment is corrected with `POST /api/repayments/:id/edit` (permission `repayments.edit`, CEO by default): the original is reversed, a linked replacement is posted, proof files move to it, and the reason is audited.
+- **One open loan per customer:** a customer with a pending or running loan cannot get another; the API answers `EXISTING_LOAN` and the UI points to a top-up. The limit is configurable in Settings > Loans.
+- **Completed loans** are listed under *Completed loans*, not *Loans* (`GET /api/loans?scope=completed`).
+- **Admin edits:** the CEO (`loans.editActive`) can edit running loans (terms, rates); the schedule is rebuilt and recorded repayments are replayed. Accountants edit pending loans only.
+- **Customers:** NIN and BVN (11 digits each, unique) are required; government workers also need an IPPIS number (unique, searchable); non-government workers don't.

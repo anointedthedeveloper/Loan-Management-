@@ -107,7 +107,7 @@ export default function LoanDetailPage() {
         {tab === 'schedule' && (
           <>
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 px-4 py-3">
-              <p className="text-xs text-slate-500">Payment window opens on the 25th; each installment is due on the 30th (28/29 in February).</p>
+              <p className="text-xs text-slate-500">{l.frequency === 'monthly' ? 'Payment window opens on the 25th; each installment is due on the 30th (28/29 in February).' : ' '}</p>
               <div className="flex items-center gap-1.5">
                 <span className="text-xs text-slate-500">Download schedule:</span>
                 {(['pdf', 'xlsx', 'csv'] as const).map((fmt) => (
@@ -115,7 +115,7 @@ export default function LoanDetailPage() {
                 ))}
               </div>
             </div>
-            <ScheduleTable rows={schedule} onMarkPaid={live && can(PERM.repayments.record) ? setMarking : undefined} />
+            <ScheduleTable rows={schedule} monthly={l.frequency === 'monthly' && !l.firstPaymentDateIsCustom} onMarkPaid={live && can(PERM.repayments.record) ? setMarking : undefined} />
           </>
         )}
         {tab === 'repayments' && (tx.error ? <ErrorState message={tx.error} onRetry={tx.reload} /> : tx.loading ? <div className="p-5"><Skeleton className="h-24 w-full" /></div> : <LoanRepaymentsList rows={tx.data?.data ?? []} />)}

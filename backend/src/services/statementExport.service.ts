@@ -109,14 +109,14 @@ export async function statementToPdf(s: Statement, generatedBy: string): Promise
 
 /* ---------- repayment schedule (one loan): the month-by-month plan with what has been paid ---------- */
 const SCHED_HEAD = ['No.', 'Month', 'Payment window opens', 'Due date', 'EMI (Repayment)', 'Principal part', 'Interest part', 'Paid', 'Remaining', 'Status'];
-const schedRow = (m: Statement['loans'][number]['schedule'][number]) => [m.number, m.month, ymd(windowOpens(new Date(m.dueDate))), ymd(m.dueDate), m.emi, m.principal, m.interest, m.paid, m.remaining, m.status.replace(/_/g, ' ')];
+const schedRow = (m: Statement['loans'][number]['schedule'][number], monthly = true) => [m.number, m.month, monthly ? ymd(windowOpens(new Date(m.dueDate))) : '', ymd(m.dueDate), m.emi, m.principal, m.interest, m.paid, m.remaining, m.status.replace(/_/g, ' ')];
 const oneLoan = (s: Statement) => { const l = s.loans[0]; if (!l) throw new Error('No loan'); return l; };
 
 export function scheduleToCsv(s: Statement): string {
   const l = oneLoan(s);
   const esc = (v: unknown) => { const t = String(v ?? ''); return /[",\n\r]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t; };
   const out = [esc(`${s.company.name} - Repayment schedule - ${l.loan.loanId}`), '', ...clientLines(s).map(([k, v]) => `${esc(k)},${esc(v)}`), '', ...loanLines(l.loan).map(([k, v]) => `${esc(k)},${esc(v)}`), '', SCHED_HEAD.join(',')];
-  for (const m of l.schedule) out.push(schedRow(m).map(esc).join(','));
+  for (const m of l.schedule) out.push(schedRow(m, l.loan.frequency === 'monthly').map(esc).join(','));
   out.push(['', '', '', 'Totals', ...[4, 5, 6, 7, 8].map((i) => l.schedule.reduce((a, m) => a + Number(schedRow(m)[i]), 0)), ''].map(esc).join(','));
   return '﻿' + out.join('\r\n');
 }
@@ -135,7 +135,7 @@ export async function scheduleToXlsx(s: Statement, generatedBy: string): Promise
   const head = ws.addRow(SCHED_HEAD); head.font = { bold: true, color: { argb: 'FFFFFFFF' } };
   head.eachCell((c) => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0B3D2E' } }; });
   const first = ws.rowCount + 1;
-  for (const m of l.schedule) ws.addRow(schedRow(m));
+  for (const m of l.schedule) ws.addRow(schedRow(m, l.loan.frequency === 'monthly'));
   const last = ws.rowCount;
   if (l.schedule.length) { const t = ws.addRow(['', '', '', 'Totals']); t.font = { bold: true }; ['E', 'F', 'G', 'H', 'I'].forEach((c) => { t.getCell(c).value = { formula: `SUM(${c}${first}:${c}${last})` }; }); }
   ws.addRow([]); ws.addRow([`Generated ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC by ${generatedBy}`]);
@@ -155,7 +155,7 @@ export async function scheduleToPdf(s: Statement, generatedBy: string): Promise<
     doc.font('Helvetica').fontSize(8.5).fillColor('#333').moveDown(0.4)
       .text(`${s.client.name}  ·  ${s.client.customerId}  ·  IPPIS ${s.client.ippisNumber ?? '—'}  ·  ${s.client.ministry ?? '—'}`)
       .text(`Amount taken ${money(l.loan.amountTaken)}  ·  Principal ${money(l.loan.principal)}  ·  Interest (one-time) ${money(l.loan.interest)}  ·  Total loan ${money(l.loan.totalLoan)}  ·  EMI ${money(l.loan.emi)} × ${l.loan.numberOfInstallments}`)
-      .text('Payment window opens on the 25th; each installment is due on the 30th (28/29 in February).').moveDown(0.8);
+      .text(l.loan.frequency === 'monthly' ? 'Payment window opens on the 25th; each installment is due on the 30th (28/29 in February).' : ' ').moveDown(0.8);
     const widths = [28, 62, 82, 70, 82, 82, 82, 82, 82, W - 28 - 62 - 82 - 70 - 82 * 5]; const aligns = ['left', 'left', 'left', 'left', 'right', 'right', 'right', 'right', 'right', 'left'] as const;
     const row = (cells: string[], bold = false, fill?: string) => {
       if (doc.y > doc.page.height - 60) { doc.addPage(); doc.y = 36; }
@@ -165,7 +165,7 @@ export async function scheduleToPdf(s: Statement, generatedBy: string): Promise<
       doc.y = y + 14;
     };
     row(SCHED_HEAD, true, green);
-    for (const m of l.schedule) row([String(m.number), m.month, dmy(windowOpens(new Date(m.dueDate))), dmy(m.dueDate), money(m.emi), money(m.principal), money(m.interest), money(m.paid), money(m.remaining), m.status.replace(/_/g, ' ')]);
+    for (const m of l.schedule) row([String(m.number), m.month, l.loan.frequency === 'monthly' ? dmy(windowOpens(new Date(m.dueDate))) : '—', dmy(m.dueDate), money(m.emi), money(m.principal), money(m.interest), money(m.paid), money(m.remaining), m.status.replace(/_/g, ' ')]);
     const tot = (k: 'emi' | 'principal' | 'interest' | 'paid' | 'remaining') => money(l.schedule.reduce((a, m) => a + m[k], 0));
     doc.moveTo(36, doc.y).lineTo(36 + W, doc.y).strokeColor('#999').stroke(); doc.y += 3;
     row(['', '', '', 'TOTALS', tot('emi'), tot('principal'), tot('interest'), tot('paid'), tot('remaining'), ''], true);

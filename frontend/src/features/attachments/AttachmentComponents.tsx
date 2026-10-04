@@ -58,7 +58,7 @@ export function AttachmentPicker({ value, onChange, loanId, transactionId, label
       <label htmlFor="attachment-input" className={`inline-flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2 text-sm text-slate-600 transition hover:border-brand-500 hover:text-brand-700 ${busy ? 'pointer-events-none opacity-60' : ''}`}>
         <Paperclip className="size-4" />{busy ? 'Uploading…' : 'Attach files'}
       </label>
-      <span className="ml-2 text-xs text-slate-500">PDF, PNG, JPG, DOCX, XLSX · up to 4 MB each</span>
+      <span className="mt-1 block text-xs text-slate-500">PDF, PNG, JPG, DOCX, XLSX · up to 4 MB each</span>
       {value.length > 0 && (
         <ul className="mt-2 space-y-1">
           {value.map((a) => (
