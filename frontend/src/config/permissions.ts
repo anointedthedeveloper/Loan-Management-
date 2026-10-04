@@ -6,7 +6,7 @@
  */
 export const PERM = {
   dashboard: { view: 'dashboard.view' },
-  customers: { read: 'customers.read', create: 'customers.create', update: 'customers.update', delete: 'customers.delete', viewFinancials: 'customers.viewFinancials' },
+  customers: { read: 'customers.read', create: 'customers.create', update: 'customers.update', delete: 'customers.delete', import: 'customers.import', viewFinancials: 'customers.viewFinancials' },
   staff: { manage: 'staff.manage' },
   audit: { view: 'audit.view' },
   settings: { manage: 'settings.manage' },

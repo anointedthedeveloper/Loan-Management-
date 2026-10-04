@@ -139,3 +139,9 @@ Reports > "Loan book (monthly breakdown)" (or Loans > "Loan book (Excel)") expor
 - The schedule shows unpaid installments first (due order) and paid ones below.
 - Uploads preview before saving; clicking a payment shows its proof with preview and download.
 - Statement PDFs can include the uploaded proofs (`?includeUploads=true`, PDF only): images and PDF pages are appended as captioned pages; Word/Excel files are listed on a note page. Responses are capped near 4 MB (serverless limit).
+
+## Customer sheet import, client numbers and incomplete profiles
+
+- **Client numbers are customer IDs:** client 640 is `PTC-000640`. New customers continue after the highest number (the counter never goes below 640).
+- **Import:** CEO (permission `customers.import`) uses *Customers > Import from Excel* (a dry run shows what will happen first), or runs `npm run import:customers -- file.xlsx [--dry-run]` with `MONGODB_URI` set. Rows with an IPPIS number are government workers; without one they are non-government and the MINISTRY column is their organisation. Duplicate or missing client numbers get a free/new number and are listed in the report. Re-running is safe (existing IPPIS numbers only have empty details filled in).
+- **Incomplete profiles:** imported customers lack phone, address, NIN, BVN, date of birth, marital status, next of kin... Each profile lists what is missing (banner, badge, *Profile: Incomplete* filter and a dashboard reminder). Staff can fill details piece by piece; registering a new customer in the app still requires them all.

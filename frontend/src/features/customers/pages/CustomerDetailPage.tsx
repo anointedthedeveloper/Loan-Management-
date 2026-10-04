@@ -36,7 +36,7 @@ export default function CustomerDetailPage() {
           <div>
             <div className="flex flex-wrap items-center gap-2"><h1 className="text-xl font-bold tracking-tight">{c.fullName}</h1><CustomerStatusBadge status={c.status} /></div>
             <p className="font-mono text-xs text-slate-500">{c.customerId}</p>
-            <div className="mt-1 flex flex-wrap gap-x-4 text-sm text-slate-600"><span className="flex items-center gap-1"><Phone className="size-3.5" />{c.phone}</span>{c.email && <span className="flex items-center gap-1"><Mail className="size-3.5" />{c.email}</span>}</div>
+            <div className="mt-1 flex flex-wrap gap-x-4 text-sm text-slate-600"><span className="flex items-center gap-1"><Phone className="size-3.5" />{c.phone ?? <span className="text-amber-700">No phone yet</span>}</span>{c.email && <span className="flex items-center gap-1"><Mail className="size-3.5" />{c.email}</span>}</div>
           </div>
         </div>
         <div className="flex gap-2">
@@ -46,6 +46,12 @@ export default function CustomerDetailPage() {
           {can(PERM.customers.update) && <Link to={`/customers/${c.id}/edit`}><Button><Pencil className="size-4" />Edit</Button></Link>}
         </div>
       </div>
+      {c.profile && !c.profile.complete && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+          <span><b>Incomplete profile.</b> Still missing: {c.profile.missing.join(', ')}.</span>
+          {can(PERM.customers.update) && <Link to={`/customers/${c.id}/edit`} className="rounded-lg border border-amber-400 bg-white px-4 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100">Complete profile</Link>}
+        </div>
+      )}
       <Tabs tabs={tabs} active={tab} onChange={setTab} />
       <div key={tab} className="animate-fade-in">
         {tab === 'overview' && <OverviewTab c={c} />}

@@ -26,9 +26,9 @@ export async function getOverview(permissions: Permission[]) {
   const add = (fn: () => Promise<void>) => sections.push(fn());
 
   if (has('customers.read')) add(async () => {
-    const [rows, recent] = await Promise.all([Customer.aggregate([{ $match: { isArchived: false } }, { $group: { _id: '$status', count: { $sum: 1 } } }]), listCustomersLite()]);
+    const [rows, recent, incomplete] = await Promise.all([Customer.aggregate([{ $match: { isArchived: false } }, { $group: { _id: '$status', count: { $sum: 1 } } }]), listCustomersLite(), Customer.countDocuments({ isArchived: false, 'profileMissing.0': { $exists: true } })]);
     const counts = Object.fromEntries(rows.map((r) => [r._id, r.count]));
-    out.customers = { total: rows.reduce((s, r) => s + r.count, 0), byStatus: CUSTOMER_STATUSES.map((s) => ({ value: s.value, label: s.label, tone: s.tone, count: counts[s.value] ?? 0 })) };
+    out.customers = { incompleteProfiles: incomplete, total: rows.reduce((s, r) => s + r.count, 0), byStatus: CUSTOMER_STATUSES.map((s) => ({ value: s.value, label: s.label, tone: s.tone, count: counts[s.value] ?? 0 })) };
     out.recentCustomers = recent.slice(0, 5);
   });
   if (has('staff.manage')) add(async () => { const [total, active] = await Promise.all([User.countDocuments(), User.countDocuments({ isActive: true })]); out.staff = { total, active }; });

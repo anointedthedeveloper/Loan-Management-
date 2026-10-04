@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Check, FileClock } from 'lucide-react'
+import { Briefcase, Building2, Check, FileClock } from 'lucide-react'
 import { useDraft } from '../../../hooks/useDraft'
 import { Button } from '../../../components/ui/Button'
 import { Field } from '../../../components/ui/Field'
@@ -15,7 +15,7 @@ interface Props {
   serverErrors: Record<string, string>
   /** When set, unsaved input is autosaved in this browser under this key (new customers only). */
   draftKey?: string | null
-  onSubmit: (v: CustomerFormValues) => void
+  onSubmit: (v: CustomerFormValues, original?: CustomerFormValues) => void
   onCancel: () => void
 }
 
@@ -23,6 +23,7 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, d
   const [v, setV] = useState(initial)
   const draft = useDraft<CustomerFormValues>(draftKey, v, (x) => JSON.stringify(x) === JSON.stringify(initial))
   useEffect(() => { const d = draft.load(); if (d) { setV({ ...initial, ...d.data }); draft.markRestored(d.savedAt) } }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const original = draftKey ? undefined : initial // editing an existing profile: details that were never filled in are not forced
   const [local, setLocal] = useState<Record<string, string>>({})
   const err = (k: string) => local[k] ?? serverErrors[k]
   const set = (k: keyof CustomerFormValues) => (e: { target: { value: string } }) => { setV((s) => ({ ...s, [k]: e.target.value })); setLocal((l) => ({ ...l, [k]: '' })) }
@@ -30,10 +31,10 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, d
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    const errors = quickValidate(v)
+    const errors = quickValidate(v, original)
     setLocal(errors)
     if (Object.keys(errors).length) { document.getElementById('customer-form')?.querySelector('[aria-invalid=true]')?.scrollIntoView({ block: 'center' }); return }
-    onSubmit(v)
+    onSubmit(v, original)
   }
 
   return (
@@ -44,12 +45,31 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, d
           <button type="button" className="font-medium underline" onClick={() => { draft.discard(); setV(initial); setLocal({}) }}>Discard draft</button>
         </div>
       )}
+      <FormSection title="Type of worker" description="Choose first. Government workers are identified by their IPPIS number (one customer per IPPIS number) and the ministry they work in; for non-government workers, enter the organisation they work for.">
+        <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2" role="radiogroup" aria-label="Type of worker">
+          {([['government', 'Government worker', 'Paid through IPPIS: needs an IPPIS number and a ministry.', Building2], ['non_government', 'Non-government worker', 'No IPPIS number. Enter the organisation or employer.', Briefcase]] as const).map(([val, title, hint, Icon]) => (
+            <button key={val} type="button" role="radio" aria-checked={v.sector === val} onClick={() => { setV((s) => ({ ...s, sector: val })); setLocal((l) => ({ ...l, sector: '' })) }}
+              className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${v.sector === val ? 'border-brand-600 bg-brand-50 ring-2 ring-brand-500/20' : 'border-slate-200 bg-white hover:border-brand-400'}`}>
+              <Icon className={`mt-0.5 size-5 ${v.sector === val ? 'text-brand-700' : 'text-slate-400'}`} />
+              <span><span className="block text-sm font-semibold">{title}</span><span className="mt-0.5 block text-xs text-slate-500">{hint}</span></span>
+            </button>
+          ))}
+        </div>
+        {err('sector') && <p className="text-xs text-red-600 sm:col-span-2" role="alert">{err('sector')}</p>}
+        {v.sector === 'government' && <>
+          {text('ippisNumber', 'IPPIS number *')}
+          {text('ministry', 'Ministry / department *')}
+        </>}
+        {v.sector === 'non_government' && <div className="sm:col-span-2">{text('ministry', 'Organisation / employer')}</div>}
+      </FormSection>
+
       <FormSection title="Personal details">
         {text('firstName', 'First name *', { autoFocus: true })}
         {text('middleName', 'Middle name')}
         {text('lastName', 'Last name *')}
         {text('dateOfBirth', 'Date of birth *', { type: 'date' })}
         <SelectField label="Gender *" options={meta.genders} value={v.gender} onChange={set('gender')} error={err('gender')} />
+        <SelectField label="Marital status *" options={meta.maritalStatuses ?? []} value={v.maritalStatus} onChange={set('maritalStatus')} error={err('maritalStatus')} />
         <SelectField label="Status" options={meta.statuses} value={v.status} onChange={set('status')} error={err('status')} placeholder="Choose status" />
       </FormSection>
 
@@ -67,14 +87,8 @@ export function CustomerForm({ meta, initial, submitLabel, busy, serverErrors, d
         {text('bvn', 'BVN (Bank Verification Number) *', { inputMode: 'numeric', maxLength: 11 })}
       </FormSection>
 
-      <FormSection title="Employment / business" description="Government workers must have an IPPIS number; it identifies them across the portal. Non-government workers do not need one.">
-        <SelectField label="Worker type *" options={[{ value: 'government', label: 'Government worker' }, { value: 'non_government', label: 'Non-government worker' }]} value={v.sector} onChange={set('sector')} error={err('sector')} />
-        {text('occupation', 'Occupation')}
-        <div className="sm:col-span-2">{text('employerName', 'Employer / business name')}</div>
-        {v.sector === 'government' && <>
-          {text('ippisNumber', 'IPPIS number *')}
-          {text('ministry', 'Ministry / department *')}
-        </>}
+      <FormSection title="Occupation">
+        {text('occupation', 'Occupation / job title')}
       </FormSection>
 
       <FormSection title="Emergency contact">

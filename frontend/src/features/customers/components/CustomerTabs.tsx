@@ -38,9 +38,8 @@ export function OverviewTab({ c }: { c: Customer }) {
       </Panel>
       <Panel title="Employment / business">
         <Item label="Occupation" value={c.employment?.occupation} />
-        <div className="sm:col-span-2"><Item label="Employer / business" value={c.employment?.employerName} /></div>
         <Item label="Worker type" value={c.employment?.sector === 'non_government' ? 'Non-government worker' : c.employment?.sector || c.employment?.ippisNumber ? 'Government worker' : undefined} />
-        <Item label="IPPIS number" value={c.employment?.ippisNumber} /><Item label="Ministry / department" value={c.employment?.ministry} />
+        <Item label="IPPIS number" value={c.employment?.ippisNumber} /><Item label={c.employment?.sector === 'non_government' ? 'Organisation / employer' : 'Ministry / department'} value={c.employment?.ministry} />
       </Panel>
       <Panel title="Emergency contact">
         <Item label="Name" value={c.emergencyContact?.name} /><Item label="Relationship" value={c.emergencyContact?.relationship} /><Item label="Phone" value={c.emergencyContact?.phone} />

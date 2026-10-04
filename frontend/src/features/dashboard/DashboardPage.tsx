@@ -13,7 +13,7 @@ import { LoanStatusBadge } from '../../components/ui/StatusBadge'
 import { formatDate, formatMoney, formatMoneyShort, formatNumber } from '../../utils/format'
 
 interface Overview {
-  customers?: { total: number; byStatus: { value: string; label: string; tone: Tone; count: number }[] }
+  customers?: { incompleteProfiles?: number; total: number; byStatus: { value: string; label: string; tone: Tone; count: number }[] }
   recentCustomers?: { id: string; customerId: string; fullName: string; status: string; registrationDate: string }[]
   staff?: { total: number; active: number }
   recentActivity?: ActivityEntry[]
@@ -59,6 +59,12 @@ export default function DashboardPage({ variant }: { variant: 'ceo' | 'accountan
       <div><h1 className="text-2xl font-bold tracking-tight">{greet}, {greetingName(user.name)}</h1><p className="mt-1 text-sm text-slate-500">{ceo ? 'Executive overview' : 'Daily operations'} · figures are calculated live from the ledger</p></div>
       {error ? <ErrorState message={error} onRetry={() => setKey((k) => k + 1)} /> : (
         <>
+          {!!data?.customers?.incompleteProfiles && (
+            <Link to="/customers?profile=incomplete" className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 transition hover:bg-amber-100">
+              <span><b>{formatNumber(data.customers.incompleteProfiles)}</b> customer profile{data.customers.incompleteProfiles === 1 ? ' is' : 's are'} incomplete (phone, NIN, BVN, address, date of birth... still missing).</span>
+              <span className="font-semibold underline">Complete them</span>
+            </Link>
+          )}
           <div className="stagger grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             {(loading || data?.customers) && <MetricCard label="Total customers" value={formatNumber(data?.customers?.total)} loading={loading} icon={<Users className="size-5" />} />}
             {(loading || fin) && <MetricCard label="Active loans" value={formatNumber(fin?.activeLoans)} loading={loading} icon={<Landmark className="size-5" />} />}
