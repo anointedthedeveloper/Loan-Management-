@@ -228,11 +228,11 @@ describe('authorization', () => {
     expect((await request(app).get('/api/customers')).status).toBe(401);
     expect((await request(app).post('/api/customers').send(customerPayload())).status).toBe(401);
   });
-  it('accountant defaults: can read/create, cannot update or delete', async () => {
+  it('accountant defaults: can read, create and complete details (update), cannot delete', async () => {
     const c = (await create(customerPayload(), acct));
     expect(c.status).toBe(201);
     expect((await request(app).get('/api/customers').set(as(acct))).status).toBe(200);
-    expect((await request(app).patch(`/api/customers/${c.body.data.customer.id}`).set(as(acct)).send({ notes: 'x' })).status).toBe(403);
+    expect((await request(app).patch(`/api/customers/${c.body.data.customer.id}`).set(as(acct)).send({ notes: 'x' })).status).toBe(200);
     expect((await request(app).delete(`/api/customers/${c.body.data.customer.id}`).set(as(acct))).status).toBe(403);
   });
   it('honours permissions assigned by the CEO (and revokes immediately)', async () => {

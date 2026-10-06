@@ -60,7 +60,7 @@ export const previewLoanSchema = z.object({
   rateBasis: z.preprocess(blank, z.enum(vals(RATE_BASES)).optional()),
 });
 export const createLoanSchema = z.object({ ...pricing, customerId: objectId, notes: text(1000) });
-/** `interestRate` / `bankDeductionRate` / `reason` are only honoured when editing a running loan (needs loans.editActive). */
+/** `interestRate` / `bankDeductionRate` / `rateBasis` override the loan's own rates when editing it; a running loan also needs loans.editActive and a `reason`. */
 export const updateLoanSchema = z.object({
   ...pricing, notes: text(1000),
   interestRate: z.preprocess(blank, z.coerce.number().min(0).max(100).optional()),

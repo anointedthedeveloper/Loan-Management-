@@ -7,7 +7,7 @@ const schema = new Schema(
     uploadedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     uploadedByName: String,
     needsApproval: Boolean, // loans were created as pending because the uploader cannot approve
-    total: Number, created: Number, skipped: Number,
+    total: Number, created: Number, updated: Number, skipped: Number,
     rows: [{ _id: false, row: Number, name: String, clientId: String, ippis: String, kind: String, loan: String, loanRef: String, status: String, messages: [String] }],
   },
   { timestamps: true },

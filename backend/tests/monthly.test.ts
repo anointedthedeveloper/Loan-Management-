@@ -38,9 +38,9 @@ describe('monthly loans-taken upload', () => {
       [num(a), a.fullName, 480210, 'OSGF', 6, D('2026-08-05'), null, 50000, null, null, null, null, 10000, null, null, 'NEW'],  // client A but IPPIS of B
     ]);
     const pv = (await send('/preview', buf)).body.data.plan;
-    expect(pv).toMatchObject({ willCreate: 3, errors: 2, needsApproval: false });
+    expect(pv).toMatchObject({ counts: { newLoans: 3, errors: 2 }, needsApproval: false });
     expect(pv.rows[3].errors[0]).toMatch(/No customer/);
-    expect(pv.rows[4].errors[0]).toMatch(/IPPIS 480210 belongs to/);
+    expect(pv.rows[4].errors[0]).toMatch(/belongs to|already belongs/);
     expect(await Loan.countDocuments({ customer: b.id })).toBe(0); // preview saves nothing
 
     const r = (await send('?filename=oct.xlsx', buf)).body.data.result;
@@ -110,7 +110,7 @@ describe('blank columns are calculated (the sheet formulas)', () => {
     const x = await mkCustomer('800001');
     const buf = await sheet([[num(x), x.fullName, 800001, 'OSGF', 12, D('2026-10-01'), null, 96000, null, null, null, null, null, D('2026-11-01'), null, 'NEW']]);
     const pv = (await send('/preview', buf)).body.data.plan.rows[0];
-    expect(pv).toMatchObject({ status: 'create', principal: 100000, interest: 60000, total: 160000, emi: 13333.33 }); // 100,000 x 5% x 12
+    expect(pv).toMatchObject({ action: 'new-loan', principal: 100000, interest: 60000, total: 160000, emi: 13333.33 }); // 100,000 x 5% x 12
     expect(pv.warnings.join(' ')).toMatch(/EMI left blank/);
     await send('?filename=blank.xlsx', buf);
     const xl = await api('get', '/api/reports/customer-register?format=xlsx&limit=500').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
@@ -120,5 +120,64 @@ describe('blank columns are calculated (the sheet formulas)', () => {
     let found = false;
     ws.eachRow((row, n) => { if (n > head && String(row.getCell(col('Clients Name')).value) === x.fullName) { found = true; const f = (l: string) => String((row.getCell(col(l)).value as any)?.formula ?? ''); expect(f('Gross Payment')).toMatch(/^ROUND\([A-Z]+\d+\/0\.96,2\)$/); expect(f('Interest')).toMatch(/%\*[A-Z]+\d+,2\)$/); expect(f('EMI')).toMatch(/^ROUND\(/); } });
     expect(found).toBe(true);
+  });
+});
+
+
+describe('the downloaded register can be edited and uploaded back', () => {
+  const download = async () => {
+    const xl = await api('get', '/api/reports/customer-register?format=xlsx&limit=500').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(xl.body) as any); return wb;
+  };
+  const headerRow = (ws: ExcelJS.Worksheet) => { let h = 0; ws.eachRow((row, n) => { if (!h && (row.values as any[]).includes('Clients Name')) h = n; }); return h; };
+  const colOf = (ws: ExcelJS.Worksheet, h: number, label: string) => (ws.getRow(h).values as any[]).indexOf(label);
+  const save = async (wb: ExcelJS.Workbook) => Buffer.from(await wb.xlsx.writeBuffer());
+
+  it('re-uploading the register untouched changes nothing', async () => {
+    const wb = await download(); const buf = await save(wb);
+    const plan = (await send('/preview', buf)).body.data.plan;
+    expect(plan.counts).toMatchObject({ newLoans: 0, loanUpdates: 0, errors: 0 });
+    const r = (await send('?filename=register.xlsx', buf)).body.data.result;
+    expect(r).toMatchObject({ created: 0, updated: 0, skipped: 0 });
+  });
+
+  it('edits to customer details and loan figures are applied; the accountant can only change what she may', async () => {
+    const x = await mkCustomer('900001');
+    const loan = (await api('post', '/api/loans').send({ customerId: x.id, productId: product, amount: 96000, duration: { value: 6, unit: 'months' }, startDate: isoDate(todayLagos()) })).body.data.loan;
+    const wb = await download(); const ws = wb.worksheets[0]!; const h = headerRow(ws);
+    let target = 0; ws.eachRow((row, n) => { if (n > h && String(row.getCell(colOf(ws, h, 'Loan ID')).value) === loan.loanId) target = n; });
+    expect(target).toBeGreaterThan(0);
+    const set = (label: string, v: unknown) => { ws.getCell(target, colOf(ws, h, label)).value = v as any; };
+    set('phone no', '0803 999 0001'); set('Address', '7 New Street'); set('NIN', '99988877766'); set('MINISTRY', 'CCB');
+    set('Tenor', 12); // loan change
+    set('EMI', 15000); // 12 x 15,000 = 180,000 on a 100,000 principal
+    const buf = await save(wb);
+    const pv = (await send('/preview', buf)).body.data.plan.rows.find((r: any) => r.loanRef === loan.loanId);
+    expect(pv.action).toBe('update-loan');
+    expect(pv.customerChanges.join(' ')).toMatch(/Phone/); expect(pv.loanChanges.join(' ')).toMatch(/Tenor: 6 → 12/);
+    // an accountant (no loans.edit / editActive) cannot change the running loan, but the customer details do go through
+    const { User } = await import('../src/models/User.js'); await User.updateOne({ username: 'accountant' }, { permissions: ['loans.view', 'loans.create', 'customers.update'] });
+    const ra = (await send('?filename=edit.xlsx', buf, acct)).body.data.result.rows.find((r: any) => r.name === x.fullName);
+    expect(ra.status).toBe('updated');
+    expect((await Loan.findById(loan.id))!.numberOfInstallments).toBe(6);
+    const c1 = (await Customer.findById(x.id))!; expect([c1.phone, c1.address, c1.nin, c1.employment?.ministry]).toEqual(['08039990001', '7 New Street', '99988877766', 'CCB']);
+    // the CEO's upload changes the loan
+    const rc = (await send('?filename=edit2.xlsx', buf)).body.data.result.rows.find((r: any) => r.name === x.fullName);
+    expect(rc.messages.join(' ')).toMatch(/Loan .* updated/);
+    const l2 = (await Loan.findById(loan.id))!;
+    expect(l2.numberOfInstallments).toBe(12); expect(l2.totalRepayment).toBeCloseTo(180000, 0); expect(l2.installmentAmount).toBeCloseTo(15000, 1);
+  });
+
+  it('a Loan ID that is not the customer\'s current loan is refused; blank cells never erase details', async () => {
+    const x = await mkCustomer('900002');
+    const wb = await download(); const ws = wb.worksheets[0]!; const h = headerRow(ws);
+    let target = 0; ws.eachRow((row, n) => { if (n > h && row.getCell(colOf(ws, h, 'IPPIS NO')).value?.toString() === '900002') target = n; });
+    ws.getCell(target, colOf(ws, h, 'Loan ID')).value = 'LN-999999'; ws.getCell(target, colOf(ws, h, 'Bank payment')).value = 50000; ws.getCell(target, colOf(ws, h, 'Tenor')).value = 6; ws.getCell(target, colOf(ws, h, 'Payment Date')).value = new Date('2026-10-01T00:00:00Z');
+    const row = (await send('/preview', await save(wb))).body.data.plan.rows.find((r: any) => r.customerRef === x.customerId);
+    expect(row.action).toBe('error'); expect(row.errors[0]).toMatch(/not .* current loan/);
+    const before = (await Customer.findById(x.id))!.phone;
+    ws.getCell(target, colOf(ws, h, 'Loan ID')).value = null; ws.getCell(target, colOf(ws, h, 'Bank payment')).value = null; ws.getCell(target, colOf(ws, h, 'phone no')).value = null;
+    await send('?filename=blank.xlsx', await save(wb));
+    expect((await Customer.findById(x.id))!.phone).toBe(before);
   });
 });

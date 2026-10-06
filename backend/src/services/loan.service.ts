@@ -160,7 +160,7 @@ const RUNNING_EDITABLE = ['approved', 'active', 'overdue', 'defaulted'];
  * those with loans.editActive (the CEO): terms are re-priced, the schedule is rebuilt and every recorded repayment is
  * replayed over it, so balances and statuses stay consistent. The change is audited with before/after values and a reason.
  */
-export async function updateLoan(id: string, input: Partial<PricingInput> & { notes?: string; interestRate?: number; bankDeductionRate?: number; rateBasis?: string; reason?: string }, actor: Actor, canEditRunning = false) {
+export async function updateLoan(id: string, input: Partial<PricingInput> & { notes?: string; interestRate?: number; bankDeductionRate?: number; rateBasis?: string; carriedBalance?: number; reason?: string }, actor: Actor, canEditRunning = false) {
   const loan = await findLoan(id);
   const running = RUNNING_EDITABLE.includes(loan.status);
   if (loan.status !== 'pending' && !running) throw AppError.conflict(`A ${loan.status} loan cannot be edited.`, 'LOAN_NOT_EDITABLE');
@@ -173,7 +173,8 @@ export async function updateLoan(id: string, input: Partial<PricingInput> & { no
     firstPaymentDate: input.firstPaymentDate ?? (loan.firstPaymentDateIsCustom ? loan.firstPaymentDate ?? undefined : undefined),
   };
   const sameProduct = !input.productId || input.productId === String(loan.product); // keeps the rates the loan was created with (e.g. from a monthly upload) unless another product is chosen
-  const d = await buildDraft(merged, { carriedBalance: loan.carriedBalance || undefined, interestBasis: loan.interestBasis as any, skipLimits: running, rates: running || sameProduct ? { interestRate: running ? input.interestRate ?? loan.interestRate : loan.interestRate, bankDeductionRate: running ? input.bankDeductionRate ?? loan.bankDeductionRate : loan.bankDeductionRate, rateBasis: running ? input.rateBasis ?? loan.rateBasis : loan.rateBasis } : undefined });
+  // an unchanged past start date is not a new back-dated loan, so allowBackdated is set for it
+  const d = await buildDraft(merged, { carriedBalance: (input.carriedBalance ?? loan.carriedBalance) || undefined, interestBasis: loan.interestBasis as any, skipLimits: running, allowBackdated: running || +merged.startDate === +loan.startDate, rates: running || sameProduct ? { interestRate: input.interestRate ?? loan.interestRate, bankDeductionRate: input.bankDeductionRate ?? loan.bankDeductionRate, rateBasis: input.rateBasis ?? loan.rateBasis } : undefined });
   const t = d.terms;
   loan.set({ product: d.product._id, productName: d.product.name, amount: t.amount, carriedBalance: t.carriedBalance, bankDeductionRate: t.bankDeductionRate, grossAmount: t.grossAmount, principal: t.principal,
     interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestAmount: t.interestAmount, monthlyInterest: t.monthlyInterest, totalRepayment: t.totalRepayment, duration: d.duration, frequency: d.frequency,

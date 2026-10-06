@@ -54,6 +54,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'dashboard.view',
     'customers.read',
     'customers.create',
+    'customers.update',
     'customers.viewFinancials',
     'loans.view',
     'loans.create',
@@ -79,5 +80,6 @@ export function isPermission(value: string): value is Permission {
  */
 export const PERMISSION_GRANTS: { version: number; role: Role; add: Permission[] }[] = [
   { version: 1, role: 'accountant', add: ['loans.view', 'loans.create'] }, // accountants create loans; the CEO approves them
+  { version: 2, role: 'accountant', add: ['customers.update'] }, // accountants fill in missing customer details
 ];
 export const CURRENT_GRANTS_VERSION = Math.max(...PERMISSION_GRANTS.map((g) => g.version));

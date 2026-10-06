@@ -7,176 +7,251 @@ import { TopUp } from '../models/TopUp.js';
 import { MonthlyUpload } from '../models/MonthlyUpload.js';
 import { AppError } from '../utils/AppError.js';
 import { AUDIT } from '../config/auditActions.js';
-import { CUSTOMER_STATUSES } from '../config/customerOptions.js';
+import { CUSTOMER_STATUSES, MARITAL_STATUSES } from '../config/customerOptions.js';
 import { LIVE_LOAN_STATUSES } from '../config/loanOptions.js';
 import { fromKobo, toKobo } from '../utils/money.js';
-import { addMonths } from '../utils/dates.js';
+import { normalizePhone } from '../utils/phone.js';
 import { auditAs } from './AuditService.js';
-import { buildDraft, createLoanRecord, approveLoan } from './loan.service.js';
+import { buildDraft, createLoanRecord, approveLoan, updateLoan } from './loan.service.js';
+import { updateCustomer } from './customer.service.js';
 import { nextTopUpId } from './topup.service.js';
-import { xlFooter, xlHeaderRow, xlStyleBody, xlTitleBlock, xlPrint, XL_DATE } from './exportStyle.js';
+import { xlFooter, xlHeaderRow, xlStyleBody, xlTitleBlock, xlPrint } from './exportStyle.js';
 import type { Actor } from '../types/index.js';
 
 /**
- * Monthly "loans taken" sheet (Clients ID, Clients Name, IPPIS NO, MINISTRY, Tenor, Payment Date, Balance B/Fwd, Bank payment, ..., EMI,
- * Start Date, End date, Status). Each row is matched to a customer by client number AND IPPIS number, priced like the book
- * (gross = bank / (1 - deduction), principal = B/Fwd + gross) and turned into a loan:
- *  - the EMI written in the sheet is respected: total = EMI x tenor, interest = total - principal;
- *  - NEW / RENEWAL rows need a customer with no open loan; TOP UP rows liquidate the customer's running loan (B/Fwd is what the new loan carries);
- *  - uploaders who cannot approve loans create PENDING loans, which the CEO can edit and then approve; the CEO's own uploads go live straight away.
+ * The monthly sheet. It is the SAME layout as the customer register download, so the register can be edited in Excel and uploaded back.
+ * Each row is matched to a customer by Clients ID and IPPIS NO, then:
+ *  - customer details that differ from the portal (name, IPPIS, ministry, phone, address, NIN, BVN, date of birth, marital status, next of kin phone) are updated;
+ *    blank cells never erase anything;
+ *  - a row WITH a Loan ID refers to that customer's current loan: changed loan figures (tenor, bank payment, B/Fwd, dates, EMI) update it;
+ *  - a row WITHOUT a Loan ID that has loan figures is a new loan: NEW / RENEWAL (no open loan) or TOP UP (liquidates the running loan);
+ *  - the EMI written in the sheet decides the interest (total = EMI x tenor); a blank EMI is calculated with the sheet formulas.
+ * Uploaders without loans.approve create PENDING loans for the CEO to approve; changing a running loan needs loans.editActive.
  */
-export type RowStatus = 'create' | 'error';
+export interface UploadPerms { canApprove: boolean; canEditLoans: boolean; canEditRunning: boolean; canUpdateCustomers: boolean }
+export type RowAction = 'new-loan' | 'top-up' | 'update-loan' | 'update-customer' | 'unchanged' | 'error'
 export interface PlannedRow {
-  row: number; name: string; clientId: string | null; ippis: string; type: 'NEW' | 'TOP UP' | 'RENEWAL' | null; status: RowStatus
-  customerId?: string; customerRef?: string; matchedName?: string; topUpOfRef?: string
-  tenor?: number; bank?: number; carried?: number; gross?: number; principal?: number; interest?: number; total?: number; emi?: number; paymentDate?: Date; firstPayment?: Date | null
-  errors: string[]; warnings: string[]
-  _draft?: { customer: any; oldLoan?: any; input: any; extra: any }
+  row: number; name: string; clientId: string | null; ippis: string; type: 'NEW' | 'TOP UP' | 'RENEWAL' | null; action: RowAction
+  customerId?: string; customerRef?: string; matchedName?: string; topUpOfRef?: string; loanRef?: string
+  tenor?: number; bank?: number; carried?: number; gross?: number; principal?: number; interest?: number; total?: number; emi?: number
+  customerChanges: string[]; loanChanges: string[]; errors: string[]; warnings: string[]
+  _work?: { customer: any; custInput?: Record<string, any>; draft?: any; oldLoan?: any; loan?: any; extra?: any; ratesForEdit?: any }
 }
-export interface MonthlyPlan { rows: PlannedRow[]; willCreate: number; errors: number; needsApproval: boolean; product: string }
+export interface MonthlyPlan { rows: PlannedRow[]; counts: { newLoans: number; loanUpdates: number; customerUpdates: number; unchanged: number; errors: number }; needsApproval: boolean; product: string }
 
 const pad = (n: number) => `PTC-${String(n).padStart(6, '0')}`;
-const clean = (v: unknown) => (v === null || v === undefined ? '' : String(typeof v === 'object' && v && 'result' in (v as any) ? (v as any).result : typeof v === 'object' && v && 'text' in (v as any) ? (v as any).text : v).replace(/\s+/g, ' ').trim());
+const clean = (v: unknown) => (v === null || v === undefined ? '' : String(typeof v === 'object' && v && 'result' in (v as any) ? (v as any).result ?? '' : typeof v === 'object' && v && 'text' in (v as any) ? (v as any).text : v).replace(/\s+/g, ' ').trim());
 const num = (v: unknown) => { if (v && typeof v === 'object' && 'result' in (v as any)) v = (v as any).result; const s = clean(v).replace(/[,₦\s]/g, ''); return s === '' || isNaN(+s) ? null : +s; };
 function date(v: unknown): Date | null {
+  if (v && typeof v === 'object' && 'result' in (v as any)) v = (v as any).result;
   if (v instanceof Date && !isNaN(+v)) return new Date(Date.UTC(v.getUTCFullYear(), v.getUTCMonth(), v.getUTCDate()));
   const s = clean(v); if (!s) return null;
   let m = /^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/.exec(s); if (m) return new Date(Date.UTC(+m[3]!, +m[2]! - 1, +m[1]!));
   m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!)) : null;
 }
+const sameDay = (a?: Date | null, b?: Date | null) => !!a && !!b && a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+const maritalOf = (s: string) => { const t = s.toLowerCase(); return MARITAL_STATUSES.find((m) => t.startsWith(m.value.slice(0, 4)))?.value; };
+const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s\-'/])([a-z])/g, (_m, a, b) => a + b.toUpperCase());
 
-interface SheetRow { row: number; clientId: number | null; name: string; ippis: string; ministry: string; tenor: number | null; paymentDate: Date | null; bf: number | null; bank: number | null; emi: number | null; gross: number | null; principal: number | null; interest: number | null; loan: number | null; firstPayment: Date | null; status: string; product: string }
+interface SheetRow {
+  row: number; clientId: number | null; name: string; ippis: string; ministry: string; phone: string; address: string; nin: string; bvn: string; dob: Date | null; marital: string; nok: string
+  tenor: number | null; paymentDate: Date | null; bf: number | null; bank: number | null; emi: number | null; gross: number | null; principal: number | null; interest: number | null; loan: number | null
+  firstPayment: Date | null; status: string; product: string; loanId: string
+}
 
 async function readSheet(buf: Buffer): Promise<SheetRow[]> {
   const wb = new ExcelJS.Workbook();
   try { await wb.xlsx.load(buf as any); } catch { throw AppError.badRequest('This is not a valid Excel (.xlsx) file', 'UPLOAD_BAD_FILE'); }
   const ws = wb.worksheets[0]; if (!ws) throw AppError.badRequest('The workbook has no sheets', 'UPLOAD_BAD_FILE');
-  const head = new Map<string, number>(); ws.getRow(1).eachCell((c, i) => head.set(clean(c.value).toLowerCase(), i));
-  const find = (...needles: string[]) => { for (const [k, i] of head) if (needles.some((n) => k === n || k.startsWith(n))) return i; return undefined; };
-  const c = { id: find('clients id', 'client id'), name: find('clients name', 'client name'), ippis: find('ippis'), min: find('ministry'), tenor: find('tenor'), pay: find('payment date'), bf: find('balance b/fwd', 'balance'), bank: find('bank payment'), emi: find('emi'), gross: find('gross payment'), principal: find('principal'), interest: find('interest'), loan: find('gross loan'), start: find('start date'), status: find('status'), product: find('product') };
-  const missing = (['name', 'tenor', 'bank'] as const).filter((k) => !c[k]);
-  if (!c.id && !c.ippis) missing.push('id' as any);
-  if (missing.length) throw AppError.badRequest(`The sheet is missing these columns: ${missing.map((m) => ({ name: 'Clients Name', tenor: 'Tenor', bank: 'Bank payment', id: 'Clients ID or IPPIS NO' })[m as string]).join(', ')}. Download the template to see the format.`, 'UPLOAD_BAD_FILE');
+  // the header row is the first row that contains a "Clients Name" cell (the register has a title banner above it)
+  let headRow = 0; ws.eachRow((r, n) => { if (!headRow) r.eachCell((c) => { if (!headRow && clean(c.value).toLowerCase() === 'clients name') headRow = n; }); });
+  if (!headRow) throw AppError.badRequest('Could not find the header row (a "Clients Name" column). Download the register or template to see the format.', 'UPLOAD_BAD_FILE');
+  const head = new Map<string, number>(); ws.getRow(headRow).eachCell((c, i) => head.set(clean(c.value).toLowerCase(), i));
+  const find = (...needles: string[]) => { for (const n of needles) { const exact = head.get(n); if (exact) return exact; } for (const [k, i] of head) if (needles.some((n) => k.startsWith(n))) return i; return undefined; };
+  const c = { id: find('clients id', 'client id'), name: find('clients name', 'client name'), ippis: find('ippis'), min: find('ministry'), phone: find('phone no', 'phone'), addr: find('address'), nin: find('nin'), bvn: find('bvn'), dob: find('date of birth'), ms: find('marital status'), nok: find('next of kin phone'),
+    tenor: find('tenor'), pay: find('payment date'), bf: find('balance b/fwd', 'balance'), bank: find('bank payment'), emi: find('emi'), gross: find('gross payment'), principal: find('principal'), interest: find('interest'), loan: find('gross loan'), start: find('start date'), status: find('status'), product: find('product'), loanId: find('loan id') };
+  if (!c.id && !c.ippis) throw AppError.badRequest('The sheet needs a Clients ID or IPPIS NO column.', 'UPLOAD_BAD_FILE');
   const out: SheetRow[] = [];
   ws.eachRow((r, n) => {
-    if (n === 1) return;
+    if (n <= headRow) return;
     const g = (i?: number) => (i ? r.getCell(i).value : null);
-    const name = clean(g(c.name)); const idRaw = clean(g(c.id));
-    if (!name && !idRaw && !clean(g(c.ippis))) return;
-    out.push({ row: n, clientId: /^\d+$/.test(idRaw) ? +idRaw : null, name, ippis: clean(g(c.ippis)).toUpperCase(), ministry: clean(g(c.min)), tenor: num(g(c.tenor)), paymentDate: date(g(c.pay)), bf: num(g(c.bf)), bank: num(g(c.bank)), emi: num(g(c.emi)), gross: num(g(c.gross)), principal: num(g(c.principal)), interest: num(g(c.interest)), loan: num(g(c.loan)), firstPayment: date(g(c.start)), status: clean(g(c.status)).toUpperCase().replace(/[-_]/g, ' '), product: clean(g(c.product)) });
+    const name = clean(g(c.name)); const idRaw = clean(g(c.id)); const ippis = clean(g(c.ippis)).toUpperCase();
+    if (!name && !idRaw && !ippis) return;
+    if (/^(total|generated)/i.test(name) || /^(total|generated)/i.test(clean(g(1)))) return; // totals and footer rows of the register
+    out.push({ row: n, clientId: /^\d+$/.test(idRaw) ? +idRaw : null, name, ippis, ministry: clean(g(c.min)), phone: clean(g(c.phone)), address: clean(g(c.addr)), nin: clean(g(c.nin)).replace(/\D/g, ''), bvn: clean(g(c.bvn)).replace(/\D/g, ''), dob: date(g(c.dob)), marital: clean(g(c.ms)), nok: clean(g(c.nok)),
+      tenor: num(g(c.tenor)), paymentDate: date(g(c.pay)), bf: num(g(c.bf)), bank: num(g(c.bank)), emi: num(g(c.emi)), gross: num(g(c.gross)), principal: num(g(c.principal)), interest: num(g(c.interest)), loan: num(g(c.loan)),
+      firstPayment: date(g(c.start)), status: clean(g(c.status)).toUpperCase().replace(/[-_]/g, ' '), product: clean(g(c.product)), loanId: clean(g(c.loanId)).toUpperCase() });
   });
   if (!out.length) throw AppError.badRequest('The sheet has no rows', 'UPLOAD_EMPTY');
   return out;
 }
 
-export async function planMonthlyUpload(buf: Buffer, canApprove: boolean): Promise<MonthlyPlan> {
+export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promise<MonthlyPlan> {
   const sheet = await readSheet(buf);
   const products = await LoanProduct.find({ isActive: true, allowedFrequencies: 'monthly' }).sort({ createdAt: 1 });
-  if (!products.length) throw AppError.badRequest('Create an active monthly loan product first (Loan products).', 'NO_PRODUCT');
-
-  const ids = sheet.map((r) => r.clientId).filter((x): x is number => !!x);
-  const ippis = sheet.map((r) => r.ippis).filter(Boolean);
-  const customers = await Customer.find({ isArchived: false, $or: [{ customerId: { $in: ids.map(pad) } }, { legacyId: { $in: ids.map(String) } }, { 'employment.ippisNumber': { $in: ippis } }] });
+  const ids = sheet.map((r) => r.clientId).filter((x): x is number => !!x); const ippisList = sheet.map((r) => r.ippis).filter(Boolean);
+  const customers = await Customer.find({ isArchived: false, $or: [{ customerId: { $in: ids.map(pad) } }, { legacyId: { $in: ids.map(String) } }, { 'employment.ippisNumber': { $in: ippisList } }] });
   const byRef = new Map(customers.map((c) => [c.customerId, c])); const byLegacy = new Map(customers.filter((c) => c.legacyId).map((c) => [String(c.legacyId), c]));
   const byIppis = new Map(customers.filter((c) => c.employment?.ippisNumber).map((c) => [String(c.employment!.ippisNumber).toUpperCase(), c]));
-  const open = await Loan.find({ customer: { $in: customers.map((c) => c._id) }, status: { $in: ['pending', 'approved', ...LIVE_LOAN_STATUSES] } }).select('loanId status customer loanType');
+  const open = await Loan.find({ customer: { $in: customers.map((c) => c._id) }, status: { $in: ['pending', 'approved', ...LIVE_LOAN_STATUSES] } });
   const openBy = new Map<string, any[]>(); for (const l of open) openBy.set(String(l.customer), [...(openBy.get(String(l.customer)) ?? []), l]);
   const doneBefore = new Set((await Loan.find({ customer: { $in: customers.map((c) => c._id) }, status: 'completed' }).select('customer')).map((l) => String(l.customer)));
+  // an IPPIS used by anybody (also customers not in this sheet), to catch a changed IPPIS that clashes
+  const ippisOwner = async (ippis: string) => (byIppis.get(ippis) ?? (await Customer.findOne({ isArchived: false, 'employment.ippisNumber': ippis }))) as any;
 
   const seen = new Set<string>(); const rows: PlannedRow[] = [];
   for (const s of sheet) {
-    const p: PlannedRow = { row: s.row, name: s.name, clientId: s.clientId ? String(s.clientId) : null, ippis: s.ippis, type: null, status: 'error', errors: [], warnings: [] };
+    const p: PlannedRow = { row: s.row, name: s.name, clientId: s.clientId ? String(s.clientId) : null, ippis: s.ippis, type: null, action: 'error', customerChanges: [], loanChanges: [], errors: [], warnings: [] };
     rows.push(p); const err = (m: string) => p.errors.push(m);
-    // customer: by client number and by IPPIS; both must point to the same person
+    // ---- who is this? client number and IPPIS must not point to two different people
     const a = s.clientId ? byRef.get(pad(s.clientId)) ?? byLegacy.get(String(s.clientId)) : undefined; const b = s.ippis ? byIppis.get(s.ippis) : undefined;
     if (a && b && String(a._id) !== String(b._id)) { err(`Client ${s.clientId} is ${a.fullName}, but IPPIS ${s.ippis} belongs to ${b.fullName}. Check the row.`); continue; }
     const cust = a ?? b;
     if (!cust) { err(`No customer with ${s.clientId ? `client number ${s.clientId}` : ''}${s.clientId && s.ippis ? ' or ' : ''}${s.ippis ? `IPPIS ${s.ippis}` : ''} in the portal. Import or register the customer first.`); continue; }
     p.customerId = String(cust._id); p.customerRef = cust.customerId; p.matchedName = cust.fullName;
-    if (s.name && cust.fullName.toLowerCase().replace(/\s+/g, '') !== s.name.toLowerCase().replace(/\s+/g, '')) p.warnings.push(`The sheet says "${s.name}"; the portal has "${cust.fullName}". Matched by ${a ? 'client number' : 'IPPIS'}.`);
-    if (!s.clientId && b) p.warnings.push('Matched by IPPIS only (no client number in the row).');
-    if (seen.has(String(cust._id))) { err('This customer appears twice in the sheet. Only one loan per customer can be uploaded.'); continue; }
+    if (!a && s.clientId) p.warnings.push(`Client number ${s.clientId} was not found; matched by IPPIS.`);
+    if (seen.has(String(cust._id))) { err('This customer appears twice in the sheet. Only one row per customer is allowed.'); continue; }
     seen.add(String(cust._id));
-    if (!CUSTOMER_STATUSES.find((x) => x.value === cust.status)?.canBorrow) { err(`${cust.fullName} is ${cust.status} and cannot be given a loan.`); continue; }
-    // numbers
-    if (!s.tenor || s.tenor < 1 || !Number.isInteger(s.tenor)) err('Tenor must be a whole number of months.');
-    if (!s.bank || s.bank <= 0) err('Bank payment is missing.');
-    if (!s.paymentDate) err('Payment Date is missing or not a date.');
-    if (s.bf !== null && s.bf < 0) err('Balance B/Fwd cannot be negative.');
-    if (p.errors.length) continue;
-    // type
-    const type = s.status === 'TOP UP' || s.status === 'TOPUP' ? 'TOP UP' : s.status === 'NEW' || s.status === '' ? 'NEW' : s.status === 'RENEWAL' ? 'RENEWAL' : null;
-    if (!type) { err(`Status "${s.status}" is not understood. Use NEW, TOP UP or RENEWAL.`); continue; }
-    p.type = type;
+
+    // ---- customer details that changed (blank cells never erase anything)
+    const custInput: Record<string, any> = {}; const emp: Record<string, any> = {}; const ec: Record<string, any> = {};
+    if (s.name && norm(s.name) !== norm(cust.fullName)) {
+      const t = titleCase(s.name).split(' '); custInput.firstName = t[0]; custInput.lastName = t.length > 1 ? t[t.length - 1] : t[0]; custInput.middleName = t.length > 2 ? t.slice(1, -1).join(' ') : ''; p.customerChanges.push(`Name: ${cust.fullName} → ${titleCase(s.name)}`);
+    }
+    if (s.ippis && s.ippis !== String(cust.employment?.ippisNumber ?? '').toUpperCase()) {
+      const owner = await ippisOwner(s.ippis);
+      if (owner && String(owner._id) !== String(cust._id)) { err(`IPPIS ${s.ippis} already belongs to ${owner.fullName}.`); continue; }
+      emp.ippisNumber = s.ippis; if (!cust.employment?.sector || cust.employment.sector !== 'government') emp.sector = 'government'; p.customerChanges.push(`IPPIS: ${cust.employment?.ippisNumber ?? '—'} → ${s.ippis}`);
+    }
+    if (s.ministry && s.ministry.toUpperCase() !== String(cust.employment?.ministry ?? '').toUpperCase()) { emp.ministry = s.ministry.toUpperCase(); p.customerChanges.push(`Ministry: ${cust.employment?.ministry ?? '—'} → ${s.ministry.toUpperCase()}`); }
+    const phone = s.phone ? normalizePhone(s.phone) : null; if (s.phone && !phone) p.warnings.push(`Phone "${s.phone}" is not a valid Nigerian number; ignored.`);
+    if (phone && phone !== cust.phone) { custInput.phone = phone; p.customerChanges.push(`Phone: ${cust.phone ?? '—'} → ${phone}`); }
+    if (s.address && s.address !== cust.address) { custInput.address = s.address; p.customerChanges.push('Address'); }
+    if (s.nin) { if (!/^\d{11}$/.test(s.nin)) p.warnings.push('NIN is not 11 digits; ignored.'); else if (s.nin !== cust.nin) { custInput.nin = s.nin; p.customerChanges.push('NIN'); } }
+    if (s.bvn) { if (!/^\d{11}$/.test(s.bvn)) p.warnings.push('BVN is not 11 digits; ignored.'); else if (s.bvn !== cust.bvn) { custInput.bvn = s.bvn; p.customerChanges.push('BVN'); } }
+    if (s.dob && !sameDay(s.dob, cust.dateOfBirth ?? null)) { custInput.dateOfBirth = s.dob; p.customerChanges.push('Date of birth'); }
+    const ms = s.marital ? maritalOf(s.marital) : undefined; if (s.marital && !ms) p.warnings.push(`Marital status "${s.marital}" not understood; ignored.`);
+    if (ms && ms !== cust.maritalStatus) { custInput.maritalStatus = ms; p.customerChanges.push('Marital status'); }
+    const nok = s.nok ? normalizePhone(s.nok) : null; if (s.nok && !nok) p.warnings.push('Next of kin phone is not valid; ignored.');
+    if (nok && nok !== cust.emergencyContact?.phone) { ec.phone = nok; p.customerChanges.push('Next of kin phone'); }
+    if (Object.keys(emp).length) custInput.employment = emp; if (Object.keys(ec).length) custInput.emergencyContact = ec;
+    if (p.customerChanges.length && !perms.canUpdateCustomers) { p.warnings.push('Customer detail changes were ignored: you need the permission to update customers.'); p.customerChanges = []; for (const k of Object.keys(custInput)) delete custInput[k]; }
+
+    // ---- loan part
     const theirs = openBy.get(String(cust._id)) ?? []; const live = theirs.filter((l) => (LIVE_LOAN_STATUSES as readonly string[]).includes(l.status));
-    let oldLoan: any;
-    if (type === 'TOP UP') {
-      if (theirs.some((l) => ['pending', 'approved'].includes(l.status))) { err(`${cust.fullName} already has a loan waiting for approval (${theirs.find((l) => ['pending', 'approved'].includes(l.status)).loanId}).`); continue; }
-      oldLoan = live[0]; if (!oldLoan) { err(`${cust.fullName} has no running loan to top up. Use NEW (or RENEWAL) for a fresh loan.`); continue; }
-      p.topUpOfRef = oldLoan.loanId;
-      if (!s.bf) p.warnings.push('TOP UP row without a Balance B/Fwd: the new loan carries nothing from the old one.');
-    } else if (theirs.length) { err(`${cust.fullName} already has a ${theirs[0].status} loan (${theirs[0].loanId}). Mark this row TOP UP to liquidate it.`); continue; }
-    else if (type === 'NEW' && doneBefore.has(String(cust._id))) p.warnings.push('This customer has repaid loans before; saved as a renewal.');
-    // price
+    const hasLoanData = !!(s.bank && s.bank > 0 && s.tenor);
+    const work: NonNullable<PlannedRow['_work']> = { customer: cust, ...(Object.keys(custInput).length ? { custInput } : {}) };
+    p._work = work;
+    const finish = (action: RowAction) => { p.action = action; };
+    if (!hasLoanData) { // customer-only row
+      if (s.loanId) p.loanRef = s.loanId;
+      finish(p.customerChanges.length ? 'update-customer' : 'unchanged'); continue;
+    }
+    if (!CUSTOMER_STATUSES.find((x) => x.value === cust.status)?.canBorrow && !s.loanId) { err(`${cust.fullName} is ${cust.status} and cannot be given a loan.`); continue; }
+    if (!Number.isInteger(s.tenor!) || s.tenor! < 1) { err('Tenor must be a whole number of months.'); continue; }
+    if (!s.paymentDate) { err('Payment Date is missing or not a date.'); continue; }
+    if (s.bf !== null && s.bf < 0) { err('Balance B/Fwd cannot be negative.'); continue; }
+    if (!products.length) { err('Create an active monthly loan product first (Loan products).'); continue; }
     const product = (s.product && products.find((x) => x.code.toLowerCase() === s.product.toLowerCase() || x.name.toLowerCase() === s.product.toLowerCase())) || products[0]!;
     const ded = (product.bankDeductionRate ?? 0) / 100;
     const bfK = toKobo(s.bf ?? 0); const grossK = ded > 0 ? Math.round(toKobo(s.bank!) / (1 - ded)) : toKobo(s.bank!); const principalK = bfK + grossK;
-    let rates: { interestRate: number; bankDeductionRate: number; rateBasis: string } | undefined;
+    let rates: { interestRate: number; bankDeductionRate: number; rateBasis: string };
     if (s.emi && s.emi > 0) { // the book's own EMI decides the interest
       const totalK = Math.round(s.emi * 100 * s.tenor!); const interestK = totalK - principalK;
       if (interestK < 0) { err(`EMI × tenor (${fromKobo(totalK).toLocaleString('en-NG')}) is less than the principal (${fromKobo(principalK).toLocaleString('en-NG')}). Check the EMI, tenor and amounts.`); continue; }
       rates = { interestRate: Math.round(((interestK / principalK / s.tenor!) * 100) * 1e4) / 1e4, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
-    } else { // blank EMI: the sheet's own formulas (Interest = Principal x Rate x Tenor, EMI = Gross Loan / Tenor) fill the gaps
+    } else { // blank EMI: the sheet's own formulas fill the gaps (interest = principal x rate x tenor, EMI = total / tenor)
       rates = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
       p.warnings.push(`EMI left blank: calculated with the sheet formulas (interest = principal × ${product.interestRate}% × ${s.tenor} months, EMI = total ÷ tenor).`);
     }
-    const firstPayment = s.firstPayment && s.firstPayment >= s.paymentDate! ? s.firstPayment : undefined;
+    const firstPayment = s.firstPayment && s.firstPayment >= s.paymentDate ? s.firstPayment : undefined;
     if (s.firstPayment && !firstPayment) p.warnings.push('Start Date is before the Payment Date; the standard repayment cycle is used instead.');
-    try {
-      const draft = await buildDraft({ productId: String(product._id), amount: s.bank!, duration: { value: s.tenor!, unit: 'months' }, frequency: 'monthly', numberOfInstallments: s.tenor!, startDate: s.paymentDate!, firstPaymentDate: firstPayment },
-        { carriedBalance: s.bf ?? 0, skipLimits: true, allowBackdated: true, ...(rates ? { rates } : {}) });
-      const t = draft.terms; Object.assign(p, { tenor: t.numberOfInstallments, bank: t.amount, carried: t.carriedBalance, gross: t.grossAmount, principal: t.principal, interest: t.interestAmount, total: t.totalRepayment, emi: t.installmentAmount, paymentDate: t.startDate, firstPayment: t.firstDueDate });
-      if (s.emi && Math.abs(t.installmentAmount - s.emi) > 1) p.warnings.push(`The portal's EMI (${t.installmentAmount.toLocaleString('en-NG')}) differs from the sheet (${s.emi.toLocaleString('en-NG')}).`);
-      const diff = (label: string, theirs: number | null, ours: number) => { if (theirs !== null && Math.abs(theirs - ours) > 1) p.warnings.push(`${label} in the sheet (${theirs.toLocaleString('en-NG')}) differs from the calculated ${ours.toLocaleString('en-NG')}; the calculated figure is used.`); };
-      diff('Gross Payment', s.gross, t.grossAmount); diff('Principal', s.principal, t.principal); diff('Interest', s.interest, t.interestAmount); diff('Gross Loan', s.loan, t.totalRepayment);
-      p._draft = { customer: cust, oldLoan, input: { draft }, extra: { loanType: type === 'TOP UP' ? 'topup' : type === 'RENEWAL' || doneBefore.has(String(cust._id)) ? 'renewal' : 'new' } };
-      p.status = 'create';
-    } catch (e: any) { err(e?.message ?? 'Could not price this row.'); }
+    let draft: any;
+    try { draft = await buildDraft({ productId: String(product._id), amount: s.bank!, duration: { value: s.tenor!, unit: 'months' }, frequency: 'monthly', numberOfInstallments: s.tenor!, startDate: s.paymentDate, firstPaymentDate: firstPayment }, { carriedBalance: s.bf ?? 0, skipLimits: true, allowBackdated: true, rates }); }
+    catch (e: any) { err(e?.message ?? 'Could not price this row.'); continue; }
+    const t = draft.terms; Object.assign(p, { tenor: t.numberOfInstallments, bank: t.amount, carried: t.carriedBalance, gross: t.grossAmount, principal: t.principal, interest: t.interestAmount, total: t.totalRepayment, emi: t.installmentAmount });
+    if (s.emi && Math.abs(t.installmentAmount - s.emi) > 1) p.warnings.push(`The portal's EMI (${t.installmentAmount.toLocaleString('en-NG')}) differs from the sheet (${s.emi.toLocaleString('en-NG')}).`);
+    const diff = (label: string, theirsV: number | null, ours: number) => { if (theirsV !== null && Math.abs(theirsV - ours) > 1) p.warnings.push(`${label} in the sheet (${theirsV.toLocaleString('en-NG')}) differs from the calculated ${ours.toLocaleString('en-NG')}; the calculated figure is used.`); };
+    diff('Gross Payment', s.gross, t.grossAmount); diff('Principal', s.principal, t.principal); diff('Interest', s.interest, t.interestAmount); diff('Gross Loan', s.loan, t.totalRepayment);
+
+    if (s.loanId) { // ---- an existing loan: apply the changes
+      const cur = theirs.find((l) => l.loanId === s.loanId);
+      if (!cur) { err(`Loan ${s.loanId} is not ${cust.fullName}'s current loan${theirs[0] ? ` (it is ${theirs[0].loanId})` : ' (they have no open loan)'}. Clear the Loan ID cell to create a new loan.`); continue; }
+      p.loanRef = cur.loanId; p.type = cur.loanType === 'topup' ? 'TOP UP' : cur.loanType === 'renewal' ? 'RENEWAL' : 'NEW';
+      const ch = p.loanChanges;
+      if (t.numberOfInstallments !== cur.numberOfInstallments) ch.push(`Tenor: ${cur.numberOfInstallments} → ${t.numberOfInstallments}`);
+      if (Math.abs(t.amount - cur.amount) > 0.005) ch.push(`Bank payment: ${cur.amount.toLocaleString('en-NG')} → ${t.amount.toLocaleString('en-NG')}`);
+      if (Math.abs(t.carriedBalance - (cur.carriedBalance ?? 0)) > 0.005) ch.push(`Balance B/Fwd: ${(cur.carriedBalance ?? 0).toLocaleString('en-NG')} → ${t.carriedBalance.toLocaleString('en-NG')}`);
+      if (!sameDay(t.startDate, cur.startDate)) ch.push('Payment date');
+      if (firstPayment && !sameDay(t.firstDueDate, cur.firstPaymentDate)) ch.push('Start date (first repayment)');
+      if (Math.abs(t.installmentAmount - cur.installmentAmount) > 0.02) ch.push(`EMI: ${cur.installmentAmount.toLocaleString('en-NG')} → ${t.installmentAmount.toLocaleString('en-NG')}`);
+      if (!ch.length) { finish(p.customerChanges.length ? 'update-customer' : 'unchanged'); continue; }
+      const running = (LIVE_LOAN_STATUSES as readonly string[]).includes(cur.status) || cur.status === 'approved';
+      if (running ? !perms.canEditRunning : !perms.canEditLoans) { p.warnings.push(running ? 'Loan changes were ignored: only the CEO can change a loan that is already running.' : 'Loan changes were ignored: you need the permission to edit loans.'); p.loanChanges = []; finish(p.customerChanges.length ? 'update-customer' : 'unchanged'); continue; }
+      work.loan = cur; work.ratesForEdit = { interestRate: rates.interestRate, rateBasis: 'per_month', bankDeductionRate: rates.bankDeductionRate };
+      work.draft = draft; finish('update-loan'); continue;
+    }
+
+    // ---- no Loan ID: a new loan
+    const type = s.status === 'TOP UP' || s.status === 'TOPUP' ? 'TOP UP' : s.status === 'NEW' || s.status === '' ? 'NEW' : s.status === 'RENEWAL' ? 'RENEWAL' : null;
+    if (!type) { err(`Status "${s.status}" is not understood. Use NEW, TOP UP or RENEWAL.`); continue; }
+    p.type = type;
+    let oldLoan: any;
+    if (type === 'TOP UP') {
+      const waiting = theirs.find((l) => ['pending', 'approved'].includes(l.status));
+      if (waiting) { err(`${cust.fullName} already has a loan waiting for approval (${waiting.loanId}).`); continue; }
+      oldLoan = live[0]; if (!oldLoan) { err(`${cust.fullName} has no running loan to top up. Use NEW (or RENEWAL) for a fresh loan.`); continue; }
+      p.topUpOfRef = oldLoan.loanId; if (!s.bf) p.warnings.push('TOP UP row without a Balance B/Fwd: the new loan carries nothing from the old one.');
+    } else if (theirs.length) { err(`${cust.fullName} already has a ${theirs[0].status} loan (${theirs[0].loanId}). Mark this row TOP UP to liquidate it, or put the Loan ID in the row to change that loan.`); continue; }
+    else if (type === 'NEW' && doneBefore.has(String(cust._id))) p.warnings.push('This customer has repaid loans before; saved as a renewal.');
+    work.draft = draft; work.oldLoan = oldLoan; work.extra = { loanType: type === 'TOP UP' ? 'topup' : type === 'RENEWAL' || doneBefore.has(String(cust._id)) ? 'renewal' : 'new' };
+    finish(type === 'TOP UP' ? 'top-up' : 'new-loan');
   }
-  return { rows, willCreate: rows.filter((r) => r.status === 'create').length, errors: rows.filter((r) => r.status === 'error').length, needsApproval: !canApprove, product: products[0]!.name };
+  const n = (f: (r: PlannedRow) => boolean) => rows.filter(f).length;
+  return { rows, counts: { newLoans: n((r) => r.action === 'new-loan' || r.action === 'top-up'), loanUpdates: n((r) => r.action === 'update-loan'), customerUpdates: n((r) => r.action === 'update-customer' || (r.action === 'update-loan' && r.customerChanges.length > 0)), unchanged: n((r) => r.action === 'unchanged'), errors: n((r) => r.action === 'error') }, needsApproval: !perms.canApprove, product: products[0]?.name ?? '—' };
 }
 
-export const publicPlan = (p: MonthlyPlan) => ({ ...p, rows: p.rows.map(({ _draft, ...r }) => r) });
+export const publicPlan = (p: MonthlyPlan) => ({ ...p, rows: p.rows.map(({ _work, ...r }) => r) });
 
-export async function applyMonthlyUpload(buf: Buffer, filename: string, actor: Actor, canApprove: boolean) {
-  const plan = await planMonthlyUpload(buf, canApprove);
+export async function applyMonthlyUpload(buf: Buffer, filename: string, actor: Actor, perms: UploadPerms) {
+  const plan = await planMonthlyUpload(buf, perms);
   const results: any[] = [];
   for (const r of plan.rows) {
     const base = { row: r.row, name: r.matchedName ?? r.name, clientId: r.customerRef ?? r.clientId ?? '', ippis: r.ippis, kind: r.type ?? '' };
-    if (r.status !== 'create' || !r._draft) { results.push({ ...base, status: 'skipped', messages: r.errors }); continue; }
+    if (r.action === 'error' || !r._work) { results.push({ ...base, status: 'skipped', messages: r.errors }); continue; }
+    if (r.action === 'unchanged') { results.push({ ...base, status: 'unchanged', messages: r.warnings }); continue; }
+    const w = r._work; const messages = [...r.warnings]; let loanId: string | undefined; let loanRef: string | undefined; let status: string = 'updated';
     try {
-      const { customer, oldLoan, input, extra } = r._draft; const draft = input.draft;
-      let topUpId: Types.ObjectId | undefined;
-      if (oldLoan) {
-        const t = await TopUp.create({ topUpId: await nextTopUpId(), customer: customer._id, loan: oldLoan._id, requestedAmount: draft.terms.amount, duration: draft.duration, frequency: 'monthly', interestRate: draft.rates.interestRate, startDate: draft.terms.startDate,
-          calculation: { source: 'monthly upload', carriedBalance: draft.terms.carriedBalance, terms: draft.terms, existingLoan: oldLoan.loanId }, notes: `Monthly upload ${filename}`, requestedBy: actor.id } as any);
-        topUpId = t._id;
+      if (w.custInput) { await updateCustomer(String(w.customer._id), w.custInput as any, actor); messages.unshift(`Customer updated: ${r.customerChanges.join('; ')}`); }
+      if (r.action === 'update-loan' && w.loan && w.draft) {
+        const t = w.draft.terms;
+        await updateLoan(String(w.loan._id), { amount: t.amount, duration: { value: t.numberOfInstallments, unit: 'months' }, numberOfInstallments: t.numberOfInstallments, startDate: t.startDate, firstPaymentDate: t.firstPaymentDate ?? t.firstDueDate, carriedBalance: t.carriedBalance, ...w.ratesForEdit, reason: `Monthly upload (${filename})` }, actor, perms.canEditRunning);
+        messages.unshift(`Loan ${w.loan.loanId} updated: ${r.loanChanges.join('; ')}`); loanId = String(w.loan._id); loanRef = w.loan.loanId;
+      } else if ((r.action === 'new-loan' || r.action === 'top-up') && w.draft) {
+        const { customer, oldLoan, draft, extra } = w; let topUpId: Types.ObjectId | undefined;
+        if (oldLoan) {
+          const t = await TopUp.create({ topUpId: await nextTopUpId(), customer: customer._id, loan: oldLoan._id, requestedAmount: draft.terms.amount, duration: draft.duration, frequency: 'monthly', interestRate: draft.rates.interestRate, startDate: draft.terms.startDate,
+            calculation: { source: 'monthly upload', carriedBalance: draft.terms.carriedBalance, terms: draft.terms, existingLoan: oldLoan.loanId }, notes: `Monthly upload ${filename}`, requestedBy: actor.id } as any);
+          topUpId = t._id;
+        }
+        const loan = await createLoanRecord(draft, { customerId: customer._id, status: 'pending', actorId: actor.id, notes: `Monthly upload (${filename})`, extra: { ...extra, ...(oldLoan ? { topUpOf: oldLoan._id, topUp: topUpId } : {}) } });
+        await auditAs(actor, { action: AUDIT.LOAN_CREATED, entity: 'Loan', entityId: String(loan._id), entityLabel: loan.loanId, after: { customer: customer.customerId, viaMonthlyUpload: filename, type: r.type, totalRepayment: draft.terms.totalRepayment, installments: draft.terms.numberOfInstallments } });
+        status = 'pending'; if (perms.canApprove) { await approveLoan(String(loan._id), actor, { system: true }); status = 'active'; }
+        loanId = String(loan._id); loanRef = loan.loanId;
       }
-      const loan = await createLoanRecord(draft, { customerId: customer._id, status: 'pending', actorId: actor.id, notes: `Monthly upload (${filename})`, extra: { ...extra, ...(oldLoan ? { topUpOf: oldLoan._id, topUp: topUpId } : {}) } });
-      await auditAs(actor, { action: AUDIT.LOAN_CREATED, entity: 'Loan', entityId: String(loan._id), entityLabel: loan.loanId, after: { customer: customer.customerId, viaMonthlyUpload: filename, type: r.type, totalRepayment: draft.terms.totalRepayment, installments: draft.terms.numberOfInstallments } });
-      let status = 'pending';
-      if (canApprove) { await approveLoan(String(loan._id), actor, { system: true }); status = 'active'; }
-      results.push({ ...base, status, loan: String(loan._id), loanRef: loan.loanId, messages: r.warnings });
-    } catch (e: any) { results.push({ ...base, status: 'skipped', messages: [e?.message ?? 'Could not create the loan.'] }); }
+      results.push({ ...base, status, ...(loanId ? { loan: loanId, loanRef } : {}), messages });
+    } catch (e: any) { results.push({ ...base, status: 'skipped', messages: [...messages, e?.message ?? 'Could not apply this row.'] }); }
   }
-  const created = results.filter((r) => r.loan).length;
-  const rec = await MonthlyUpload.create({ filename, uploadedBy: actor.id, uploadedByName: actor.name, needsApproval: !canApprove, total: results.length, created, skipped: results.length - created, rows: results });
-  await auditAs(actor, { action: AUDIT.MONTHLY_UPLOAD, entity: 'MonthlyUpload', entityId: String(rec._id), entityLabel: filename, after: { total: results.length, created, skipped: results.length - created, pendingApproval: !canApprove } });
-  return { id: String(rec._id), filename, total: results.length, created, skipped: results.length - created, needsApproval: !canApprove, rows: results };
+  const created = results.filter((x) => x.loan && ['pending', 'active'].includes(x.status)).length;
+  const updated = results.filter((x) => x.status === 'updated').length; const skipped = results.filter((x) => x.status === 'skipped').length;
+  const rec = await MonthlyUpload.create({ filename, uploadedBy: actor.id, uploadedByName: actor.name, needsApproval: !perms.canApprove, total: results.length, created, updated, skipped, rows: results });
+  await auditAs(actor, { action: AUDIT.MONTHLY_UPLOAD, entity: 'MonthlyUpload', entityId: String(rec._id), entityLabel: filename, after: { total: results.length, loansCreated: created, updated, skipped, pendingApproval: !perms.canApprove } });
+  return { id: String(rec._id), filename, total: results.length, created, updated, skipped, unchanged: results.filter((x) => x.status === 'unchanged').length, needsApproval: !perms.canApprove, rows: results };
 }
 
 export async function listMonthlyUploads() {
-  return (await MonthlyUpload.find().sort({ createdAt: -1 }).limit(30).select('-rows').lean()).map((u: any) => ({ id: String(u._id), filename: u.filename, uploadedBy: u.uploadedByName, createdAt: u.createdAt, total: u.total, created: u.created, skipped: u.skipped, needsApproval: !!u.needsApproval }));
+  return (await MonthlyUpload.find().sort({ createdAt: -1 }).limit(30).select('-rows').lean()).map((u: any) => ({ id: String(u._id), filename: u.filename, uploadedBy: u.uploadedByName, createdAt: u.createdAt, total: u.total, created: u.created, updated: u.updated ?? 0, skipped: u.skipped, needsApproval: !!u.needsApproval }));
 }
 export async function getMonthlyUpload(id: string) {
   const u: any = Types.ObjectId.isValid(id) ? await MonthlyUpload.findById(id).lean() : null;
@@ -184,23 +259,23 @@ export async function getMonthlyUpload(id: string) {
   return { ...u, id: String(u._id), _id: undefined };
 }
 
-/** The sheet people fill in: Protech's own columns, with the book's formulas ready for the gross payment, principal, interest, loan and EMI. */
+/** An empty copy of the register: the same columns, with the book's formulas ready, for loans that are not in the portal yet. */
 export async function monthlyTemplate(company: string): Promise<Buffer> {
-  const wb = new ExcelJS.Workbook(); wb.creator = company; const ws = wb.addWorksheet('Loans taken');
-  const heads = ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Bank payment', 'Gross Payment (Column I/.96)', 'Principal (H+J)', 'Interest', 'Gross Loan (K+L)', 'EMI', 'Start Date', 'End date', 'Status'];
-  xlTitleBlock(ws, company, 'Monthly upload: loans taken', 'Fill one row per customer. Status: NEW, TOP UP or RENEWAL. Delete the example rows.', heads.length);
+  const wb = new ExcelJS.Workbook(); wb.creator = company; const ws = wb.addWorksheet('Monthly sheet');
+  const heads = ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'phone no', 'Address', 'NIN', 'BVN', 'DATE OF BIRTH', 'MARITAL STATUS', 'NEXT OF KIN PHONE NO', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Bank payment', 'Gross Payment', 'Principal', 'Interest', 'Gross Loan', 'EMI', 'Start Date', 'End date', 'Status', 'Loan ID'];
+  xlTitleBlock(ws, company, 'Monthly sheet', 'One row per customer. Leave Loan ID empty for a new loan (Status NEW, TOP UP or RENEWAL). Delete the example rows.', heads.length);
   const h = ws.addRow(heads); xlHeaderRow(h, heads.length);
   const first = ws.rowCount + 1;
-  const rows: unknown[][] = [[1, 551, 'EXAMPLE CLIENT (TOP UP)', 434590, 'OSGF', 12, new Date('2026-08-04T00:00:00Z'), 36012.38, 96000, null, null, null, null, null, new Date('2026-09-01T00:00:00Z'), new Date('2027-08-31T00:00:00Z'), 'TOP UP'], [2, 637, 'EXAMPLE CLIENT (NEW)', 480210, 'LABOUR', 12, new Date('2026-08-05T00:00:00Z'), null, 240000, null, null, null, null, null, new Date('2026-09-01T00:00:00Z'), new Date('2027-08-31T00:00:00Z'), 'NEW']];
-  rows.forEach((r) => ws.addRow(r));
-  for (let n = first; n < first + rows.length; n++) { // the book's formulas
-    ws.getCell(`J${n}`).value = { formula: `ROUND(I${n}/0.96,2)` }; ws.getCell(`K${n}`).value = { formula: `ROUND(H${n}+J${n},2)` };
-    ws.getCell(`L${n}`).value = { formula: `ROUND(K${n}*5%*F${n},2)` }; ws.getCell(`M${n}`).value = { formula: `ROUND(K${n}+L${n},2)` }; ws.getCell(`N${n}`).value = { formula: `ROUND(M${n}/F${n},2)` };
+  const D = (s: string) => new Date(`${s}T00:00:00Z`);
+  const ex: unknown[][] = [[1, 551, 'EXAMPLE CLIENT (TOP UP)', 434590, 'OSGF', null, null, null, null, null, null, null, 12, D('2026-08-04'), 36012.38, 96000, null, null, null, null, null, D('2026-09-01'), null, 'TOP UP', null], [2, 637, 'EXAMPLE CLIENT (NEW)', 480210, 'LABOUR', null, null, null, null, null, null, null, 12, D('2026-08-05'), null, 240000, null, null, null, null, null, D('2026-09-01'), null, 'NEW', null]];
+  ex.forEach((r) => ws.addRow(r));
+  for (let n = first; n < first + ex.length; n++) { // the book's formulas
+    ws.getCell(`Q${n}`).value = { formula: `ROUND(P${n}/0.96,2)` }; ws.getCell(`R${n}`).value = { formula: `ROUND(O${n}+Q${n},2)` };
+    ws.getCell(`S${n}`).value = { formula: `ROUND(R${n}*5%*M${n},2)` }; ws.getCell(`T${n}`).value = { formula: `ROUND(R${n}+S${n},2)` }; ws.getCell(`U${n}`).value = { formula: `ROUND(T${n}/M${n},2)` };
   }
-  xlStyleBody(ws, first, first + rows.length - 1, ['number', 'number', 'text', 'text', 'text', 'number', 'date', 'money', 'money', 'money', 'money', 'money', 'money', 'money', 'date', 'date', 'text']);
-  void XL_DATE; void addMonths;
-  [6, 10, 30, 12, 18, 7, 14, 15, 15, 18, 16, 15, 16, 14, 14, 14, 12].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-  xlFooter(ws, 'The EMI in your sheet is respected: total loan = EMI x tenor. If EMI is left empty the product\'s interest rule is used. Clients are matched by Clients ID and IPPIS NO.', heads.length);
+  xlStyleBody(ws, first, first + ex.length - 1, ['number', 'number', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'date', 'text', 'text', 'number', 'date', 'money', 'money', 'money', 'money', 'money', 'money', 'money', 'date', 'date', 'text', 'text']);
+  [6, 10, 30, 12, 18, 14, 24, 14, 14, 14, 14, 18, 7, 14, 15, 15, 16, 16, 15, 16, 14, 14, 14, 12, 12].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  xlFooter(ws, 'Clients are matched by Clients ID and IPPIS NO. The EMI is respected (total loan = EMI x tenor); if it is empty the sheet formulas are used.', heads.length);
   ws.views = [{ showGridLines: false, state: 'frozen', ySplit: h.number }]; xlPrint(ws, { company, headerRow: h.number });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }
