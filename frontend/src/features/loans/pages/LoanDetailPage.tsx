@@ -20,6 +20,7 @@ import { MarkInstallmentPaidModal, SettleLoanModal } from '../components/MarkPai
 import type { Installment } from '../../../types/finance'
 import { LoanRepaymentsList } from '../components/LoanRepaymentsList'
 import { TransactionsTable } from '../../transactions/components/TransactionsTable'
+import { RequestLoanChangeModal } from '../components/RequestLoanChangeModal'
 import { TopUpRequestModal } from '../../topups/components/TopUpRequestModal'
 
 type Action = 'approve' | 'disburse' | 'reject' | 'cancel' | 'default'
@@ -32,7 +33,7 @@ export default function LoanDetailPage() {
   const { data, error, loading, reload } = useAsync(() => loanService.get(id), [id])
   const tx = useAsync(() => loanService.transactions(id), [id])
   const [tab, setTab] = useState('schedule')
-  const [modal, setModal] = useState<'repay' | 'topup' | 'settle' | Action | null>(null)
+  const [modal, setModal] = useState<'repay' | 'topup' | 'settle' | 'change' | Action | null>(null)
   const [marking, setMarking] = useState<Installment | null>(null)
   const [busy, setBusy] = useState(false)
   const [dl, setDl] = useState<string | null>(null)
@@ -72,6 +73,7 @@ export default function LoanDetailPage() {
           {l.status === 'pending' && can(PERM.loans.approve) && <><Button onClick={() => setModal('approve')}><Check className="size-4" />Approve</Button><Button variant="secondary" onClick={() => setModal('reject')}><X className="size-4" />Reject</Button></>}
           {((l.status === 'pending' && can(PERM.loans.edit)) || (['approved', 'active', 'overdue', 'defaulted'].includes(l.status) && can(PERM.loans.editActive))) && <Button variant="secondary" onClick={() => nav(`/loans/${l.id}/edit`)}><Pencil className="size-4" />Edit loan</Button>}
           {l.status === 'approved' && can(PERM.loans.approve) && <Button onClick={() => setModal('disburse')}><Send className="size-4" />Disburse</Button>}
+          {['approved', 'active', 'overdue'].includes(l.status) && !can(PERM.loans.editActive) && can(PERM.loans.view) && <Button variant="secondary" onClick={() => setModal('change')}><Pencil className="size-4" />Request a change</Button>}
           {['pending', 'approved'].includes(l.status) && (can(PERM.loans.edit) || can(PERM.loans.approve)) && <Button variant="ghost" onClick={() => setModal('cancel')}><Ban className="size-4" />Cancel loan</Button>}
           {live && can(PERM.repayments.record) && <Button onClick={() => setModal('repay')}><Banknote className="size-4" />Record repayment</Button>}
           {!['pending', 'rejected', 'cancelled'].includes(l.status) && <Link to={`/loans/${l.id}/statement`}><Button variant="secondary"><FileText className="size-4" />Generate statement</Button></Link>}
@@ -137,6 +139,7 @@ export default function LoanDetailPage() {
       {marking && <MarkInstallmentPaidModal loan={l} installment={marking} onClose={() => setMarking(null)} onDone={() => { setMarking(null); done() }} />}
       {modal === 'settle' && <SettleLoanModal loan={l} onClose={() => setModal(null)} onDone={done} />}
       {modal === 'repay' && <RecordRepaymentModal loan={l} onClose={() => setModal(null)} onDone={done} />}
+      {modal === 'change' && <RequestLoanChangeModal loanId={l.id} amount={l.amount} months={l.duration?.unit === 'months' ? l.duration.value : undefined} onClose={() => setModal(null)} onDone={() => setModal(null)} />}
       {modal === 'topup' && <TopUpRequestModal loan={l} onClose={() => setModal(null)} onDone={done} />}
       <ConfirmDialog open={modal === 'approve'} loading={busy} title="Approve this loan?" confirmLabel="Approve loan" message={`Approving ${l.loanId} records a ${formatMoney(l.amount)} disbursement to ${l.customer.fullName} in the ledger and activates the loan.`} onConfirm={() => run('approve')} onCancel={() => setModal(null)} />
       <ConfirmDialog open={modal === 'disburse'} loading={busy} title="Disburse this loan?" confirmLabel="Disburse" message={`This records the ${formatMoney(l.amount)} payout and activates the loan.`} onConfirm={() => run('disburse')} onCancel={() => setModal(null)} />

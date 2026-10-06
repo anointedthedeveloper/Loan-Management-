@@ -26,6 +26,7 @@ export const PERMISSION_MODULES = [
   { key: 'reports', label: 'Reports', permissions: { 'reports.view': 'View reports', 'reports.export': 'Export reports' } },
   { key: 'staff', label: 'Staff', permissions: { 'staff.manage': 'Manage staff and permissions' } },
   { key: 'settings', label: 'Settings', permissions: { 'settings.manage': 'Manage system settings' } },
+  { key: 'approvals', label: 'Approvals', permissions: { 'approvals.decide': 'Approve or reject change requests' } },
   { key: 'audit', label: 'Audit Logs', permissions: { 'audit.view': 'View audit logs' } },
 ] as const;
 
@@ -58,6 +59,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     'customers.viewFinancials',
     'loans.view',
     'loans.create',
+    'loans.edit',
     'repayments.view',
     'repayments.record',
     'transactions.view',
@@ -81,5 +83,6 @@ export function isPermission(value: string): value is Permission {
 export const PERMISSION_GRANTS: { version: number; role: Role; add: Permission[] }[] = [
   { version: 1, role: 'accountant', add: ['loans.view', 'loans.create'] }, // accountants create loans; the CEO approves them
   { version: 2, role: 'accountant', add: ['customers.update'] }, // accountants fill in missing customer details
+  { version: 3, role: 'accountant', add: ['dashboard.view', 'customers.read', 'customers.viewFinancials', 'loans.edit', 'repayments.view', 'repayments.record', 'transactions.view', 'transactions.create', 'topups.view', 'topups.request', 'reports.view', 'reports.export'] }, // accountants do most things and download everything; sensitive changes go to the CEO as requests
 ];
 export const CURRENT_GRANTS_VERSION = Math.max(...PERMISSION_GRANTS.map((g) => g.version));

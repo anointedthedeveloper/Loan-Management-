@@ -15,5 +15,6 @@ export const PERM = {
   products: { manage: 'products.manage' },
   repayments: { view: 'repayments.view', record: 'repayments.record', edit: 'repayments.edit' },
   transactions: { view: 'transactions.view', create: 'transactions.create', reverse: 'transactions.reverse' },
+  approvals: { decide: 'approvals.decide' },
   topups: { view: 'topups.view', request: 'topups.request', approve: 'topups.approve' },
 } as const

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { FileSpreadsheet, HelpCircle, LayoutDashboard, Users, Landmark, CheckCircle2, Package, Banknote, ReceiptText, ArrowUpRight, BarChart3, ScrollText, Settings, UserCog, LogOut, Menu, X, ChevronRight } from 'lucide-react'
+import { ClipboardCheck, FileSpreadsheet, HelpCircle, LayoutDashboard, Users, Landmark, CheckCircle2, Package, Banknote, ReceiptText, ArrowUpRight, BarChart3, ScrollText, Settings, UserCog, LogOut, Menu, X, ChevronRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { Logo } from '../components/ui/Logo'
 import { dashboardPathFor } from '../routes/ProtectedRoute'
@@ -36,12 +36,15 @@ export default function AppLayout() {
     { label: 'Staff & Permissions', to: '/staff', icon: UserCog, permission: PERM.staff.manage },
     { label: 'Audit Log', to: '/audit', icon: ScrollText, permission: PERM.audit.view },
     { label: 'Settings', to: '/settings', icon: Settings, permission: PERM.settings.manage },
+    { label: 'Approvals', to: '/approvals', icon: ClipboardCheck },
     { label: 'Help & FAQ', to: '/faq', icon: HelpCircle },
   ]
   const visible = items.filter((i) => !i.permission || can(i.permission))
-  const crumbs = loc.pathname.split('/').filter(Boolean)
+  // every crumb is a link to its own page (the last one is the page you are on)
+  const segs = loc.pathname.split('/').filter(Boolean)
+  const crumbs = segs.map((seg, i) => ({ seg, to: `/${segs.slice(0, i + 1).join('/')}`, last: i === segs.length - 1 }))
   const titleOf = (seg: string) =>
-    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', loans: 'Loans', repayments: 'Repayments', transactions: 'Transactions', topups: 'Top-ups', reports: 'Reports', audit: 'Audit log', settings: 'Settings', products: 'Loan products', statement: 'Statement', new: 'New', edit: 'Edit', completed: 'Completed', monthly: 'Monthly upload', faq: 'Help & FAQ' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
+    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', loans: 'Loans', repayments: 'Repayments', transactions: 'Transactions', topups: 'Top-ups', reports: 'Reports', audit: 'Audit log', settings: 'Settings', products: 'Loan products', statement: 'Statement', new: 'New', edit: 'Edit', completed: 'Completed loans', monthly: 'Monthly upload', approvals: 'Approvals', faq: 'Help & FAQ' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
 
   const sidebar = (
     <div className="flex h-full flex-col bg-brand-900 text-white">
@@ -77,7 +80,11 @@ export default function AppLayout() {
             <button className="rounded p-1.5 hover:bg-slate-100 lg:hidden" onClick={() => setOpen(true)} aria-label="Open menu"><Menu className="size-5" /></button>
             <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-slate-500">
               <Link to="/" className="hover:text-ink">Protech</Link>
-              {crumbs.map((c, idx) => <span key={c + idx} className="flex items-center gap-1.5"><ChevronRight className="size-3.5" /><span className={idx === crumbs.length - 1 ? 'font-semibold text-ink' : ''}>{titleOf(c)}</span></span>)}
+              {crumbs.map((c) => (
+                <span key={c.to} className="flex items-center gap-1.5"><ChevronRight className="size-3.5" />
+                  {c.last ? <span aria-current="page" className="font-semibold text-ink">{titleOf(c.seg)}</span> : <Link to={c.to} className="hover:text-ink hover:underline">{titleOf(c.seg)}</Link>}
+                </span>
+              ))}
             </nav>
           </div>
           <div className="flex items-center gap-3">

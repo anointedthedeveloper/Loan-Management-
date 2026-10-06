@@ -1,3 +1,4 @@
+import { approvalService } from '../../approvals/approvalService'
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { ArrowDown, ArrowUp, Eye, Pencil, Plus, Trash2, Upload, Users } from 'lucide-react'
@@ -60,7 +61,11 @@ export default function CustomersPage() {
   async function confirmDelete() {
     if (!deleting) return
     setBusy(true)
-    try { await customerService.remove(deleting.id); toast('success', `${deleting.fullName} deleted`); setDeleting(null); setReloadKey((k) => k + 1) }
+    try {
+      if (!can(PERM.customers.delete)) { await approvalService.request('customer_delete', deleting.id, 'Requested from the customers list'); toast('success', 'Sent to the CEO for approval') }
+      else { await customerService.remove(deleting.id); toast('success', `${deleting.fullName} deleted`) }
+      setDeleting(null); setReloadKey((k) => k + 1)
+    }
     catch (e) { toast('error', e instanceof ApiError ? e.message : 'Could not delete customer'); setDeleting(null) }
     finally { setBusy(false) }
   }
@@ -110,7 +115,7 @@ export default function CustomersPage() {
                       <div className="flex justify-end gap-1">
                         <Link to={`/customers/${c.id}`} aria-label={`View ${c.fullName}`} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"><Eye className="size-4" /></Link>
                         {can(PERM.customers.update) && <Link to={`/customers/${c.id}/edit`} aria-label={`Edit ${c.fullName}`} className="rounded-lg p-2 text-slate-600 hover:bg-slate-100"><Pencil className="size-4" /></Link>}
-                        {can(PERM.customers.delete) && <button onClick={() => setDeleting(c)} aria-label={`Delete ${c.fullName}`} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 className="size-4" /></button>}
+                        {can(PERM.customers.read) && <button onClick={() => setDeleting(c)} aria-label={`Delete ${c.fullName}`} className="rounded-lg p-2 text-red-600 hover:bg-red-50"><Trash2 className="size-4" /></button>}
                       </div>
                     </td>
                   </tr>
@@ -123,7 +128,7 @@ export default function CustomersPage() {
       </div>
 
       {importing && <ImportCustomersModal onClose={() => setImporting(false)} onDone={() => { setImporting(false); setReloadKey((k) => k + 1) }} />}
-      <ConfirmDialog open={!!deleting} danger loading={busy} title="Delete customer?" confirmLabel="Delete customer"
+      <ConfirmDialog open={!!deleting} danger loading={busy} title={can(PERM.customers.delete) ? 'Delete customer?' : 'Request deletion?'} confirmLabel={can(PERM.customers.delete) ? 'Delete customer' : 'Send for approval'}
         message={`${deleting?.fullName} (${deleting?.customerId}) will be archived and removed from lists. Customers with loans or transactions cannot be deleted — set them to Inactive instead.`}
         onConfirm={confirmDelete} onCancel={() => setDeleting(null)} />
     </div>

@@ -5,6 +5,7 @@ import customers from './customers.js';
 import attachments from './attachments.js';
 import monthlyUploads from './monthlyUploads.js';
 import dashboard from './dashboard.js';
+import approvals from './approvals.js';
 import { activityRouter, productsRouter, loansRouter, repaymentsRouter, transactionsRouter, topupsRouter, reportsRouter, settingsRouter, auditRouter, jobsRouter } from './finance.js';
 
 const api = Router();
@@ -13,6 +14,7 @@ api.use('/auth', auth);
 api.use('/users', users);
 api.use('/customers', customers);
 api.use('/dashboard', dashboard);
+api.use('/approvals', approvals);
 api.use('/loan-products', productsRouter);
 api.use('/loans', loansRouter);
 api.use('/repayments', repaymentsRouter);

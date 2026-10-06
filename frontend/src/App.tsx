@@ -17,6 +17,7 @@ const LoanFormPage = lazy(() => import('./features/loans/pages/LoanFormPage'))
 const LoanDetailPage = lazy(() => import('./features/loans/pages/LoanDetailPage'))
 const RepaymentsPage = lazy(() => import('./features/repayments/pages/RepaymentsPage'))
 const TransactionsPage = lazy(() => import('./features/transactions/pages/TransactionsPage'))
+const ApprovalsPage = lazy(() => import('./features/approvals/pages/ApprovalsPage'))
 const MonthlyUploadPage = lazy(() => import('./features/monthly/pages/MonthlyUploadPage'))
 const FaqPage = lazy(() => import('./features/help/FaqPage'))
 const TopUpsPage = lazy(() => import('./features/topups/pages/TopUpsPage'))
@@ -65,6 +66,7 @@ export default function App() {
                 <Route element={<ProtectedRoute permission={PERM.repayments.view} />}><Route path="/repayments" element={<RepaymentsPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.transactions.view} />}><Route path="/transactions" element={<TransactionsPage />} /></Route>
                 <Route path="/faq" element={<FaqPage />} />
+                <Route path="/approvals" element={<ApprovalsPage />} />
                 <Route element={<ProtectedRoute permission={PERM.loans.create} />}><Route path="/monthly" element={<MonthlyUploadPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.topups.view} />}><Route path="/topups" element={<TopUpsPage />} /></Route>
                 <Route element={<ProtectedRoute permission={PERM.reports.view} />}><Route path="/reports" element={<ReportsPage />} /></Route>

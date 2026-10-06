@@ -15,6 +15,7 @@ import { formatDate, formatDateTime, formatMoney, titleCase } from '../../../uti
 import type { Transaction } from '../../../types/finance'
 import { transactionService } from '../../repayments/services/repaymentService'
 import { AttachmentGallery, AttachmentPicker } from '../../attachments/AttachmentComponents'
+import { approvalService } from '../../approvals/approvalService'
 import { EditRepaymentModal } from '../../loans/components/EditRepaymentModal'
 
 export const useTxType = () => {
@@ -35,13 +36,18 @@ export function TransactionsTable({ rows, onChanged }: { rows: Transaction[]; on
   const [sel, setSel] = useState<Transaction | null>(null)
   const [reversing, setReversing] = useState<Transaction | null>(null)
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [asReq, setAsReq] = useState(false)
   const [busy, setBusy] = useState(false)
 
   async function reverse(reason: string) {
     if (!reversing) return
     setBusy(true)
-    try { await transactionService.reverse(reversing.id, reason); toast('success', `${reversing.transactionId} reversed`); setReversing(null); setSel(null); onChanged() }
-    catch (e) { toast('error', e instanceof ApiError ? e.message : 'Could not reverse'); setReversing(null) }
+    try {
+      if (asReq) { await approvalService.request('transaction_reverse', reversing.id, reason, { reason }); toast('success', 'Sent to the CEO for approval') }
+      else { await transactionService.reverse(reversing.id, reason); toast('success', `${reversing.transactionId} reversed`) }
+      setReversing(null); setAsReq(false); setSel(null); onChanged()
+    }
+    catch (e) { toast('error', e instanceof ApiError ? e.message : 'Could not reverse'); setReversing(null); setAsReq(false) }
     finally { setBusy(false) }
   }
   return (
@@ -91,6 +97,12 @@ export function TransactionsTable({ rows, onChanged }: { rows: Transaction[]; on
             {sel.state === 'posted' && sel.type === 'repayment' && can(PERM.repayments.edit) && (
               <Button variant="secondary" onClick={() => { setEditing(sel); setSel(null) }}><Pencil className="size-4" />Edit repayment</Button>
             )}
+            {sel.state === 'posted' && sel.type === 'repayment' && !can(PERM.repayments.edit) && (
+              <Button variant="secondary" onClick={() => { setEditing(sel); setAsReq(true); setSel(null) }}><Pencil className="size-4" />Request correction</Button>
+            )}
+            {sel.state === 'posted' && typeOf(sel.type)?.reversible && !can(PERM.transactions.reverse) && (
+              <Button variant="secondary" onClick={() => { setReversing(sel); setAsReq(true) }}><Undo2 className="size-4" />Request reversal</Button>
+            )}
             {sel.state === 'posted' && typeOf(sel.type)?.reversible && can(PERM.transactions.reverse) && (
               <Button variant="danger" onClick={() => setReversing(sel)}><Undo2 className="size-4" />Reverse transaction</Button>
             )}
@@ -98,8 +110,8 @@ export function TransactionsTable({ rows, onChanged }: { rows: Transaction[]; on
           </div>
         )}
       </Drawer>
-      {editing && <EditRepaymentModal tx={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); onChanged() }} />}
-      {reversing && <ReasonDialog open danger loading={busy} title={`Reverse ${reversing.transactionId}?`} confirmLabel="Reverse" message={`This reverses ${formatMoney(reversing.amount)}${reversing.loan ? ` on ${reversing.loan.loanId}` : ''}. The loan balance, schedule and status are recalculated. Recorded in the audit log.`} onConfirm={reverse} onCancel={() => setReversing(null)} />}
+      {editing && <EditRepaymentModal tx={editing} asRequest={asReq} onClose={() => { setEditing(null); setAsReq(false) }} onDone={() => { setEditing(null); setAsReq(false); onChanged() }} />}
+      {reversing && <ReasonDialog open danger loading={busy} title={`${asReq ? 'Request reversal of' : 'Reverse'} ${reversing.transactionId}?`} confirmLabel={asReq ? 'Send for approval' : 'Reverse'} message={`This reverses ${formatMoney(reversing.amount)}${reversing.loan ? ` on ${reversing.loan.loanId}` : ''}. The loan balance, schedule and status are recalculated. Recorded in the audit log.`} onConfirm={reverse} onCancel={() => { setReversing(null); setAsReq(false) }} />}
     </>
   )
 }
