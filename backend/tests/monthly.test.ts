@@ -180,4 +180,19 @@ describe('the downloaded register can be edited and uploaded back', () => {
     await send('?filename=blank.xlsx', await save(wb));
     expect((await Customer.findById(x.id))!.phone).toBe(before);
   });
+
+  it('a one-time-interest loan survives a round trip untouched, and keeps its rule when the tenor is changed', async () => {
+    const flat = (await api('post', '/api/loan-products').send({ name: 'Flat', code: 'FLT', interestRate: 5, bankDeductionRate: 0, minAmount: 1000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 24, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
+    const x = await mkCustomer('900003');
+    const loan = (await api('post', '/api/loans').send({ customerId: x.id, productId: flat, amount: 1_000_000, duration: { value: 6, unit: 'months' }, startDate: isoDate(todayLagos()) })).body.data.loan;
+    expect(loan.installmentAmount).toBe(175000);
+    const wb = await download(); const ws = wb.worksheets[0]!; const h = headerRow(ws);
+    const plan = (await send('/preview', await save(wb))).body.data.plan;
+    expect(plan.rows.find((r: any) => r.loanRef === loan.loanId)?.action ?? 'unchanged').toBe('unchanged'); // nothing drifts
+    let target = 0; ws.eachRow((row, n) => { if (n > h && String(row.getCell(colOf(ws, h, 'Loan ID')).value) === loan.loanId) target = n; });
+    ws.getCell(target, colOf(ws, h, 'Tenor')).value = 12; ws.getCell(target, colOf(ws, h, 'EMI')).value = 87500; // what the sheet's one-time formula gives for 12 months
+    await send('?filename=tenor.xlsx', await save(wb));
+    const after = (await Loan.findById(loan.id))!;
+    expect(after.numberOfInstallments).toBe(12); expect(after.totalRepayment).toBe(1_050_000); expect(after.rateBasis).toBe('per_loan'); expect(after.interestRate).toBe(5);
+  });
 });

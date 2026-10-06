@@ -1,13 +1,12 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { FileSpreadsheet, LayoutDashboard, Users, Landmark, CheckCircle2, Package, Banknote, ReceiptText, ArrowUpRight, BarChart3, ScrollText, Settings, UserCog, LogOut, Menu, X, ChevronRight } from 'lucide-react'
+import { FileSpreadsheet, HelpCircle, LayoutDashboard, Users, Landmark, CheckCircle2, Package, Banknote, ReceiptText, ArrowUpRight, BarChart3, ScrollText, Settings, UserCog, LogOut, Menu, X, ChevronRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { Logo } from '../components/ui/Logo'
 import { dashboardPathFor } from '../routes/ProtectedRoute'
 import { PERM } from '../config/permissions'
 import { api } from '../services/api'
 import { pageTitle } from '../utils/pageTitle'
-import { PageHelp } from '../components/ui/PageHelp'
 
 interface NavItem { label: string; to?: string; icon: typeof Users; permission?: string; soon?: boolean; end?: boolean }
 
@@ -37,11 +36,12 @@ export default function AppLayout() {
     { label: 'Staff & Permissions', to: '/staff', icon: UserCog, permission: PERM.staff.manage },
     { label: 'Audit Log', to: '/audit', icon: ScrollText, permission: PERM.audit.view },
     { label: 'Settings', to: '/settings', icon: Settings, permission: PERM.settings.manage },
+    { label: 'Help & FAQ', to: '/faq', icon: HelpCircle },
   ]
   const visible = items.filter((i) => !i.permission || can(i.permission))
   const crumbs = loc.pathname.split('/').filter(Boolean)
   const titleOf = (seg: string) =>
-    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', loans: 'Loans', repayments: 'Repayments', transactions: 'Transactions', topups: 'Top-ups', reports: 'Reports', audit: 'Audit log', settings: 'Settings', products: 'Loan products', statement: 'Statement', new: 'New', edit: 'Edit', completed: 'Completed', monthly: 'Monthly upload' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
+    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', loans: 'Loans', repayments: 'Repayments', transactions: 'Transactions', topups: 'Top-ups', reports: 'Reports', audit: 'Audit log', settings: 'Settings', products: 'Loan products', statement: 'Statement', new: 'New', edit: 'Edit', completed: 'Completed', monthly: 'Monthly upload', faq: 'Help & FAQ' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
 
   const sidebar = (
     <div className="flex h-full flex-col bg-brand-900 text-white">
@@ -88,7 +88,7 @@ export default function AppLayout() {
             <button onClick={async () => { await logout(); nav('/login') }} className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50"><LogOut className="size-4" /><span className="hidden sm:inline">Sign out</span></button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 print:overflow-visible print:p-0"><div key={loc.pathname} className="mx-auto max-w-7xl animate-fade-up"><PageHelp pathname={loc.pathname} /><Outlet /></div></main>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 print:overflow-visible print:p-0"><div key={loc.pathname} className="mx-auto max-w-7xl animate-fade-up"><Outlet /></div></main>
       </div>
     </div>
   )

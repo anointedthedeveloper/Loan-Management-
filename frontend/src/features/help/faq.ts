@@ -1,0 +1,53 @@
+/** The one place that explains how the portal works. Keep answers short and true to what the system does. */
+export interface Faq { q: string; a: string[] }
+export interface FaqSection { id: string; title: string; items: Faq[] }
+
+export const FAQ: FaqSection[] = [
+  { id: 'start', title: 'Getting started', items: [
+    { q: 'What is the difference between the CEO and an accountant?', a: ['The CEO has every permission and approves loans. An accountant can do what the CEO has ticked for them in Staff & Permissions; by default that is: view and register customers and complete their details, create loans (which wait for approval), record repayments and transactions, request top-ups, and view and export reports.', 'The CEO can change anyone\'s permissions at any time; changes apply immediately.'] },
+    { q: 'How does approval work?', a: ['When an accountant creates a loan (one at a time or through the Monthly upload) it is saved as Pending. Nothing is paid out and no repayments can be recorded until it is approved.', 'The CEO opens the pending loan, can edit it (amount, duration, dates, rates), then approves or rejects it. A CEO\'s own loans are approved straight away.'] },
+    { q: 'Where do the dashboard numbers come from?', a: ['Everything is calculated from the ledger (the list of every disbursement and payment). Nothing is typed in by hand, so the figures cannot drift from the transactions.'] },
+  ] },
+  { id: 'customers', title: 'Customers', items: [
+    { q: 'How do I register a customer?', a: ['Customers → Add customer. Choose the type of worker first. Government workers need an IPPIS number and a ministry; non-government workers enter the organisation they work for. Then fill in personal details, phone, email, address, state, NIN and BVN (11 digits each) and next of kin.', 'An IPPIS number, NIN, BVN, phone number or email can belong to only one customer.'] },
+    { q: 'What is the customer ID?', a: ['It is the client number from the old loan book with the PTC prefix: client 640 is PTC-000640. New customers continue after the highest number. The ID cannot be changed.'] },
+    { q: 'What does "Incomplete profile" mean?', a: ['Customers imported from the old sheet only have a name, IPPIS and ministry. The profile lists what is missing (phone, address, NIN, BVN, date of birth, marital status, next of kin…). Click Complete profile and fill in what you have; you can save a little at a time. The dashboard shows how many profiles are still incomplete, and Customers can be filtered by Profile.'] },
+    { q: 'How does the CEO import the old customer sheet?', a: ['Customers → Import from Excel. You see what will happen first and nothing is saved until you confirm. Client numbers become customer IDs; rows with an IPPIS number are government workers, rows without are non-government. Duplicate or missing client numbers get a new number and are listed. Running the import again is safe.'] },
+    { q: 'Can I delete a customer?', a: ['Only if they have no loans or transactions. Otherwise set their status to Inactive or Suspended so the financial history stays on record.'] },
+  ] },
+  { id: 'loans', title: 'Loans', items: [
+    { q: 'How is a loan calculated?', a: ['Gross payment = bank payment ÷ (1 − bank deduction), e.g. ÷ 0.96. Principal = balance brought forward + gross payment. Total loan = principal + interest. EMI = total loan ÷ number of months (rounded to the kobo, the last installment absorbs the difference).', 'Interest by default is a one-time flat charge: 5% of ₦1,000,000 is ₦50,000, total ₦1,050,000, whatever the tenor. A product can instead charge a monthly rate multiplied by the number of months. Each product shows which it uses.'] },
+    { q: 'Why can I not create a second loan for a customer?', a: ['A customer can have only one open loan (pending or running). If they already have one, do a top-up instead. The limit can be changed in Settings.'] },
+    { q: 'When are repayments due?', a: ['The first installment falls in the month after the loan starts, whatever day it started. The payment window opens on the 25th and each installment is due on the 30th (28 or 29 in February). Loans set up with a specific first payment date keep it.'] },
+    { q: 'Who can edit a loan?', a: ['Pending loans can be edited by anyone with permission to edit loans. Running loans can be edited only by the CEO, with a reason: the schedule is rebuilt and the repayments already recorded are applied again. Every change is in the audit log.'] },
+    { q: 'Where are completed loans?', a: ['Fully repaid loans move to Completed loans, so the Loans list only shows pending, running and overdue ones. A customer\'s own page still shows their full history.'] },
+  ] },
+  { id: 'payments', title: 'Repayments and payments', items: [
+    { q: 'How do I record a payment?', a: ['On the loan page: Record repayment (any amount), or Mark paid next to an installment (pre-filled with what is owed, but you can change the amount). Choose the method and reference, and attach proof such as a debit or credit alert.'] },
+    { q: 'What can I upload as proof?', a: ['PDF, PNG/JPG, Word or Excel files, up to 4 MB each and 5 per payment. You see a preview before saving; later, click the payment to see the proof, preview it and download it.'] },
+    { q: 'What if the customer pays a little too much?', a: ['A payment may exceed the balance by up to ₦1,000 (a Settings value). ₦30,000 sent for ₦29,999.82 clears the loan and the small excess is held as credit.'] },
+    { q: 'I entered a payment wrongly. How do I fix it?', a: ['The CEO opens the payment and chooses Edit repayment, with a reason. The old entry is reversed and a corrected one is posted; both stay visible and are audited. Anyone with permission can also reverse a payment.'] },
+    { q: 'Why do paid installments move down?', a: ['So the next payment due is always at the top of the schedule. Paid installments sit below a "Paid" line.'] },
+  ] },
+  { id: 'topups', title: 'Top-ups', items: [
+    { q: 'How is a top-up calculated?', a: ['(a) loan taken, (b) revised tenor = the months the old loan was actually used, (c) revised cost = (a) × (1 + rate × (b)), (d) repaid to date, (e) outstanding = (c) − (d), (f) liquidation fee = 5% of (e), (g) amount due = (e) + (f).', '(g) is carried into the new loan as its balance brought forward. The new loan is priced on (g) plus the new money. You can change the months used in the top-up request, and the fee in Settings → Top-up rules.'] },
+    { q: 'What happens to the old loan?', a: ['It is closed by a non-cash entry once the new loan is approved; nothing is overwritten. Both loans stay in the history.'] },
+  ] },
+  { id: 'monthly', title: 'Monthly upload', items: [
+    { q: 'How do I change many customers or loans at once?', a: ['Monthly upload → download the Register (Excel). It has every customer once with client ID, IPPIS, ministry, phone, address, NIN, BVN, date of birth, marital status, next of kin phone, and their current loan (tenor, payment date, balance B/Fwd, bank payment, gross, principal, interest, loan, EMI, start date, status, Loan ID).', 'Change whatever needs changing in Excel, save, and upload the same file. You see exactly what will change, row by row, before anything is saved.'] },
+    { q: 'How are the rows understood?', a: ['Each row is matched to a customer by Clients ID and IPPIS NO. If they point to two different people the row is refused. A changed IPPIS is accepted if nobody else has it.', 'Customer details that differ are updated; blank cells never erase anything.', 'A row with a Loan ID is that customer\'s current loan: changed figures update it (the CEO for running loans).', 'A row without a Loan ID but with loan figures is a new loan: NEW or RENEWAL, or TOP UP which liquidates the running loan.', 'Rows that are unchanged are left alone.'] },
+    { q: 'What if I leave Gross Payment, Principal, Interest, Gross Loan or EMI blank?', a: ['They are calculated with the sheet formulas: interest = principal × rate × tenor, loan = principal + interest, EMI = loan ÷ tenor. If an EMI is written in the sheet it is respected (total = EMI × tenor) and the interest follows from it. The Excel register already contains these formulas, so changing the bank payment or tenor in Excel recalculates the rest.'] },
+    { q: 'Does an accountant\'s upload need approval?', a: ['New loans are created as Pending for the CEO to edit and approve. Customer detail updates go through if the accountant may update customers. Changing a running loan needs the CEO.'] },
+    { q: 'What is the empty template for?', a: ['It is the same columns with the formulas ready, for loans that are not in the portal yet.'] },
+  ] },
+  { id: 'downloads', title: 'Statements, reports and downloads', items: [
+    { q: 'How do I download a statement?', a: ['Open a customer or loan → Generate statement. Choose dates if you like, then PDF, Excel (with a monthly breakdown) or CSV. A customer statement shows the current loan; tick "Include completed loans" for the full history.', 'Tick "Include uploads (PDF only)" to add the uploaded proofs of payment to the PDF. Very large uploads may need a shorter date range.'] },
+    { q: 'Can I download the repayment schedule?', a: ['Yes: on the loan page, schedule tab, as PDF, Excel or CSV.'] },
+    { q: 'What reports are there?', a: ['Reports lists them all: loan book, customer register, loans, repayments, outstanding, overdue, collections, disbursements, top-ups and transactions. Loan reports cover current loans; completed loans are not included unless you choose a status.'] },
+  ] },
+  { id: 'admin', title: 'Staff, settings and audit', items: [
+    { q: 'How do I give someone access?', a: ['Staff & Permissions → add the person and tick the permissions they need (for example Create loans, Record repayments, Export reports). Deactivate them to stop access.'] },
+    { q: 'What can be changed in Settings?', a: ['Company details, whether loans need approval, allowed overpayment, how payments are allocated, early settlement, late-payment timing and the top-up rules (including the liquidation fee).'] },
+    { q: 'What does the audit log record?', a: ['Who did what and when: logins, page visits, creating or changing customers, loans, payments, uploads, settings and permissions. Filter by person, role, action or date, and export it. Entries cannot be edited or deleted.'] },
+  ] },
+]

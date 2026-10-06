@@ -35,7 +35,7 @@ export interface PlannedRow {
   customerId?: string; customerRef?: string; matchedName?: string; topUpOfRef?: string; loanRef?: string
   tenor?: number; bank?: number; carried?: number; gross?: number; principal?: number; interest?: number; total?: number; emi?: number
   customerChanges: string[]; loanChanges: string[]; errors: string[]; warnings: string[]
-  _work?: { customer: any; custInput?: Record<string, any>; draft?: any; oldLoan?: any; loan?: any; extra?: any; ratesForEdit?: any }
+  _work?: { customer: any; custInput?: Record<string, any>; draft?: any; oldLoan?: any; loan?: any; extra?: any; ratesForEdit?: any; firstPayment?: Date }
 }
 export interface MonthlyPlan { rows: PlannedRow[]; counts: { newLoans: number; loanUpdates: number; customerUpdates: number; unchanged: number; errors: number }; needsApproval: boolean; product: string }
 
@@ -156,41 +156,49 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     const product = (s.product && products.find((x) => x.code.toLowerCase() === s.product.toLowerCase() || x.name.toLowerCase() === s.product.toLowerCase())) || products[0]!;
     const ded = (product.bankDeductionRate ?? 0) / 100;
     const bfK = toKobo(s.bf ?? 0); const grossK = ded > 0 ? Math.round(toKobo(s.bank!) / (1 - ded)) : toKobo(s.bank!); const principalK = bfK + grossK;
-    let rates: { interestRate: number; bankDeductionRate: number; rateBasis: string };
-    if (s.emi && s.emi > 0) { // the book's own EMI decides the interest
-      const totalK = Math.round(s.emi * 100 * s.tenor!); const interestK = totalK - principalK;
-      if (interestK < 0) { err(`EMI × tenor (${fromKobo(totalK).toLocaleString('en-NG')}) is less than the principal (${fromKobo(principalK).toLocaleString('en-NG')}). Check the EMI, tenor and amounts.`); continue; }
-      rates = { interestRate: Math.round(((interestK / principalK / s.tenor!) * 100) * 1e4) / 1e4, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
-    } else { // blank EMI: the sheet's own formulas fill the gaps (interest = principal x rate x tenor, EMI = total / tenor)
-      rates = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
-      p.warnings.push(`EMI left blank: calculated with the sheet formulas (interest = principal × ${product.interestRate}% × ${s.tenor} months, EMI = total ÷ tenor).`);
-    }
     const firstPayment = s.firstPayment && s.firstPayment >= s.paymentDate ? s.firstPayment : undefined;
+    const draftWith = (rates: { interestRate: number; bankDeductionRate: number; rateBasis: string }) => buildDraft({ productId: String(product._id), amount: s.bank!, duration: { value: s.tenor!, unit: 'months' }, frequency: 'monthly', numberOfInstallments: s.tenor!, startDate: s.paymentDate!, firstPaymentDate: firstPayment }, { carriedBalance: s.bf ?? 0, skipLimits: true, allowBackdated: true, rates });
+    // Which interest rule produced the sheet's EMI? Prefer the loan's / product's own rule when it reproduces the EMI, otherwise the monthly rate the EMI implies.
+    const pickRates = async (own: { interestRate: number; bankDeductionRate: number; rateBasis: string }, emi: number | null) => {
+      if (!emi) return { rates: own, how: 'own' as const };
+      const totalK = Math.round(emi * 100 * s.tenor!); const interestK = totalK - principalK;
+      if (interestK < 0) throw new Error(`EMI × tenor (${fromKobo(totalK).toLocaleString('en-NG')}) is less than the principal (${fromKobo(principalK).toLocaleString('en-NG')}). Check the EMI, tenor and amounts.`);
+      const ownDraft = await draftWith(own).catch(() => null);
+      if (ownDraft && Math.abs(ownDraft.terms.totalRepayment - totalK / 100) <= 1) return { rates: own, how: 'own' as const };
+      return { rates: { interestRate: interestK / principalK / s.tenor! * 100, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' }, how: 'implied' as const };
+    };
+    const summarise = (draft: any) => { const t = draft.terms; Object.assign(p, { tenor: t.numberOfInstallments, bank: t.amount, carried: t.carriedBalance, gross: t.grossAmount, principal: t.principal, interest: t.interestAmount, total: t.totalRepayment, emi: t.installmentAmount }); return t; };
+    const warnDiffs = (t: any) => {
+      const diff = (label: string, theirsV: number | null, ours: number) => { if (theirsV !== null && Math.abs(theirsV - ours) > 1) p.warnings.push(`${label} in the sheet (${theirsV.toLocaleString('en-NG')}) differs from the calculated ${ours.toLocaleString('en-NG')}; the calculated figure is used.`); };
+      if (s.emi && Math.abs(t.installmentAmount - s.emi) > 1) p.warnings.push(`The portal's EMI (${t.installmentAmount.toLocaleString('en-NG')}) differs from the sheet (${s.emi.toLocaleString('en-NG')}).`);
+      diff('Gross Payment', s.gross, t.grossAmount); diff('Principal', s.principal, t.principal); diff('Interest', s.interest, t.interestAmount); diff('Gross Loan', s.loan, t.totalRepayment);
+    };
     if (s.firstPayment && !firstPayment) p.warnings.push('Start Date is before the Payment Date; the standard repayment cycle is used instead.');
-    let draft: any;
-    try { draft = await buildDraft({ productId: String(product._id), amount: s.bank!, duration: { value: s.tenor!, unit: 'months' }, frequency: 'monthly', numberOfInstallments: s.tenor!, startDate: s.paymentDate, firstPaymentDate: firstPayment }, { carriedBalance: s.bf ?? 0, skipLimits: true, allowBackdated: true, rates }); }
-    catch (e: any) { err(e?.message ?? 'Could not price this row.'); continue; }
-    const t = draft.terms; Object.assign(p, { tenor: t.numberOfInstallments, bank: t.amount, carried: t.carriedBalance, gross: t.grossAmount, principal: t.principal, interest: t.interestAmount, total: t.totalRepayment, emi: t.installmentAmount });
-    if (s.emi && Math.abs(t.installmentAmount - s.emi) > 1) p.warnings.push(`The portal's EMI (${t.installmentAmount.toLocaleString('en-NG')}) differs from the sheet (${s.emi.toLocaleString('en-NG')}).`);
-    const diff = (label: string, theirsV: number | null, ours: number) => { if (theirsV !== null && Math.abs(theirsV - ours) > 1) p.warnings.push(`${label} in the sheet (${theirsV.toLocaleString('en-NG')}) differs from the calculated ${ours.toLocaleString('en-NG')}; the calculated figure is used.`); };
-    diff('Gross Payment', s.gross, t.grossAmount); diff('Principal', s.principal, t.principal); diff('Interest', s.interest, t.interestAmount); diff('Gross Loan', s.loan, t.totalRepayment);
 
     if (s.loanId) { // ---- an existing loan: apply the changes
       const cur = theirs.find((l) => l.loanId === s.loanId);
       if (!cur) { err(`Loan ${s.loanId} is not ${cust.fullName}'s current loan${theirs[0] ? ` (it is ${theirs[0].loanId})` : ' (they have no open loan)'}. Clear the Loan ID cell to create a new loan.`); continue; }
       p.loanRef = cur.loanId; p.type = cur.loanType === 'topup' ? 'TOP UP' : cur.loanType === 'renewal' ? 'RENEWAL' : 'NEW';
-      const ch = p.loanChanges;
-      if (t.numberOfInstallments !== cur.numberOfInstallments) ch.push(`Tenor: ${cur.numberOfInstallments} → ${t.numberOfInstallments}`);
-      if (Math.abs(t.amount - cur.amount) > 0.005) ch.push(`Bank payment: ${cur.amount.toLocaleString('en-NG')} → ${t.amount.toLocaleString('en-NG')}`);
-      if (Math.abs(t.carriedBalance - (cur.carriedBalance ?? 0)) > 0.005) ch.push(`Balance B/Fwd: ${(cur.carriedBalance ?? 0).toLocaleString('en-NG')} → ${t.carriedBalance.toLocaleString('en-NG')}`);
-      if (!sameDay(t.startDate, cur.startDate)) ch.push('Payment date');
-      if (firstPayment && !sameDay(t.firstDueDate, cur.firstPaymentDate)) ch.push('Start date (first repayment)');
-      if (Math.abs(t.installmentAmount - cur.installmentAmount) > 0.02) ch.push(`EMI: ${cur.installmentAmount.toLocaleString('en-NG')} → ${t.installmentAmount.toLocaleString('en-NG')}`);
+      // what did the person change? compare the sheet's inputs with what is stored (no re-pricing, so untouched rows can never drift)
+      const ch = p.loanChanges; const emiSame = !s.emi || Math.abs(s.emi - cur.installmentAmount) <= 0.02;
+      if (s.tenor !== cur.numberOfInstallments) ch.push(`Tenor: ${cur.numberOfInstallments} → ${s.tenor}`);
+      if (Math.abs(s.bank! - cur.amount) > 0.005) ch.push(`Bank payment: ${cur.amount.toLocaleString('en-NG')} → ${s.bank!.toLocaleString('en-NG')}`);
+      if (Math.abs((s.bf ?? 0) - (cur.carriedBalance ?? 0)) > 0.005) ch.push(`Balance B/Fwd: ${(cur.carriedBalance ?? 0).toLocaleString('en-NG')} → ${(s.bf ?? 0).toLocaleString('en-NG')}`);
+      if (!sameDay(s.paymentDate, cur.startDate)) ch.push('Payment date');
+      if (firstPayment && !sameDay(firstPayment, cur.firstPaymentDate)) ch.push('Start date (first repayment)');
+      const inputsChanged = ch.length > 0;
+      if (!emiSame) ch.push(`EMI: ${cur.installmentAmount.toLocaleString('en-NG')} → ${s.emi!.toLocaleString('en-NG')}`);
       if (!ch.length) { finish(p.customerChanges.length ? 'update-customer' : 'unchanged'); continue; }
       const running = (LIVE_LOAN_STATUSES as readonly string[]).includes(cur.status) || cur.status === 'approved';
       if (running ? !perms.canEditRunning : !perms.canEditLoans) { p.warnings.push(running ? 'Loan changes were ignored: only the CEO can change a loan that is already running.' : 'Loan changes were ignored: you need the permission to edit loans.'); p.loanChanges = []; finish(p.customerChanges.length ? 'update-customer' : 'unchanged'); continue; }
-      work.loan = cur; work.ratesForEdit = { interestRate: rates.interestRate, rateBasis: 'per_month', bankDeductionRate: rates.bankDeductionRate };
-      work.draft = draft; finish('update-loan'); continue;
+      // a stale EMI (left as it was while other figures changed) is recalculated with the loan's own rule
+      const own = { interestRate: cur.interestRate, bankDeductionRate: cur.bankDeductionRate ?? product.bankDeductionRate ?? 0, rateBasis: cur.rateBasis };
+      try {
+        const { rates } = await pickRates(own, emiSame && inputsChanged ? null : s.emi ?? null);
+        const draft = await draftWith(rates); const t = summarise(draft); warnDiffs(t);
+        work.loan = cur; work.ratesForEdit = rates; work.draft = draft; work.firstPayment = firstPayment; finish('update-loan');
+      } catch (e: any) { err(e?.message ?? 'Could not price this row.'); }
+      continue;
     }
 
     // ---- no Loan ID: a new loan
@@ -205,7 +213,16 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
       p.topUpOfRef = oldLoan.loanId; if (!s.bf) p.warnings.push('TOP UP row without a Balance B/Fwd: the new loan carries nothing from the old one.');
     } else if (theirs.length) { err(`${cust.fullName} already has a ${theirs[0].status} loan (${theirs[0].loanId}). Mark this row TOP UP to liquidate it, or put the Loan ID in the row to change that loan.`); continue; }
     else if (type === 'NEW' && doneBefore.has(String(cust._id))) p.warnings.push('This customer has repaid loans before; saved as a renewal.');
-    work.draft = draft; work.oldLoan = oldLoan; work.extra = { loanType: type === 'TOP UP' ? 'topup' : type === 'RENEWAL' || doneBefore.has(String(cust._id)) ? 'renewal' : 'new' };
+    try {
+      const own = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: product.rateBasis };
+      const { rates, how } = await pickRates(own, s.emi ?? null);
+      if (!s.emi) { // blank EMI: the sheet's own formulas (interest = principal x rate x tenor, EMI = total / tenor) fill the gaps
+        const sheetRates = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
+        p.warnings.push(`EMI left blank: calculated with the sheet formulas (interest = principal × ${product.interestRate}% × ${s.tenor} months, EMI = total ÷ tenor).`);
+        const draft = await draftWith(sheetRates); warnDiffs(summarise(draft)); work.draft = draft;
+      } else { const draft = await draftWith(rates); warnDiffs(summarise(draft)); work.draft = draft; void how; }
+    } catch (e: any) { err(e?.message ?? 'Could not price this row.'); continue; }
+    work.oldLoan = oldLoan; work.extra = { loanType: type === 'TOP UP' ? 'topup' : type === 'RENEWAL' || doneBefore.has(String(cust._id)) ? 'renewal' : 'new' };
     finish(type === 'TOP UP' ? 'top-up' : 'new-loan');
   }
   const n = (f: (r: PlannedRow) => boolean) => rows.filter(f).length;
@@ -226,7 +243,7 @@ export async function applyMonthlyUpload(buf: Buffer, filename: string, actor: A
       if (w.custInput) { await updateCustomer(String(w.customer._id), w.custInput as any, actor); messages.unshift(`Customer updated: ${r.customerChanges.join('; ')}`); }
       if (r.action === 'update-loan' && w.loan && w.draft) {
         const t = w.draft.terms;
-        await updateLoan(String(w.loan._id), { amount: t.amount, duration: { value: t.numberOfInstallments, unit: 'months' }, numberOfInstallments: t.numberOfInstallments, startDate: t.startDate, firstPaymentDate: t.firstPaymentDate ?? t.firstDueDate, carriedBalance: t.carriedBalance, ...w.ratesForEdit, reason: `Monthly upload (${filename})` }, actor, perms.canEditRunning);
+        await updateLoan(String(w.loan._id), { amount: t.amount, duration: { value: t.numberOfInstallments, unit: 'months' }, numberOfInstallments: t.numberOfInstallments, startDate: t.startDate, ...(w.firstPayment ? { firstPaymentDate: w.firstPayment } : {}), carriedBalance: t.carriedBalance, ...w.ratesForEdit, reason: `Monthly upload (${filename})` }, actor, perms.canEditRunning);
         messages.unshift(`Loan ${w.loan.loanId} updated: ${r.loanChanges.join('; ')}`); loanId = String(w.loan._id); loanRef = w.loan.loanId;
       } else if ((r.action === 'new-loan' || r.action === 'top-up') && w.draft) {
         const { customer, oldLoan, draft, extra } = w; let topUpId: Types.ObjectId | undefined;

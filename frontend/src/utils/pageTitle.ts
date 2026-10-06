@@ -1,6 +1,6 @@
 const NAMES: Record<string, string> = {
   ceo: 'Dashboard', accountant: 'Dashboard', customers: 'Customers', loans: 'Loans', products: 'Loan products', repayments: 'Repayments', transactions: 'Transactions',
-  topups: 'Top-ups', monthly: 'Monthly upload', reports: 'Reports', staff: 'Staff & Permissions', audit: 'Audit log', settings: 'Settings',
+  topups: 'Top-ups', monthly: 'Monthly upload', faq: 'Help & FAQ', reports: 'Reports', staff: 'Staff & Permissions', audit: 'Audit log', settings: 'Settings',
 }
 const isId = (s: string) => /^[a-f\d]{24}$/i.test(s)
 
