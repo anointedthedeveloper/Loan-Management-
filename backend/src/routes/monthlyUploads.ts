@@ -9,7 +9,7 @@ import { applyMonthlyUpload, getMonthlyUpload, listMonthlyUploads, monthlyTempla
 const r = Router();
 r.use(authenticate, requirePermission('loans.create'));
 const raw = express.raw({ type: () => true, limit: '4mb' });
-const perms = (req: express.Request): UploadPerms => { const p = req.auth!.permissions as string[]; return { canApprove: p.includes('loans.approve'), canEditLoans: p.includes('loans.edit') || p.includes('loans.approve'), canEditRunning: p.includes('loans.editActive'), canUpdateCustomers: p.includes('customers.update') }; };
+const perms = (req: express.Request): UploadPerms => { const p = req.auth!.permissions as string[]; return { canApprove: p.includes('loans.approve'), canEditLoans: p.includes('loans.edit') || p.includes('loans.approve'), canEditRunning: p.includes('loans.editActive'), canUpdateCustomers: p.includes('customers.update'), canCreateCustomers: p.includes('customers.create') }; };
 const body = (req: express.Request) => (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
 
 r.get('/', asyncHandler(async (_req, res) => ok(res, { uploads: await listMonthlyUploads() })));

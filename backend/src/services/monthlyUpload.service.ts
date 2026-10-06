@@ -13,7 +13,7 @@ import { fromKobo, toKobo } from '../utils/money.js';
 import { normalizePhone } from '../utils/phone.js';
 import { auditAs } from './AuditService.js';
 import { buildDraft, createLoanRecord, approveLoan, updateLoan } from './loan.service.js';
-import { updateCustomer } from './customer.service.js';
+import { updateCustomer, nextCustomerId, serialize as serializeCustomer } from './customer.service.js';
 import { nextTopUpId } from './topup.service.js';
 import { xlFooter, xlHeaderRow, xlStyleBody, xlTitleBlock, xlPrint } from './exportStyle.js';
 import type { Actor } from '../types/index.js';
@@ -28,16 +28,16 @@ import type { Actor } from '../types/index.js';
  *  - the EMI written in the sheet decides the interest (total = EMI x tenor); a blank EMI is calculated with the sheet formulas.
  * Uploaders without loans.approve create PENDING loans for the CEO to approve; changing a running loan needs loans.editActive.
  */
-export interface UploadPerms { canApprove: boolean; canEditLoans: boolean; canEditRunning: boolean; canUpdateCustomers: boolean }
-export type RowAction = 'new-loan' | 'top-up' | 'update-loan' | 'update-customer' | 'unchanged' | 'error'
+export interface UploadPerms { canApprove: boolean; canEditLoans: boolean; canEditRunning: boolean; canUpdateCustomers: boolean; canCreateCustomers?: boolean }
+export type RowAction = 'new-loan' | 'top-up' | 'update-loan' | 'update-customer' | 'new-customer' | 'unchanged' | 'error'
 export interface PlannedRow {
   row: number; name: string; clientId: string | null; ippis: string; type: 'NEW' | 'TOP UP' | 'RENEWAL' | null; action: RowAction
   customerId?: string; customerRef?: string; matchedName?: string; topUpOfRef?: string; loanRef?: string
   tenor?: number; bank?: number; carried?: number; gross?: number; principal?: number; interest?: number; total?: number; emi?: number
-  customerChanges: string[]; loanChanges: string[]; errors: string[]; warnings: string[]
-  _work?: { customer: any; custInput?: Record<string, any>; draft?: any; oldLoan?: any; loan?: any; extra?: any; ratesForEdit?: any; firstPayment?: Date }
+  isNewCustomer?: boolean; customerChanges: string[]; loanChanges: string[]; errors: string[]; warnings: string[]
+  _work?: { customer: any; newCustomer?: { name: string }; custInput?: Record<string, any>; draft?: any; oldLoan?: any; loan?: any; extra?: any; ratesForEdit?: any; firstPayment?: Date }
 }
-export interface MonthlyPlan { rows: PlannedRow[]; counts: { newLoans: number; loanUpdates: number; customerUpdates: number; unchanged: number; errors: number }; needsApproval: boolean; product: string }
+export interface MonthlyPlan { rows: PlannedRow[]; counts: { newLoans: number; loanUpdates: number; customerUpdates: number; newCustomers: number; unchanged: number; errors: number }; needsApproval: boolean; product: string }
 
 const pad = (n: number) => `PTC-${String(n).padStart(6, '0')}`;
 const clean = (v: unknown) => (v === null || v === undefined ? '' : String(typeof v === 'object' && v && 'result' in (v as any) ? (v as any).result ?? '' : typeof v === 'object' && v && 'text' in (v as any) ? (v as any).text : v).replace(/\s+/g, ' ').trim());
@@ -110,10 +110,23 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     // ---- who is this? client number and IPPIS must not point to two different people
     const a = s.clientId ? byRef.get(pad(s.clientId)) ?? byLegacy.get(String(s.clientId)) : undefined; const b = s.ippis ? byIppis.get(s.ippis) : undefined;
     if (a && b && String(a._id) !== String(b._id)) { err(`Client ${s.clientId} is ${a.fullName}, but IPPIS ${s.ippis} belongs to ${b.fullName}. Check the row.`); continue; }
-    const cust = a ?? b;
-    if (!cust) { err(`No customer with ${s.clientId ? `client number ${s.clientId}` : ''}${s.clientId && s.ippis ? ' or ' : ''}${s.ippis ? `IPPIS ${s.ippis}` : ''} in the portal. Import or register the customer first.`); continue; }
-    p.customerId = String(cust._id); p.customerRef = cust.customerId; p.matchedName = cust.fullName;
-    if (!a && s.clientId) p.warnings.push(`Client number ${s.clientId} was not found; matched by IPPIS.`);
+    let cust: any = a ?? b; let isNew = false;
+    if (!cust) {
+      if (s.clientId) { err(`No customer with client number ${s.clientId}${s.ippis ? ` or IPPIS ${s.ippis}` : ''} in the portal. Leave Clients ID empty to add them as a new customer, or fix the number.`); continue; }
+      if (!s.name) { err('The row has no client number, IPPIS or name.'); continue; }
+      // no client number: an exact name match is the same person; otherwise this is a new customer
+      const sameName = s.ippis ? [] : await Customer.find({ isArchived: false, fullName: new RegExp(`^${titleCase(s.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}$`, 'i') });
+      if (sameName.length > 1) { err(`More than one customer is called ${titleCase(s.name)}. Put the Clients ID in the row.`); continue; }
+      if (sameName.length === 1) {
+        cust = sameName[0]; p.warnings.push('Matched by name only (no client number or IPPIS in the row).');
+        const mine = await Loan.find({ customer: cust._id, status: { $in: ['pending', 'approved', 'completed', ...LIVE_LOAN_STATUSES] } }); // not loaded with the rest: fetch their loans now
+        openBy.set(String(cust._id), mine.filter((l) => l.status !== 'completed')); for (const l of mine) if (l.status === 'completed') doneBefore.add(String(cust._id));
+      }
+      else if (!perms.canCreateCustomers) { err('This customer is not in the portal and you do not have permission to register customers.'); continue; }
+      else { isNew = true; cust = { _id: new Types.ObjectId(), fullName: titleCase(s.name), status: 'active', employment: {}, emergencyContact: {}, customerId: undefined }; p.isNewCustomer = true; }
+    }
+    p.customerId = String(cust._id); p.customerRef = isNew ? 'New customer' : cust.customerId; p.matchedName = cust.fullName;
+    if (!isNew && !a && s.clientId) p.warnings.push(`Client number ${s.clientId} was not found; matched by IPPIS.`);
     if (seen.has(String(cust._id))) { err('This customer appears twice in the sheet. Only one row per customer is allowed.'); continue; }
     seen.add(String(cust._id));
 
@@ -152,17 +165,18 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     }
     if (s.custStatus) { const st = CUSTOMER_STATUSES.find((x) => x.value === s.custStatus || x.label.toLowerCase() === s.custStatus); if (!st) p.warnings.push(`Customer status "${s.custStatus}" not understood; ignored.`); else if (st.value !== cust.status) { custInput.status = st.value; p.customerChanges.push(`Status: ${cust.status} → ${st.value}`); } }
     if (Object.keys(emp).length) custInput.employment = emp; if (Object.keys(ec).length) custInput.emergencyContact = ec;
-    if (p.customerChanges.length && !perms.canUpdateCustomers) { p.warnings.push('Customer detail changes were ignored: you need the permission to update customers.'); p.customerChanges = []; for (const k of Object.keys(custInput)) delete custInput[k]; }
+    if (isNew) p.customerChanges = []; // everything is new: the action label says so
+    else if (p.customerChanges.length && !perms.canUpdateCustomers) { p.warnings.push('Customer detail changes were ignored: you need the permission to update customers.'); p.customerChanges = []; for (const k of Object.keys(custInput)) delete custInput[k]; }
 
     // ---- loan part
     const theirs = openBy.get(String(cust._id)) ?? []; const live = theirs.filter((l) => (LIVE_LOAN_STATUSES as readonly string[]).includes(l.status));
     const hasLoanData = !!(s.bank && s.bank > 0 && s.tenor);
-    const work: NonNullable<PlannedRow['_work']> = { customer: cust, ...(Object.keys(custInput).length ? { custInput } : {}) };
+    const work: NonNullable<PlannedRow['_work']> = { customer: cust, ...(isNew ? { newCustomer: { name: titleCase(s.name) } } : {}), ...(Object.keys(custInput).length ? { custInput } : {}) };
     p._work = work;
     const finish = (action: RowAction) => { p.action = action; };
     if (!hasLoanData) { // customer-only row
       if (s.loanId) p.loanRef = s.loanId;
-      finish(p.customerChanges.length ? 'update-customer' : 'unchanged'); continue;
+      finish(isNew ? 'new-customer' : p.customerChanges.length ? 'update-customer' : 'unchanged'); continue;
     }
     if (!CUSTOMER_STATUSES.find((x) => x.value === cust.status)?.canBorrow && !s.loanId) { err(`${cust.fullName} is ${cust.status} and cannot be given a loan.`); continue; }
     if (!Number.isInteger(s.tenor!) || s.tenor! < 1) { err('Tenor must be a whole number of months.'); continue; }
@@ -195,6 +209,7 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     };
     if (s.firstPayment && !firstPayment) p.warnings.push('Start Date is before the Payment Date; the standard repayment cycle is used instead.');
 
+    if (s.loanId && isNew) { err('A new customer cannot have a Loan ID.'); continue; }
     if (s.loanId) { // ---- an existing loan: apply the changes
       const cur = theirs.find((l) => l.loanId === s.loanId);
       if (!cur) { err(`Loan ${s.loanId} is not ${cust.fullName}'s current loan${theirs[0] ? ` (it is ${theirs[0].loanId})` : ' (they have no open loan)'}. Clear the Loan ID cell to create a new loan.`); continue; }
@@ -246,7 +261,7 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     finish(type === 'TOP UP' ? 'top-up' : 'new-loan');
   }
   const n = (f: (r: PlannedRow) => boolean) => rows.filter(f).length;
-  return { rows, counts: { newLoans: n((r) => r.action === 'new-loan' || r.action === 'top-up'), loanUpdates: n((r) => r.action === 'update-loan'), customerUpdates: n((r) => r.action === 'update-customer' || (r.action === 'update-loan' && r.customerChanges.length > 0)), unchanged: n((r) => r.action === 'unchanged'), errors: n((r) => r.action === 'error') }, needsApproval: !perms.canApprove, product: products[0]?.name ?? '—' };
+  return { rows, counts: { newLoans: n((r) => r.action === 'new-loan' || r.action === 'top-up'), loanUpdates: n((r) => r.action === 'update-loan'), customerUpdates: n((r) => !r.isNewCustomer && (r.action === 'update-customer' || (r.action === 'update-loan' && r.customerChanges.length > 0))), newCustomers: n((r) => !!r.isNewCustomer && r.action !== 'error'), unchanged: n((r) => r.action === 'unchanged'), errors: n((r) => r.action === 'error') }, needsApproval: !perms.canApprove, product: products[0]?.name ?? '—' };
 }
 
 export const publicPlan = (p: MonthlyPlan) => ({ ...p, rows: p.rows.map(({ _work, ...r }) => r) });
@@ -260,7 +275,13 @@ export async function applyMonthlyUpload(buf: Buffer, filename: string, actor: A
     if (r.action === 'unchanged') { results.push({ ...base, status: 'unchanged', messages: r.warnings }); continue; }
     const w = r._work; const messages = [...r.warnings]; let loanId: string | undefined; let loanRef: string | undefined; let status: string = 'updated';
     try {
-      if (w.custInput) { await updateCustomer(String(w.customer._id), w.custInput as any, actor); messages.unshift(`Customer updated: ${r.customerChanges.join('; ')}`); }
+      if (w.newCustomer) { // a customer that is not in the portal yet: register them (profile incomplete until filled in), then give them the loan
+        const t = w.newCustomer.name.split(' '); const ci = (w.custInput ?? {}) as Record<string, any>; const { employment: emp = {}, emergencyContact: ec = {}, ...rest } = ci;
+        const doc = await Customer.create({ ...rest, customerId: await nextCustomerId(), firstName: t[0], middleName: t.length > 2 ? t.slice(1, -1).join(' ') : undefined, lastName: t.length > 1 ? t[t.length - 1] : t[0], fullName: w.newCustomer.name, status: rest.status ?? 'active',
+          employment: { ...emp, sector: emp.ippisNumber ? 'government' : 'non_government' }, emergencyContact: ec, createdBy: actor.id, updatedBy: actor.id } as any);
+        await auditAs(actor, { action: AUDIT.CUSTOMER_CREATED, entity: 'Customer', entityId: String(doc._id), entityLabel: doc.customerId, after: serializeCustomer(doc) });
+        w.customer = doc; delete w.custInput; messages.unshift(`New customer registered as ${doc.customerId}; complete their profile.`); status = 'updated';
+      } else if (w.custInput) { await updateCustomer(String(w.customer._id), w.custInput as any, actor); messages.unshift(`Customer updated: ${r.customerChanges.join('; ')}`); }
       if (r.action === 'update-loan' && w.loan && w.draft) {
         const t = w.draft.terms;
         await updateLoan(String(w.loan._id), { amount: t.amount, duration: { value: t.numberOfInstallments, unit: 'months' }, numberOfInstallments: t.numberOfInstallments, startDate: t.startDate, ...(w.firstPayment ? { firstPaymentDate: w.firstPayment } : {}), carriedBalance: t.carriedBalance, ...w.ratesForEdit, reason: `Monthly upload (${filename})` }, actor, perms.canEditRunning);
@@ -301,7 +322,7 @@ export async function monthlyTemplate(company: string): Promise<Buffer> {
   const wb = new ExcelJS.Workbook(); wb.creator = company; const ws = wb.addWorksheet('Monthly sheet');
   const heads = ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Bank payment', 'Gross Payment', 'Principal', 'Interest', 'Gross Loan', 'EMI', 'Start Date', 'End date', 'Status', 'Loan ID',
     'Customer status', 'Worker type', 'phone no', 'Email', 'Address', 'State', 'Gender', 'MARITAL STATUS', 'DATE OF BIRTH', 'NIN', 'BVN', 'NEXT OF KIN NAME', 'NEXT OF KIN PHONE NO'];
-  xlTitleBlock(ws, company, 'Monthly sheet', 'One row per customer. Leave Loan ID empty for a new loan (Status NEW, TOP UP or RENEWAL). Delete the example rows.', heads.length);
+  xlTitleBlock(ws, company, 'Monthly sheet', 'One row per customer. Fill the white columns; the portal calculates gross, principal, interest, loan and EMI. Loan ID empty = new loan (NEW, TOP UP or RENEWAL). Delete the example rows.', heads.length);
   const h = ws.addRow(heads); xlHeaderRow(h, heads.length);
   const first = ws.rowCount + 1;
   const D = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -309,15 +330,12 @@ export async function monthlyTemplate(company: string): Promise<Buffer> {
   const ex: unknown[][] = [
     [1, 'PTC-000551', 'EXAMPLE CLIENT (TOP UP)', 434590, 'OSGF', 12, D('2026-08-04'), 36012.38, 96000, null, null, null, null, null, D('2026-09-01'), null, 'TOP UP', null, ...blank(12)],
     [2, 'PTC-000637', 'EXAMPLE CLIENT (NEW)', 480210, 'LABOUR', 12, D('2026-08-05'), null, 240000, null, null, null, null, null, D('2026-09-01'), null, 'NEW', null, ...blank(12)],
+    [3, null, 'EXAMPLE NEW SCHOOL CUSTOMER', null, 'SCHOOL', 12, D('2026-08-25'), null, 288000, null, null, null, null, null, D('2026-09-01'), null, 'NEW', null, ...blank(12)], // no client number or IPPIS: added as a new non-government customer
   ];
   ex.forEach((r) => ws.addRow(r));
-  for (let n = first; n < first + ex.length; n++) { // the book's formulas (Gross, Principal, Interest, Gross Loan, EMI)
-    ws.getCell(`J${n}`).value = { formula: `ROUND(I${n}/0.96,2)` }; ws.getCell(`K${n}`).value = { formula: `ROUND(H${n}+J${n},2)` };
-    ws.getCell(`L${n}`).value = { formula: `ROUND(K${n}*5%*F${n},2)` }; ws.getCell(`M${n}`).value = { formula: `ROUND(K${n}+L${n},2)` }; ws.getCell(`N${n}`).value = { formula: `ROUND(M${n}/F${n},2)` };
-  }
   xlStyleBody(ws, first, first + ex.length - 1, ['number', 'text', 'text', 'text', 'text', 'number', 'date', 'money', 'money', 'money', 'money', 'money', 'money', 'money', 'date', 'date', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'date', 'text', 'text', 'text', 'text']);
   [6, 12, 30, 12, 18, 7, 14, 15, 15, 16, 16, 15, 16, 14, 14, 14, 12, 12, 14, 16, 14, 24, 24, 14, 10, 14, 14, 14, 14, 22, 18].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-  xlFooter(ws, 'Clients are matched by Clients ID (641 or PTC-000641) and IPPIS NO. The EMI is respected (total loan = EMI x tenor); if it is empty the sheet formulas are used. Fill the profile columns (right) to complete a customer profile.', heads.length);
+  xlFooter(ws, 'Leave Gross Payment, Principal, Interest, Gross Loan and EMI empty: the portal calculates them. Clients are matched by Clients ID (641 or PTC-000641) and IPPIS NO; a row with neither is added as a new customer. Fill the profile columns (right) to complete a profile.', heads.length);
   ws.views = [{ showGridLines: false, state: 'frozen', ySplit: h.number }]; xlPrint(ws, { company, headerRow: h.number });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

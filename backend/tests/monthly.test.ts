@@ -219,12 +219,34 @@ describe('the downloaded register can be edited and uploaded back', () => {
     const x = await mkCustomer('900005');
     const t = await api('get', '/api/monthly-uploads/template').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(t.body) as any); const ws = wb.worksheets[0]!; const h = headerRow(ws);
-    for (const n of [h + 1, h + 2]) for (let c = 1; c <= 31; c++) ws.getCell(n, c).value = null; // remove the two examples
+    for (const n of [h + 1, h + 2, h + 3]) for (let c = 1; c <= 31; c++) ws.getCell(n, c).value = null; // remove the three examples
     const set = (c: string, v: unknown) => { ws.getCell(h + 1, colOf(ws, h, c)).value = v as any; };
     set('S/N', 1); set('Clients ID', x.customerId); set('Clients Name', x.fullName); set('IPPIS NO', 900005); set('MINISTRY', 'OSGF'); set('Tenor', 12); set('Payment Date', new Date('2026-10-05T00:00:00Z')); set('Bank payment', 96000); set('Start Date', new Date('2026-11-01T00:00:00Z')); set('Status', 'NEW');
     ws.getCell(h + 1, colOf(ws, h, 'EMI')).value = { formula: `ROUND(M${h + 1}/F${h + 1},2)`, result: 13333.33 } as any; // as Excel would have saved it
     const plan = (await send('/preview', await save(wb))).body.data.plan;
     expect(plan.rows).toHaveLength(1);
     expect(plan.rows[0]).toMatchObject({ action: 'new-loan', principal: 100000, interest: 60000, total: 160000, emi: 13333.33 });
+  });
+});
+
+describe('rows for customers that are not in the portal yet', () => {
+  it('a row with no client number or IPPIS adds a new (non-government) customer and gives them the loan; calculated columns stay blank', async () => {
+    const buf = await sheet([[null, 'PERTER HARVARD SCHOOL', null, 'SCHOOL', 12, D('2026-10-05'), null, 288000, null, null, null, null, null, D('2026-11-01'), null, 'NEW']]);
+    const pv = (await send('/preview', buf)).body.data.plan;
+    expect(pv.counts).toMatchObject({ newLoans: 1, newCustomers: 1, errors: 0 });
+    expect(pv.rows[0]).toMatchObject({ action: 'new-loan', isNewCustomer: true, principal: 300000, interest: 180000, total: 480000, emi: 40000 }); // 300,000 x 5% x 12, as in the book
+    const before = await Customer.countDocuments();
+    const r = (await send('?filename=newcust.xlsx', buf)).body.data.result;
+    expect(r).toMatchObject({ created: 1, skipped: 0 });
+    expect(await Customer.countDocuments()).toBe(before + 1);
+    const c = (await Customer.findOne({ fullName: 'Perter Harvard School' }))!;
+    expect(c.customerId).toMatch(/^PTC-\d{6}$/); expect(c.employment).toMatchObject({ sector: 'non_government', ministry: 'SCHOOL' }); expect(c.profileMissing!.length).toBeGreaterThan(0);
+    const loan = (await Loan.findOne({ customer: c._id }))!; expect(loan.totalRepayment).toBe(480000);
+    // uploading the same row again does not create a second customer: the name matches the existing one (and they already have a loan)
+    const again = (await send('/preview', buf)).body.data.plan.rows[0];
+    expect(again.isNewCustomer).toBeFalsy(); expect(again.errors.join(' ')).toMatch(/already has a/);
+    // an unknown client NUMBER is still an error (probably a typo)
+    const typo = (await send('/preview', await sheet([[99999, 'SOMEONE', null, 'OSGF', 6, D('2026-10-05'), null, 50000, null, null, null, null, null, null, null, 'NEW']]))).body.data.plan.rows[0];
+    expect(typo.action).toBe('error');
   });
 });

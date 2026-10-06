@@ -15,7 +15,7 @@ const Card = ({ title, hint, children }: { title: string; hint?: string; childre
 )
 const ACTION: Record<PlanRow['action'], { label: string; tone: string }> = {
   'new-loan': { label: 'New loan', tone: 'bg-green-100 text-green-800' }, 'top-up': { label: 'Top-up', tone: 'bg-blue-100 text-blue-800' }, 'update-loan': { label: 'Update loan', tone: 'bg-amber-100 text-amber-800' },
-  'update-customer': { label: 'Update customer', tone: 'bg-amber-100 text-amber-800' }, unchanged: { label: 'No change', tone: 'bg-slate-100 text-slate-600' }, error: { label: 'Skipped', tone: 'bg-red-100 text-red-800' },
+  'update-customer': { label: 'Update customer', tone: 'bg-amber-100 text-amber-800' }, 'new-customer': { label: 'New customer', tone: 'bg-green-100 text-green-800' }, unchanged: { label: 'No change', tone: 'bg-slate-100 text-slate-600' }, error: { label: 'Skipped', tone: 'bg-red-100 text-red-800' },
 }
 
 /** Download the register, edit it in Excel, upload it back; or upload new loans in the same layout. */
@@ -33,7 +33,7 @@ export default function MonthlyUploadPage() {
 
   const run = async (key: string, fn: () => Promise<unknown>, fail: string) => { setBusy(key); try { await fn() } catch (e) { toast('error', e instanceof ApiError ? e.message : fail) } finally { setBusy('') } }
   const choose = (f: File) => run('check', async () => { setFile(f); setPlan(null); setResult(null); setPlan(await monthlyService.preview(f)) }, 'Could not read the file')
-  const todo = plan ? plan.counts.newLoans + plan.counts.loanUpdates + plan.counts.customerUpdates : 0
+  const todo = plan ? plan.counts.newLoans + plan.counts.loanUpdates + plan.counts.customerUpdates + plan.counts.newCustomers : 0
   const submit = () => file && run('apply', async () => {
     const r = await monthlyService.apply(file); setResult(r); setPlan(null); setFile(null); void loadHistory()
     toast(r.skipped ? 'error' : 'success', `${r.created} loan(s) ${r.needsApproval ? 'sent for approval' : 'created'}, ${r.updated} updated${r.skipped ? `, ${r.skipped} skipped` : ''}`)
@@ -64,7 +64,7 @@ export default function MonthlyUploadPage() {
         {plan && (
           <div className="mt-5 space-y-3">
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              {([['New loans', plan.counts.newLoans, 'bg-green-100 text-green-800'], ['Loan updates', plan.counts.loanUpdates, 'bg-amber-100 text-amber-800'], ['Customer updates', plan.counts.customerUpdates, 'bg-amber-100 text-amber-800'], ['No change', plan.counts.unchanged, 'bg-slate-100 text-slate-600'], ['Problems', plan.counts.errors, 'bg-red-100 text-red-800']] as [string, number, string][]).map(([k, v, tone]) => <span key={k} className={`rounded-full px-3 py-1 font-semibold ${tone}`}>{v} {k.toLowerCase()}</span>)}
+              {([['New loans', plan.counts.newLoans, 'bg-green-100 text-green-800'], ['Loan updates', plan.counts.loanUpdates, 'bg-amber-100 text-amber-800'], ['Customer updates', plan.counts.customerUpdates, 'bg-amber-100 text-amber-800'], ['New customers', plan.counts.newCustomers, 'bg-green-100 text-green-800'], ['No change', plan.counts.unchanged, 'bg-slate-100 text-slate-600'], ['Problems', plan.counts.errors, 'bg-red-100 text-red-800']] as [string, number, string][]).map(([k, v, tone]) => <span key={k} className={`rounded-full px-3 py-1 font-semibold ${tone}`}>{v} {k.toLowerCase()}</span>)}
               <span className="text-slate-500">Nothing has been saved yet.</span>
             </div>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
@@ -76,7 +76,7 @@ export default function MonthlyUploadPage() {
                       <td className="px-3 py-2 text-slate-500">{r.row}</td>
                       <td className="px-3 py-2"><p className="font-medium">{r.matchedName ?? r.name}</p><p className="text-xs text-slate-500">{r.customerRef ?? r.clientId ?? '—'} · IPPIS {r.ippis || '—'}</p></td>
                       <td className="px-3 py-2 text-xs">
-                        <span className={`rounded-full px-2 py-0.5 font-semibold ${ACTION[r.action].tone}`}>{ACTION[r.action].label}{r.loanRef && r.action === 'update-loan' ? ` ${r.loanRef}` : ''}{r.topUpOfRef ? ` (liquidates ${r.topUpOfRef})` : ''}</span>
+                        <span className={`rounded-full px-2 py-0.5 font-semibold ${ACTION[r.action].tone}`}>{r.isNewCustomer && r.action !== 'new-customer' ? 'New customer + ' : ''}{ACTION[r.action].label}{r.loanRef && r.action === 'update-loan' ? ` ${r.loanRef}` : ''}{r.topUpOfRef ? ` (liquidates ${r.topUpOfRef})` : ''}</span>
                         {[...r.customerChanges, ...r.loanChanges].map((m, i) => <p key={i} className="mt-0.5 text-slate-700">{m}</p>)}
                         {r.errors.map((m, i) => <p key={`e${i}`} className="mt-0.5 text-red-700"><AlertTriangle className="mr-1 inline size-3" />{m}</p>)}
                         {r.warnings.map((m, i) => <p key={`w${i}`} className="mt-0.5 text-amber-700">{m}</p>)}
