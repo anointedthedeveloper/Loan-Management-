@@ -25,7 +25,7 @@ export async function toXlsx(r: ReportResult, company: string): Promise<Buffer> 
   xlTitleBlock(ws, company, r.title, `Period: ${r.from ? ymd(r.from) : 'start'} to ${r.to ? ymd(r.to) : 'today'}`, r.columns.length);
   const head = ws.addRow(r.columns.map((c) => c.label)); xlHeaderRow(head, r.columns.length);
   const col = (key: string) => { const i = r.columns.findIndex((c) => c.key === key); return i < 0 ? null : ws.getColumn(i + 1).letter; };
-  const L = r.key === 'loan-book' ? { bank: col('bankPayment'), bf: col('balanceBF'), gross: col('grossPayment'), prin: col('principal'), int: col('interest'), loan: col('grossLoan'), emi: col('emi'), tenor: col('tenor'), repaid: col('repaid'), bal: col('balance'),
+  const L = r.key === 'loan-book' || r.key === 'customer-register' ? { bank: col('bankPayment'), bf: col('balanceBF'), gross: col('grossPayment'), prin: col('principal'), int: col('interest'), loan: col('grossLoan'), emi: col('emi'), tenor: col('tenor'), repaid: col('repaid'), bal: col('balance'),
     m1: r.columns.find((c) => c.key.startsWith('m_')) ? col(r.columns.find((c) => c.key.startsWith('m_'))!.key) : null, mN: [...r.columns].reverse().find((c) => c.key.startsWith('m_')) ? col([...r.columns].reverse().find((c) => c.key.startsWith('m_'))!.key) : null } : null;
   const firstDataRow = ws.rowCount + 1;
   for (const row of r.rows) {

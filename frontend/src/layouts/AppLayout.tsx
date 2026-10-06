@@ -7,6 +7,7 @@ import { dashboardPathFor } from '../routes/ProtectedRoute'
 import { PERM } from '../config/permissions'
 import { api } from '../services/api'
 import { pageTitle } from '../utils/pageTitle'
+import { PageHelp } from '../components/ui/PageHelp'
 
 interface NavItem { label: string; to?: string; icon: typeof Users; permission?: string; soon?: boolean; end?: boolean }
 
@@ -87,7 +88,7 @@ export default function AppLayout() {
             <button onClick={async () => { await logout(); nav('/login') }} className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium hover:bg-slate-50"><LogOut className="size-4" /><span className="hidden sm:inline">Sign out</span></button>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 print:overflow-visible print:p-0"><div key={loc.pathname} className="mx-auto max-w-7xl animate-fade-up"><Outlet /></div></main>
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 print:overflow-visible print:p-0"><div key={loc.pathname} className="mx-auto max-w-7xl animate-fade-up"><PageHelp pathname={loc.pathname} /><Outlet /></div></main>
       </div>
     </div>
   )

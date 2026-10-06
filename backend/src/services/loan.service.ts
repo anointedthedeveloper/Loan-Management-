@@ -127,7 +127,7 @@ export async function createLoanRecord(d: Draft, opts: { customerId: Types.Objec
   const loan = await Loan.create({
     loanId: await nextLoanId(), customer: opts.customerId, product: d.product._id, productName: d.product.name, status: opts.status,
     amount: t.amount, carriedBalance: t.carriedBalance, bankDeductionRate: t.bankDeductionRate, grossAmount: t.grossAmount, principal: t.principal,
-    interestRate: d.product.interestRate, rateBasis: d.product.rateBasis, interestBasis: d.interestBasis, interestAmount: t.interestAmount, monthlyInterest: t.monthlyInterest, totalRepayment: t.totalRepayment,
+    interestRate: d.rates.interestRate, rateBasis: d.rates.rateBasis, interestBasis: d.interestBasis, interestAmount: t.interestAmount, monthlyInterest: t.monthlyInterest, totalRepayment: t.totalRepayment,
     duration: d.duration, frequency: d.frequency, customIntervalDays: d.customIntervalDays, numberOfInstallments: t.numberOfInstallments, installmentAmount: t.installmentAmount,
     startDate: t.startDate, firstPaymentDate: t.firstDueDate, firstPaymentDateIsCustom: !!d.firstPaymentDate, dueDate: t.dueDate, outstandingBalance: t.totalRepayment, principalBalance: t.principal, interestBalance: t.interestAmount,
     notes: opts.notes, createdBy: opts.actorId, updatedBy: opts.actorId, ...(opts.extra ?? {}), loanType,

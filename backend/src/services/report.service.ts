@@ -49,6 +49,10 @@ const addMonthKey = (ym: string, n: number) => { const [y, m] = ym.split('-').ma
  * gross loan, EMI) and one column per month showing what was repaid that month. `_calc` carries what the Excel
  * export needs to write live formulas; it is stripped from JSON output.
  */
+/** What the Excel export needs to write the book's own formulas for a loan (null when the loan does not follow them). */
+const calcMeta = (l: any) => (l.frequency === 'monthly' && l.duration?.unit === 'months' && (l.rateBasis === 'per_month' || l.rateBasis === 'per_loan') && (l.interestBasis ?? 'full_principal') === 'full_principal'
+  ? { ded: (l.bankDeductionRate ?? 0) / 100, rate: l.interestRate / 100, once: l.rateBasis === 'per_loan' } : null);
+
 async function loanBook(q: ReportQuery): Promise<RunResult> {
   // The book lists each customer's CURRENT loan only (one open loan per customer); completed loans are history, not part of the book.
   // Pass an explicit status filter to see other loans.
@@ -90,8 +94,7 @@ async function loanBook(q: ReportQuery): Promise<RunResult> {
     // Payments dated outside the shown months still count towards "to date".
     const allPaid = credits.filter((x) => String(x._id.loan) === String(l._id)).reduce((s, x) => s + x.amount, 0);
     row.repaid = round2(Math.max(repaid, allPaid)); row.balance = round2(l.totalRepayment - (row.repaid as number));
-    const formulaOk = l.frequency === 'monthly' && l.duration?.unit === 'months' && (l.rateBasis === 'per_month' || l.rateBasis === 'per_loan') && (l.interestBasis ?? 'full_principal') === 'full_principal' && !q.from && !q.to;
-    (row as any)._calc = formulaOk ? { ded: (l.bankDeductionRate ?? 0) / 100, rate: l.interestRate / 100, once: l.rateBasis === 'per_loan' } : null;
+    (row as any)._calc = !q.from && !q.to ? calcMeta(l) : null;
     return row;
   });
   return { rows, columns };
@@ -119,6 +122,7 @@ async function customerRegister(q: ReportQuery): Promise<RunResult> {
       loanId: l?.loanId ?? '', loanStatus: l?.status ?? 'no active loan', tenor: l ? (l.frequency === 'monthly' ? l.numberOfInstallments : l.duration?.value ?? l.numberOfInstallments) : null, paymentDate: l?.startDate ?? null,
       balanceBF: l ? l.carriedBalance ?? 0 : null, bankPayment: l?.amount ?? null, grossPayment: l?.grossAmount ?? null, principal: l?.principal ?? null, interest: l?.interestAmount ?? null, grossLoan: l?.totalRepayment ?? null, emi: l?.installmentAmount ?? null,
       startDate: l ? l.firstPaymentDate ?? l.startDate : null, endDate: l?.dueDate ?? null, type: l ? (l.loanType === 'topup' ? 'TOP UP' : l.loanType === 'renewal' ? 'RENEWAL' : 'NEW') : '', paid: l?.amountPaid ?? null, outstanding: l?.outstandingBalance ?? null,
+      ...(l && !q.from && !q.to ? ({ _calc: calcMeta(l) } as any) : {}),
     };
   });
   return { rows, columns };

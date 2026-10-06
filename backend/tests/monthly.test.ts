@@ -104,3 +104,21 @@ describe('monthly loans-taken upload', () => {
     expect(Buffer.from(xl.body).subarray(0, 2).toString()).toBe('PK');
   });
 });
+
+describe('blank columns are calculated (the sheet formulas)', () => {
+  it('a row without EMI is priced with Interest = Principal x Rate x Tenor and EMI = Gross Loan / Tenor; the register carries the formulas', async () => {
+    const x = await mkCustomer('800001');
+    const buf = await sheet([[num(x), x.fullName, 800001, 'OSGF', 12, D('2026-10-01'), null, 96000, null, null, null, null, null, D('2026-11-01'), null, 'NEW']]);
+    const pv = (await send('/preview', buf)).body.data.plan.rows[0];
+    expect(pv).toMatchObject({ status: 'create', principal: 100000, interest: 60000, total: 160000, emi: 13333.33 }); // 100,000 x 5% x 12
+    expect(pv.warnings.join(' ')).toMatch(/EMI left blank/);
+    await send('?filename=blank.xlsx', buf);
+    const xl = await api('get', '/api/reports/customer-register?format=xlsx&limit=500').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(xl.body) as any);
+    const ws = wb.worksheets[0]!; let head = 0; ws.eachRow((row, n) => { if (!head && (row.values as any[]).includes('Clients Name')) head = n; });
+    const labels = ws.getRow(head).values as any[]; const col = (l: string) => labels.indexOf(l);
+    let found = false;
+    ws.eachRow((row, n) => { if (n > head && String(row.getCell(col('Clients Name')).value) === x.fullName) { found = true; const f = (l: string) => String((row.getCell(col(l)).value as any)?.formula ?? ''); expect(f('Gross Payment')).toMatch(/^ROUND\([A-Z]+\d+\/0\.96,2\)$/); expect(f('Interest')).toMatch(/%\*[A-Z]+\d+,2\)$/); expect(f('EMI')).toMatch(/^ROUND\(/); } });
+    expect(found).toBe(true);
+  });
+});

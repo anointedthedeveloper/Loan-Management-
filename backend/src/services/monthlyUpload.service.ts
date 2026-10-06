@@ -45,7 +45,7 @@ function date(v: unknown): Date | null {
   m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!)) : null;
 }
 
-interface SheetRow { row: number; clientId: number | null; name: string; ippis: string; ministry: string; tenor: number | null; paymentDate: Date | null; bf: number | null; bank: number | null; emi: number | null; firstPayment: Date | null; status: string; product: string }
+interface SheetRow { row: number; clientId: number | null; name: string; ippis: string; ministry: string; tenor: number | null; paymentDate: Date | null; bf: number | null; bank: number | null; emi: number | null; gross: number | null; principal: number | null; interest: number | null; loan: number | null; firstPayment: Date | null; status: string; product: string }
 
 async function readSheet(buf: Buffer): Promise<SheetRow[]> {
   const wb = new ExcelJS.Workbook();
@@ -53,7 +53,7 @@ async function readSheet(buf: Buffer): Promise<SheetRow[]> {
   const ws = wb.worksheets[0]; if (!ws) throw AppError.badRequest('The workbook has no sheets', 'UPLOAD_BAD_FILE');
   const head = new Map<string, number>(); ws.getRow(1).eachCell((c, i) => head.set(clean(c.value).toLowerCase(), i));
   const find = (...needles: string[]) => { for (const [k, i] of head) if (needles.some((n) => k === n || k.startsWith(n))) return i; return undefined; };
-  const c = { id: find('clients id', 'client id'), name: find('clients name', 'client name'), ippis: find('ippis'), min: find('ministry'), tenor: find('tenor'), pay: find('payment date'), bf: find('balance b/fwd', 'balance'), bank: find('bank payment'), emi: find('emi'), start: find('start date'), status: find('status'), product: find('product') };
+  const c = { id: find('clients id', 'client id'), name: find('clients name', 'client name'), ippis: find('ippis'), min: find('ministry'), tenor: find('tenor'), pay: find('payment date'), bf: find('balance b/fwd', 'balance'), bank: find('bank payment'), emi: find('emi'), gross: find('gross payment'), principal: find('principal'), interest: find('interest'), loan: find('gross loan'), start: find('start date'), status: find('status'), product: find('product') };
   const missing = (['name', 'tenor', 'bank'] as const).filter((k) => !c[k]);
   if (!c.id && !c.ippis) missing.push('id' as any);
   if (missing.length) throw AppError.badRequest(`The sheet is missing these columns: ${missing.map((m) => ({ name: 'Clients Name', tenor: 'Tenor', bank: 'Bank payment', id: 'Clients ID or IPPIS NO' })[m as string]).join(', ')}. Download the template to see the format.`, 'UPLOAD_BAD_FILE');
@@ -63,7 +63,7 @@ async function readSheet(buf: Buffer): Promise<SheetRow[]> {
     const g = (i?: number) => (i ? r.getCell(i).value : null);
     const name = clean(g(c.name)); const idRaw = clean(g(c.id));
     if (!name && !idRaw && !clean(g(c.ippis))) return;
-    out.push({ row: n, clientId: /^\d+$/.test(idRaw) ? +idRaw : null, name, ippis: clean(g(c.ippis)).toUpperCase(), ministry: clean(g(c.min)), tenor: num(g(c.tenor)), paymentDate: date(g(c.pay)), bf: num(g(c.bf)), bank: num(g(c.bank)), emi: num(g(c.emi)), firstPayment: date(g(c.start)), status: clean(g(c.status)).toUpperCase().replace(/[-_]/g, ' '), product: clean(g(c.product)) });
+    out.push({ row: n, clientId: /^\d+$/.test(idRaw) ? +idRaw : null, name, ippis: clean(g(c.ippis)).toUpperCase(), ministry: clean(g(c.min)), tenor: num(g(c.tenor)), paymentDate: date(g(c.pay)), bf: num(g(c.bf)), bank: num(g(c.bank)), emi: num(g(c.emi)), gross: num(g(c.gross)), principal: num(g(c.principal)), interest: num(g(c.interest)), loan: num(g(c.loan)), firstPayment: date(g(c.start)), status: clean(g(c.status)).toUpperCase().replace(/[-_]/g, ' '), product: clean(g(c.product)) });
   });
   if (!out.length) throw AppError.badRequest('The sheet has no rows', 'UPLOAD_EMPTY');
   return out;
@@ -125,7 +125,10 @@ export async function planMonthlyUpload(buf: Buffer, canApprove: boolean): Promi
     if (s.emi && s.emi > 0) { // the book's own EMI decides the interest
       const totalK = Math.round(s.emi * 100 * s.tenor!); const interestK = totalK - principalK;
       if (interestK < 0) { err(`EMI × tenor (${fromKobo(totalK).toLocaleString('en-NG')}) is less than the principal (${fromKobo(principalK).toLocaleString('en-NG')}). Check the EMI, tenor and amounts.`); continue; }
-      rates = { interestRate: Math.round(((interestK / principalK / s.tenor!) * 100) * 1e6) / 1e6, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
+      rates = { interestRate: Math.round(((interestK / principalK / s.tenor!) * 100) * 1e4) / 1e4, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
+    } else { // blank EMI: the sheet's own formulas (Interest = Principal x Rate x Tenor, EMI = Gross Loan / Tenor) fill the gaps
+      rates = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
+      p.warnings.push(`EMI left blank: calculated with the sheet formulas (interest = principal × ${product.interestRate}% × ${s.tenor} months, EMI = total ÷ tenor).`);
     }
     const firstPayment = s.firstPayment && s.firstPayment >= s.paymentDate! ? s.firstPayment : undefined;
     if (s.firstPayment && !firstPayment) p.warnings.push('Start Date is before the Payment Date; the standard repayment cycle is used instead.');
@@ -134,7 +137,8 @@ export async function planMonthlyUpload(buf: Buffer, canApprove: boolean): Promi
         { carriedBalance: s.bf ?? 0, skipLimits: true, allowBackdated: true, ...(rates ? { rates } : {}) });
       const t = draft.terms; Object.assign(p, { tenor: t.numberOfInstallments, bank: t.amount, carried: t.carriedBalance, gross: t.grossAmount, principal: t.principal, interest: t.interestAmount, total: t.totalRepayment, emi: t.installmentAmount, paymentDate: t.startDate, firstPayment: t.firstDueDate });
       if (s.emi && Math.abs(t.installmentAmount - s.emi) > 1) p.warnings.push(`The portal's EMI (${t.installmentAmount.toLocaleString('en-NG')}) differs from the sheet (${s.emi.toLocaleString('en-NG')}).`);
-      if (!s.emi) p.warnings.push('No EMI in the sheet: the product\'s interest rule was used.');
+      const diff = (label: string, theirs: number | null, ours: number) => { if (theirs !== null && Math.abs(theirs - ours) > 1) p.warnings.push(`${label} in the sheet (${theirs.toLocaleString('en-NG')}) differs from the calculated ${ours.toLocaleString('en-NG')}; the calculated figure is used.`); };
+      diff('Gross Payment', s.gross, t.grossAmount); diff('Principal', s.principal, t.principal); diff('Interest', s.interest, t.interestAmount); diff('Gross Loan', s.loan, t.totalRepayment);
       p._draft = { customer: cust, oldLoan, input: { draft }, extra: { loanType: type === 'TOP UP' ? 'topup' : type === 'RENEWAL' || doneBefore.has(String(cust._id)) ? 'renewal' : 'new' } };
       p.status = 'create';
     } catch (e: any) { err(e?.message ?? 'Could not price this row.'); }
