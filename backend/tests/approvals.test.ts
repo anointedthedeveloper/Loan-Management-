@@ -42,7 +42,7 @@ describe('change requests', () => {
     expect((await Transaction.findById(txId))!.reversedAt).toBeFalsy();
     const mine = await api('get', '/api/approvals', acct);
     expect(mine.status).toBe(200);
-    expect(mine.body.data.items.every((i: any) => i.requestedByName)).toBe(true);
+    expect(mine.body.data.every((i: any) => i.requestedByName)).toBe(true);
   });
   it('customer deletion needs approval', async () => {
     const cust = (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id;

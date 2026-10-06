@@ -3,10 +3,11 @@ import { z } from 'zod';
 import { authenticate, requirePermission } from '../middleware/auth.js';
 import { validateBody } from '../middleware/validate.js';
 import { asyncHandler, ok } from '../utils/http.js';
+import { sendPage } from '../utils/pagination.js';
 import { actorOf } from '../controllers/customerController.js';
 import { editRepaymentSchema, reasonSchema, updateLoanSchema } from '../validators/finance.js';
 import { AppError } from '../utils/AppError.js';
-import { approveRequest, cancelRequest, createRequest, listRequests, pendingCount, rejectRequest, type ApprovalKind } from '../services/approval.service.js';
+import { approveRequest, cancelRequest, createRequest, listRequests, rejectRequest, type ApprovalKind } from '../services/approval.service.js';
 
 /** Change requests: staff without a sensitive permission ask, the CEO (approvals.decide) carries the change out. */
 const r = Router();
@@ -22,7 +23,7 @@ r.get('/', asyncHandler(async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1); const limit = Math.min(100, Number(req.query.limit) || 50);
   const status = ['pending', 'approved', 'rejected', 'cancelled'].includes(String(req.query.status)) ? String(req.query.status) : undefined;
   const data = await listRequests({ status, mine: canDecide ? undefined : req.auth!.id, page, limit });
-  ok(res, { ...data, pending: canDecide ? await pendingCount() : undefined });
+  sendPage(res, data.items, { page, limit }, data.total);
 }));
 r.post('/', validateBody(reqSchema), asyncHandler(async (req, res) => {
   const { kind, targetId, reason, payload } = req.body as z.infer<typeof reqSchema>;
