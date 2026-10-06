@@ -250,11 +250,12 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     else if (type === 'NEW' && doneBefore.has(String(cust._id))) p.warnings.push('This customer has repaid loans before; saved as a renewal.');
     try {
       const own = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: product.rateBasis };
-      const sheetRates = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
+      const sheetRates = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' }; // an EMI written in the sheet may come from the book's monthly-rate formula
       const { rates, how } = await pickRates([own, sheetRates], s.emi ?? null);
-      if (!s.emi) { // blank EMI: the sheet's own formulas (interest = principal x rate x tenor, EMI = total / tenor) fill the gaps
-        p.warnings.push(`EMI left blank: calculated with the sheet formulas (interest = principal × ${product.interestRate}% × ${s.tenor} months, EMI = total ÷ tenor).`);
-        const draft = await draftWith(sheetRates); warnDiffs(summarise(draft)); work.draft = draft;
+      if (!s.emi) { // blank EMI: the product's interest rule fills the gaps (one-time flat interest by default), EMI = total / tenor
+        const rule = product.rateBasis === 'per_loan' ? `one-time ${product.interestRate}% of the principal` : product.rateBasis === 'per_annum' ? `${product.interestRate}% a year, pro-rated` : `${product.interestRate}% a month × ${s.tenor} months`;
+        p.warnings.push(`EMI left blank: calculated with the product's interest rule (${rule}); EMI = total ÷ tenor.`);
+        const draft = await draftWith(own); warnDiffs(summarise(draft)); work.draft = draft;
       } else { const draft = await draftWith(rates); warnDiffs(summarise(draft)); work.draft = draft; void how; }
     } catch (e: any) { err(e?.message ?? 'Could not price this row.'); continue; }
     work.oldLoan = oldLoan; work.extra = { loanType: type === 'TOP UP' ? 'topup' : type === 'RENEWAL' || doneBefore.has(String(cust._id)) ? 'renewal' : 'new' };

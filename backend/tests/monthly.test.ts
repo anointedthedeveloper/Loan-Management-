@@ -106,19 +106,19 @@ describe('monthly loans-taken upload', () => {
 });
 
 describe('blank columns are calculated (the sheet formulas)', () => {
-  it('a row without EMI is priced with Interest = Principal x Rate x Tenor and EMI = Gross Loan / Tenor; the register carries the formulas', async () => {
+  it('a row without EMI is priced with the one-time interest rule and EMI = total / tenor; the register carries the formulas', async () => {
     const x = await mkCustomer('800001');
     const buf = await sheet([[num(x), x.fullName, 800001, 'OSGF', 12, D('2026-10-01'), null, 96000, null, null, null, null, null, D('2026-11-01'), null, 'NEW']]);
     const pv = (await send('/preview', buf)).body.data.plan.rows[0];
-    expect(pv).toMatchObject({ action: 'new-loan', principal: 100000, interest: 60000, total: 160000, emi: 13333.33 }); // 100,000 x 5% x 12
-    expect(pv.warnings.join(' ')).toMatch(/EMI left blank/);
+    expect(pv).toMatchObject({ action: 'new-loan', principal: 100000, interest: 5000, total: 105000, emi: 8750 }); // one-time 5% of 100,000
+    expect(pv.warnings.join(' ')).toMatch(/EMI left blank.*one-time 5%/);
     await send('?filename=blank.xlsx', buf);
     const xl = await api('get', '/api/reports/customer-register?format=xlsx&limit=500').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(xl.body) as any);
     const ws = wb.worksheets[0]!; let head = 0; ws.eachRow((row, n) => { if (!head && (row.values as any[]).includes('Clients Name')) head = n; });
     const labels = ws.getRow(head).values as any[]; const col = (l: string) => labels.indexOf(l);
     let found = false;
-    ws.eachRow((row, n) => { if (n > head && String(row.getCell(col('Clients Name')).value) === x.fullName) { found = true; const f = (l: string) => String((row.getCell(col(l)).value as any)?.formula ?? ''); expect(f('Gross Payment')).toMatch(/^ROUND\([A-Z]+\d+\/0\.96,2\)$/); expect(f('Interest')).toMatch(/%\*[A-Z]+\d+,2\)$/); expect(f('EMI')).toMatch(/^ROUND\(/); } });
+    ws.eachRow((row, n) => { if (n > head && String(row.getCell(col('Clients Name')).value) === x.fullName) { found = true; const f = (l: string) => String((row.getCell(col(l)).value as any)?.formula ?? ''); expect(f('Gross Payment')).toMatch(/^ROUND\([A-Z]+\d+\/0\.96,2\)$/); expect(f('Interest')).toMatch(/^ROUND\([A-Z]+\d+\*5%,2\)$/); expect(f('EMI')).toMatch(/^ROUND\(/); } });
     expect(found).toBe(true);
   });
 });
@@ -234,14 +234,14 @@ describe('rows for customers that are not in the portal yet', () => {
     const buf = await sheet([[null, 'PERTER HARVARD SCHOOL', null, 'SCHOOL', 12, D('2026-10-05'), null, 288000, null, null, null, null, null, D('2026-11-01'), null, 'NEW']]);
     const pv = (await send('/preview', buf)).body.data.plan;
     expect(pv.counts).toMatchObject({ newLoans: 1, newCustomers: 1, errors: 0 });
-    expect(pv.rows[0]).toMatchObject({ action: 'new-loan', isNewCustomer: true, principal: 300000, interest: 180000, total: 480000, emi: 40000 }); // 300,000 x 5% x 12, as in the book
+    expect(pv.rows[0]).toMatchObject({ action: 'new-loan', isNewCustomer: true, principal: 300000, interest: 15000, total: 315000, emi: 26250 }); // one-time 5% of 300,000
     const before = await Customer.countDocuments();
     const r = (await send('?filename=newcust.xlsx', buf)).body.data.result;
     expect(r).toMatchObject({ created: 1, skipped: 0 });
     expect(await Customer.countDocuments()).toBe(before + 1);
     const c = (await Customer.findOne({ fullName: 'Perter Harvard School' }))!;
     expect(c.customerId).toMatch(/^PTC-\d{6}$/); expect(c.employment).toMatchObject({ sector: 'non_government', ministry: 'SCHOOL' }); expect(c.profileMissing!.length).toBeGreaterThan(0);
-    const loan = (await Loan.findOne({ customer: c._id }))!; expect(loan.totalRepayment).toBe(480000);
+    const loan = (await Loan.findOne({ customer: c._id }))!; expect(loan.totalRepayment).toBe(315000);
     // uploading the same row again does not create a second customer: the name matches the existing one (and they already have a loan)
     const again = (await send('/preview', buf)).body.data.plan.rows[0];
     expect(again.isNewCustomer).toBeFalsy(); expect(again.errors.join(' ')).toMatch(/already has a/);
