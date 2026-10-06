@@ -81,6 +81,7 @@ async function readSheet(buf: Buffer): Promise<SheetRow[]> {
     const name = clean(g(c.name)); const idRaw = clean(g(c.id)); const ippis = clean(g(c.ippis)).toUpperCase();
     if (!name && !idRaw && !ippis) return;
     if (/^(total|generated)/i.test(name) || /^(total|generated)/i.test(clean(g(1)))) return; // totals and footer rows of the register
+    if (name.length > 80 || (name && name.toLowerCase() === clean(g(c.ippis)).toLowerCase() && name.length > 20)) return; // a merged note row (e.g. the template's footer)
     out.push({ row: n, clientId: clientNo(idRaw), name, ippis, ministry: clean(g(c.min)), phone: clean(g(c.phone)), address: clean(g(c.addr)), nin: clean(g(c.nin)).replace(/\D/g, ''), bvn: clean(g(c.bvn)).replace(/\D/g, ''), dob: date(g(c.dob)), marital: clean(g(c.ms)), nok: clean(g(c.nok)), nokName: clean(g(c.nokName)), email: clean(g(c.email)).toLowerCase(), state: clean(g(c.state)), gender: clean(g(c.gender)).toLowerCase(), custStatus: clean(g(c.custStatus)).toLowerCase(), worker: clean(g(c.worker)).toLowerCase(),
       tenor: num(g(c.tenor)), paymentDate: date(g(c.pay)), bf: num(g(c.bf)), bank: num(g(c.bank)), emi: num(g(c.emi)), gross: num(g(c.gross)), principal: num(g(c.principal)), interest: num(g(c.interest)), loan: num(g(c.loan)),
       firstPayment: date(g(c.start)), status: clean(g(c.status)).toUpperCase().replace(/[-_]/g, ' '), product: clean(g(c.product)), loanId: clean(g(c.loanId)).toUpperCase() });
@@ -174,12 +175,16 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     const firstPayment = s.firstPayment && s.firstPayment >= s.paymentDate ? s.firstPayment : undefined;
     const draftWith = (rates: { interestRate: number; bankDeductionRate: number; rateBasis: string }) => buildDraft({ productId: String(product._id), amount: s.bank!, duration: { value: s.tenor!, unit: 'months' }, frequency: 'monthly', numberOfInstallments: s.tenor!, startDate: s.paymentDate!, firstPaymentDate: firstPayment }, { carriedBalance: s.bf ?? 0, skipLimits: true, allowBackdated: true, rates });
     // Which interest rule produced the sheet's EMI? Prefer the loan's / product's own rule when it reproduces the EMI, otherwise the monthly rate the EMI implies.
-    const pickRates = async (own: { interestRate: number; bankDeductionRate: number; rateBasis: string }, emi: number | null) => {
+    type Rates = { interestRate: number; bankDeductionRate: number; rateBasis: string };
+    const pickRates = async (candidates: Rates[], emi: number | null) => {
+      const own = candidates[0]!;
       if (!emi) return { rates: own, how: 'own' as const };
       const totalK = Math.round(emi * 100 * s.tenor!); const interestK = totalK - principalK;
       if (interestK < 0) throw new Error(`EMI × tenor (${fromKobo(totalK).toLocaleString('en-NG')}) is less than the principal (${fromKobo(principalK).toLocaleString('en-NG')}). Check the EMI, tenor and amounts.`);
-      const ownDraft = await draftWith(own).catch(() => null);
-      if (ownDraft && Math.abs(ownDraft.terms.totalRepayment - totalK / 100) <= 1) return { rates: own, how: 'own' as const };
+      for (const cand of candidates) { // a rule that reproduces the sheet's EMI exactly (within a naira) beats an implied rate
+        const d = await draftWith(cand).catch(() => null);
+        if (d && Math.abs(d.terms.totalRepayment - totalK / 100) <= 1) return { rates: cand, how: 'own' as const };
+      }
       return { rates: { interestRate: interestK / principalK / s.tenor! * 100, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' }, how: 'implied' as const };
     };
     const summarise = (draft: any) => { const t = draft.terms; Object.assign(p, { tenor: t.numberOfInstallments, bank: t.amount, carried: t.carriedBalance, gross: t.grossAmount, principal: t.principal, interest: t.interestAmount, total: t.totalRepayment, emi: t.installmentAmount }); return t; };
@@ -209,7 +214,7 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
       // a stale EMI (left as it was while other figures changed) is recalculated with the loan's own rule
       const own = { interestRate: cur.interestRate, bankDeductionRate: cur.bankDeductionRate ?? product.bankDeductionRate ?? 0, rateBasis: cur.rateBasis };
       try {
-        const { rates } = await pickRates(own, emiSame && inputsChanged ? null : s.emi ?? null);
+        const { rates } = await pickRates([own], emiSame && inputsChanged ? null : s.emi ?? null);
         const draft = await draftWith(rates); const t = summarise(draft); warnDiffs(t);
         work.loan = cur; work.ratesForEdit = rates; work.draft = draft; work.firstPayment = firstPayment; finish('update-loan');
       } catch (e: any) { err(e?.message ?? 'Could not price this row.'); }
@@ -230,9 +235,9 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     else if (type === 'NEW' && doneBefore.has(String(cust._id))) p.warnings.push('This customer has repaid loans before; saved as a renewal.');
     try {
       const own = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: product.rateBasis };
-      const { rates, how } = await pickRates(own, s.emi ?? null);
+      const sheetRates = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
+      const { rates, how } = await pickRates([own, sheetRates], s.emi ?? null);
       if (!s.emi) { // blank EMI: the sheet's own formulas (interest = principal x rate x tenor, EMI = total / tenor) fill the gaps
-        const sheetRates = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' };
         p.warnings.push(`EMI left blank: calculated with the sheet formulas (interest = principal × ${product.interestRate}% × ${s.tenor} months, EMI = total ÷ tenor).`);
         const draft = await draftWith(sheetRates); warnDiffs(summarise(draft)); work.draft = draft;
       } else { const draft = await draftWith(rates); warnDiffs(summarise(draft)); work.draft = draft; void how; }

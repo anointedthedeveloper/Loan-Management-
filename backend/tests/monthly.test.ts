@@ -214,4 +214,17 @@ describe('the downloaded register can be edited and uploaded back', () => {
     expect([after.email, after.state, after.gender, after.emergencyContact?.name, after.status]).toEqual(['filled@example.com', 'Kano', 'female', 'Ada Okafor', 'inactive']);
     expect(after.profileMissing).toEqual([]);
   });
+
+  it('the empty template works as it is downloaded (footer note ignored) and the book\'s formulas give the exact total', async () => {
+    const x = await mkCustomer('900005');
+    const t = await api('get', '/api/monthly-uploads/template').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(t.body) as any); const ws = wb.worksheets[0]!; const h = headerRow(ws);
+    for (const n of [h + 1, h + 2]) for (let c = 1; c <= 31; c++) ws.getCell(n, c).value = null; // remove the two examples
+    const set = (c: string, v: unknown) => { ws.getCell(h + 1, colOf(ws, h, c)).value = v as any; };
+    set('S/N', 1); set('Clients ID', x.customerId); set('Clients Name', x.fullName); set('IPPIS NO', 900005); set('MINISTRY', 'OSGF'); set('Tenor', 12); set('Payment Date', new Date('2026-10-05T00:00:00Z')); set('Bank payment', 96000); set('Start Date', new Date('2026-11-01T00:00:00Z')); set('Status', 'NEW');
+    ws.getCell(h + 1, colOf(ws, h, 'EMI')).value = { formula: `ROUND(M${h + 1}/F${h + 1},2)`, result: 13333.33 } as any; // as Excel would have saved it
+    const plan = (await send('/preview', await save(wb))).body.data.plan;
+    expect(plan.rows).toHaveLength(1);
+    expect(plan.rows[0]).toMatchObject({ action: 'new-loan', principal: 100000, interest: 60000, total: 160000, emi: 13333.33 });
+  });
 });
