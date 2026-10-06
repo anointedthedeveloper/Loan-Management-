@@ -3,6 +3,7 @@ import auth from './auth.js';
 import users from './users.js';
 import customers from './customers.js';
 import attachments from './attachments.js';
+import monthlyUploads from './monthlyUploads.js';
 import dashboard from './dashboard.js';
 import { activityRouter, productsRouter, loansRouter, repaymentsRouter, transactionsRouter, topupsRouter, reportsRouter, settingsRouter, auditRouter, jobsRouter } from './finance.js';
 
@@ -17,6 +18,7 @@ api.use('/loans', loansRouter);
 api.use('/repayments', repaymentsRouter);
 api.use('/transactions', transactionsRouter);
 api.use('/attachments', attachments);
+api.use('/monthly-uploads', monthlyUploads);
 api.use('/topups', topupsRouter);
 api.use('/reports', reportsRouter);
 api.use('/settings', settingsRouter);

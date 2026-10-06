@@ -17,7 +17,7 @@ import type { Actor } from '../types/index.js';
 
 export const nextTopUpId = async () => `TUP-${String(await nextSequence('topup')).padStart(6, '0')}`;
 
-interface TopUpInput { loanId: string; amount: number; duration: { value: number; unit: string }; frequency: string; customIntervalDays?: number; interestRate?: number; startDate?: Date; notes?: string }
+interface TopUpInput { /** months the old loan was actually used (the sheet's "revised tenor"); worked out from the dates when left out */ revisedTenor?: number; loanId: string; amount: number; duration: { value: number; unit: string }; frequency: string; customIntervalDays?: number; interestRate?: number; startDate?: Date; notes?: string }
 
 async function loadLiveLoan(loanId: string) {
   const loan = Types.ObjectId.isValid(loanId) ? await Loan.findById(loanId) : null;
@@ -38,7 +38,11 @@ async function price(input: TopUpInput) {
     { productId: String(loan.product), amount: input.amount, duration: input.duration, frequency: input.frequency, customIntervalDays: input.customIntervalDays, startDate },
     { skipLimits: true },
   );
-  const existing = { outstandingBalance: state.outstandingBalance, principalBalance: state.principalBalance, totalRepayment: loan.totalRepayment, amountPaid: state.amountPaid };
+  // months used so far, counting the month the loan started and the month of the top-up (Jan -> Feb = 2), never more than the original tenor
+  const used = (startDate.getUTCFullYear() - loan.startDate.getUTCFullYear()) * 12 + (startDate.getUTCMonth() - loan.startDate.getUTCMonth()) + 1;
+  const revisedTenor = input.revisedTenor ?? Math.min(Math.max(1, used), loan.numberOfInstallments || used);
+  const existing = { outstandingBalance: state.outstandingBalance, principalBalance: state.principalBalance, totalRepayment: loan.totalRepayment, amountPaid: state.amountPaid,
+    loanTaken: loan.principal, interestRate: loan.interestRate, rateBasis: loan.rateBasis, revisedTenor };
   const calc = calculateTopUp(existing, input.amount, {
     bankDeductionRate: loan.bankDeductionRate, interestRate: input.interestRate ?? loan.interestRate, rateBasis: draft.rates.rateBasis as any,
     duration: input.duration as any, frequency: input.frequency as any, customIntervalDays: input.customIntervalDays, startDate,
@@ -77,7 +81,7 @@ export async function requestTopUp(input: TopUpInput, actor: Actor, opts: { auto
   if (await TopUp.exists({ loan: loan._id, status: 'pending' })) throw AppError.conflict('There is already a pending top-up request for this loan', 'TOPUP_PENDING_EXISTS');
   const t = await TopUp.create({
     topUpId: await nextTopUpId(), customer: loan.customer, loan: loan._id, requestedAmount: input.amount, duration: input.duration, frequency: input.frequency,
-    customIntervalDays: input.customIntervalDays, interestRate: input.interestRate ?? loan.interestRate, startDate: input.startDate ?? todayLagos(),
+    customIntervalDays: input.customIntervalDays, interestRate: input.interestRate ?? loan.interestRate, revisedTenor: input.revisedTenor, startDate: input.startDate ?? todayLagos(),
     calculation: calcView(calc, loan, state), notes: input.notes, requestedBy: actor.id,
   } as any);
   await auditAs(actor, { action: AUDIT.TOPUP_REQUESTED, entity: 'TopUp', entityId: String(t._id), entityLabel: t.topUpId, after: { loan: loan.loanId, amount: input.amount, totalRepayment: calc.terms.totalRepayment, mode: calc.mode } });
@@ -102,7 +106,7 @@ export async function approveTopUp(id: string, actor: Actor, opts: { system?: bo
   if (t.status !== 'pending') throw AppError.conflict(`Only pending top-ups can be approved (this one is ${t.status})`, 'INVALID_TOPUP_STATE');
   const rules = await getFinanceRules();
   if (!opts.system && rules.loans.preventSelfApproval && String(t.requestedBy) === actor.id) throw AppError.forbidden('You cannot approve a top-up you requested', 'SELF_APPROVAL_BLOCKED');
-  const { loan, calc, state } = await price({ loanId: String(t.loan), amount: t.requestedAmount, duration: t.duration as any, frequency: t.frequency!, customIntervalDays: t.customIntervalDays ?? undefined, interestRate: t.interestRate ?? undefined, startDate: t.startDate ?? undefined });
+  const { loan, calc, state } = await price({ loanId: String(t.loan), amount: t.requestedAmount, duration: t.duration as any, frequency: t.frequency!, customIntervalDays: t.customIntervalDays ?? undefined, interestRate: t.interestRate ?? undefined, revisedTenor: t.revisedTenor ?? undefined, startDate: t.startDate ?? undefined });
   if (!calc.eligible) throw AppError.badRequest(calc.ineligibleReason ?? 'Not eligible for a top-up', 'TOPUP_NOT_ELIGIBLE');
 
   const draft = await buildDraft(
@@ -162,3 +166,29 @@ export async function listTopUps(q: any) {
   return { items: rows.map(serializeTopUp), total };
 }
 export { getLoan };
+
+/**
+ * A loan created as a top-up (e.g. from a monthly upload) liquidates the customer's previous loan when it becomes active:
+ * the old balance is settled by a non-cash ledger entry (the new loan carries it as its balance brought forward).
+ * Safe to call twice; does nothing if the old loan is already closed.
+ */
+export async function settleOldLoanOnActivation(newLoanId: Types.ObjectId | string, actor: Actor) {
+  const nl = await Loan.findById(newLoanId);
+  if (!nl?.topUpOf) return;
+  const old = await Loan.findById(nl.topUpOf);
+  if (!old || old.settledByTopUp || !(LIVE_LOAN_STATUSES as readonly string[]).includes(old.status)) return;
+  const { state } = await recalculateLoan(old._id);
+  const t = nl.topUp ? await TopUp.findById(nl.topUp) : null;
+  if (state.outstandingBalance > 0) {
+    await postTransaction({ customer: old.customer, loan: old._id, topUp: t?._id, type: 'topup', amount: state.outstandingBalance, isCash: false, affectsLoanBalance: true,
+      description: `Balance settled by top-up into ${nl.loanId}${t ? ` (${t.topUpId})` : ''}`, createdBy: actor.id });
+  }
+  await Loan.updateOne({ _id: old._id }, { ...(t ? { settledByTopUp: t._id } : {}) });
+  await recalculateLoan(old._id);
+  if (t && t.status === 'pending') {
+    t.status = 'approved'; t.approvedBy = new Types.ObjectId(actor.id); t.approvedAt = new Date(); t.resultingLoan = nl._id;
+    t.settlement = { settled: state.outstandingBalance, carriedForward: nl.carriedBalance, waived: Math.round((state.outstandingBalance - (nl.carriedBalance ?? 0)) * 100) / 100, intoLoan: nl.loanId };
+    await t.save();
+    await auditAs(actor, { action: AUDIT.TOPUP_APPROVED, entity: 'TopUp', entityId: String(t._id), entityLabel: t.topUpId, before: { status: 'pending' }, after: { status: 'approved', newLoan: nl.loanId } });
+  }
+}

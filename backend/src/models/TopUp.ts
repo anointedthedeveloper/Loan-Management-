@@ -13,6 +13,7 @@ const schema = new Schema(
     frequency: String,
     customIntervalDays: Number,
     interestRate: Number,
+    revisedTenor: Number, // months the old loan was used (liquidation formula)
     startDate: Date,
     /** Result of TopUpCalculationService at request time, and again (fresh) at approval time. */
     calculation: Schema.Types.Mixed,

@@ -28,8 +28,28 @@ async function exampleLoan(rate = 0) {
 const topBody = (loanId: string, over: Record<string, unknown> = {}) => ({ loanId, amount: 150000, duration: { value: 3, unit: 'months' }, frequency: 'monthly', startDate: today, ...over });
 const setTopUp = (over: Record<string, unknown>) => api('put', '/api/settings/topup').send({ requireApproval: true, mode: 'consolidate', balanceBasis: 'outstanding_total', interestBasis: 'full_principal', minimumPercentRepaid: 0, ...over });
 
+describe('Protech liquidation formula (top-up sheet)', () => {
+  it('revised cost, outstanding, 5% liquidation fee and amount due, then the new loan on top', async () => {
+    const { calculateTopUp } = await import('../src/services/finance/index.js');
+    // loan taken 100,000; revised tenor 2 months; 26,666 paid; fee 5%; new loan 50,000 added; repaid over 12 months
+    const r = calculateTopUp({ outstandingBalance: 0, principalBalance: 0, totalRepayment: 160000, amountPaid: 26666, loanTaken: 100000, interestRate: 5, rateBasis: 'per_month', revisedTenor: 2 }, 50000,
+      { bankDeductionRate: 0, interestRate: 5, rateBasis: 'per_month', duration: { value: 12, unit: 'months' }, frequency: 'monthly', startDate: new Date('2026-03-01') },
+      { mode: 'consolidate', balanceBasis: 'liquidation_formula', liquidationFeeRate: 5, interestBasis: 'full_principal', minimumPercentRepaid: 0 });
+    expect(r.liquidation).toMatchObject({ loanTaken: 100000, revisedTenor: 2, revisedCost: 110000, paidToDate: 26666, outstanding: 83334, fee: 4166.7, amountDue: 87500.7 });
+    expect(r.carriedBalance).toBe(87500.7);
+    expect(r.terms.principal).toBe(137500.7);               // (g) + new loan
+    expect(r.terms.totalRepayment).toBeCloseTo(220001.12, 2); // x (1 + 5% x 12)
+    expect(r.terms.installmentAmount).toBeCloseTo(18333.43, 2); // the sheet shows 18,333.33 on a rounded principal
+  });
+  it('a one-time-interest loan keeps its full cost when it is liquidated', async () => {
+    const { liquidate } = await import('../src/services/finance/index.js');
+    expect(liquidate({ outstandingBalance: 0, principalBalance: 0, totalRepayment: 105000, amountPaid: 35000, loanTaken: 100000, interestRate: 5, rateBasis: 'per_loan', revisedTenor: 2 }, 5)).toMatchObject({ revisedCost: 105000, outstanding: 70000, fee: 3500, amountDue: 73500 });
+  });
+});
+
 describe('top-up preview and request', () => {
   it('calculates from the configured rules without touching the original loan', async () => {
+    await setTopUp({}); // outstanding total carried (the default is the liquidation formula)
     const { loanId } = await exampleLoan(0);
     const pv = await api('post', '/api/topups/preview').send(topBody(loanId));
     expect(pv.status).toBe(200);

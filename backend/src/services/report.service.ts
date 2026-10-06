@@ -97,7 +97,35 @@ async function loanBook(q: ReportQuery): Promise<RunResult> {
   return { rows, columns };
 }
 
+/**
+ * Customer register: every customer once, with their status, IPPIS and client number, and their current loan (if any) in the layout of
+ * Protech's monthly sheet. This is also the format the monthly upload reads, so the file can be corrected and sent back.
+ */
+async function customerRegister(q: ReportQuery): Promise<RunResult> {
+  const customers = await Customer.find({ isArchived: false, ...range(q, 'registrationDate') }).sort({ customerId: 1 }).limit(q.limit + 1);
+  const loans = await Loan.find({ customer: { $in: customers.map((x) => x._id) }, status: { $in: [...LIVE_LOAN_STATUSES] } }).sort({ startDate: 1, loanId: 1 });
+  const current = new Map<string, any>(); for (const l of loans) current.set(String(l.customer), l); // latest open loan wins (a customer has one)
+  const columns: Col[] = [
+    c('sn', 'S/N', 'number'), c('clientId', 'Clients ID'), c('clientName', 'Clients Name'), c('ippis', 'IPPIS NO'), c('ministry', 'MINISTRY'), c('workerType', 'Worker type'), c('customerStatus', 'Customer status', 'status'), c('profile', 'Profile'),
+    c('loanId', 'Loan ID'), c('loanStatus', 'Loan status', 'status'), c('tenor', 'Tenor', 'number'), c('paymentDate', 'Payment Date', 'date'), c('balanceBF', 'Balance B/Fwd', 'money'), c('bankPayment', 'Bank payment', 'money'),
+    c('grossPayment', 'Gross Payment', 'money'), c('principal', 'Principal', 'money'), c('interest', 'Interest', 'money'), c('grossLoan', 'Gross Loan', 'money'), c('emi', 'EMI', 'money'),
+    c('startDate', 'Start Date', 'date'), c('endDate', 'End date', 'date'), c('type', 'Status'), c('paid', 'Repaid to date', 'money'), c('outstanding', 'Outstanding', 'money'),
+  ];
+  const rows: Row[] = customers.map((x: any, i) => {
+    const l = current.get(String(x._id)); const sector = x.employment?.sector ?? (x.employment?.ippisNumber ? 'government' : '');
+    return {
+      sn: i + 1, clientId: String(parseInt(String(x.customerId).replace(/\D/g, ''), 10) || x.customerId), clientName: x.fullName, ippis: x.employment?.ippisNumber ?? '', ministry: x.employment?.ministry ?? '',
+      workerType: sector === 'government' ? 'Government' : sector === 'non_government' ? 'Non-government' : '', customerStatus: x.status, profile: (x.profileMissing?.length ?? 0) ? `Incomplete (${x.profileMissing.length})` : 'Complete',
+      loanId: l?.loanId ?? '', loanStatus: l?.status ?? 'no active loan', tenor: l ? (l.frequency === 'monthly' ? l.numberOfInstallments : l.duration?.value ?? l.numberOfInstallments) : null, paymentDate: l?.startDate ?? null,
+      balanceBF: l ? l.carriedBalance ?? 0 : null, bankPayment: l?.amount ?? null, grossPayment: l?.grossAmount ?? null, principal: l?.principal ?? null, interest: l?.interestAmount ?? null, grossLoan: l?.totalRepayment ?? null, emi: l?.installmentAmount ?? null,
+      startDate: l ? l.firstPaymentDate ?? l.startDate : null, endDate: l?.dueDate ?? null, type: l ? (l.loanType === 'topup' ? 'TOP UP' : l.loanType === 'renewal' ? 'RENEWAL' : 'NEW') : '', paid: l?.amountPaid ?? null, outstanding: l?.outstandingBalance ?? null,
+    };
+  });
+  return { rows, columns };
+}
+
 export const REPORTS: ReportDef[] = [
+  { key: 'customer-register', label: 'Customer register (customers and current loans)', description: 'Every customer once, with status, client ID, IPPIS and their current loan in the monthly-sheet layout. Completed loans are not included.', columns: [], sums: ['bankPayment', 'grossPayment', 'principal', 'interest', 'grossLoan', 'paid', 'outstanding'], run: customerRegister },
   { key: 'loan-book', label: 'Loan book (monthly breakdown)', description: 'One row per customer (their current, open loan) in Protech\'s loan-book layout, with a column for each month\'s repayments, repayment to date and balance. Completed loans are not included. Download as Excel.', columns: [], run: loanBook },
   { key: 'loans', label: 'Loan report', description: 'Current (open) loans by start date with terms, repayments and balances. Choose a status to include other loans.', sums: ['amount', 'interestAmount', 'totalRepayment', 'amountPaid', 'outstandingBalance'],
     columns: [c('loanId', 'Loan'), c('customer', 'Customer'), c('product', 'Product'), c('loanType', 'Type', 'status'), c('amount', 'Amount', 'money'), c('interestAmount', 'Interest', 'money'), c('totalRepayment', 'Total repayment', 'money'), c('amountPaid', 'Paid', 'money'), c('outstandingBalance', 'Outstanding', 'money'), c('status', 'Status', 'status'), c('startDate', 'Start', 'date'), c('dueDate', 'Due', 'date')],

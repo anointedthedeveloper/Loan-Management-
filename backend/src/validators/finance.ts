@@ -126,6 +126,8 @@ const topUpPricing = {
   frequency: z.enum(vals(FREQUENCIES)),
   customIntervalDays: z.preprocess(blank, z.coerce.number().int().min(1).max(365).optional()),
   interestRate: z.preprocess(blank, z.coerce.number().min(0).max(100).optional()),
+  /** months the old loan was actually used (top-up sheet's "revised tenor"); blank = worked out from the dates */
+  revisedTenor: z.preprocess(blank, z.coerce.number().int().min(1).max(1200).optional()),
   startDate: optDate,
 };
 export const previewTopUpSchema = z.object(topUpPricing);

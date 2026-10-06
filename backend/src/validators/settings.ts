@@ -25,7 +25,7 @@ export const settingsSchemas = {
   latePayment: z.object({ graceDays: nonNegInt, penalty: z.object({ type: z.literal('none') }), defaultAfterDays: nullableInt }),
   topup: z.object({
     requireApproval: z.boolean(), mode: z.enum(['consolidate', 'new_loan']),
-    balanceBasis: z.enum(['outstanding_total', 'outstanding_principal']), interestBasis: z.enum(['full_principal', 'new_funds_only']),
+    balanceBasis: z.enum(['outstanding_total', 'outstanding_principal', 'liquidation_formula']), liquidationFeeRate: z.coerce.number().min(0).max(100).default(5), interestBasis: z.enum(['full_principal', 'new_funds_only']),
     minimumPercentRepaid: z.coerce.number().min(0).max(100),
   }),
   transactions: z.object({ referenceRequiredFor: z.array(z.enum(PAYMENT_METHODS.map((m) => m.value) as [string, ...string[]])) }),

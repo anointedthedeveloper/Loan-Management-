@@ -38,7 +38,8 @@ export const SETTING_SECTIONS: SettingSection[] = [
   { key: 'topup', label: 'Top-up rules', description: 'How a top-up is priced and settled.', fields: [
     { key: 'requireApproval', label: 'Require approval', type: 'toggle' },
     { key: 'mode', label: 'Top-up mode', type: 'select', options: [{ value: 'consolidate', label: 'Consolidate balance + new funds into a new loan' }, { value: 'new_loan', label: 'Create a separate loan for the new funds' }] },
-    { key: 'balanceBasis', label: 'Balance carried forward', type: 'select', options: [{ value: 'outstanding_total', label: 'Total outstanding (principal + interest)' }, { value: 'outstanding_principal', label: 'Outstanding principal only' }] },
+    { key: 'balanceBasis', label: 'Balance carried forward', type: 'select', options: [{ value: 'liquidation_formula', label: 'Protech liquidation formula (revised tenor + fee)' }, { value: 'outstanding_total', label: 'Total outstanding (principal + interest)' }, { value: 'outstanding_principal', label: 'Outstanding principal only' }], help: 'Liquidation formula: loan taken × (1 + rate × months used) − repayments to date, plus the liquidation fee, is carried into the new loan.' },
+    { key: 'liquidationFeeRate', label: 'Liquidation fee (% of the outstanding balance)', type: 'number', help: 'Used by the liquidation formula (5% on the top-up sheet).' },
     { key: 'interestBasis', label: 'Interest charged on', type: 'select', options: [{ value: 'full_principal', label: 'Carried balance + new funds' }, { value: 'new_funds_only', label: 'New funds only' }] },
     { key: 'minimumPercentRepaid', label: 'Minimum % of existing loan repaid', type: 'number', help: 'Uses the previous loan’s repayment history for eligibility.' } ] },
   { key: 'transactions', label: 'Transactions', description: 'Ledger entry requirements.', fields: [

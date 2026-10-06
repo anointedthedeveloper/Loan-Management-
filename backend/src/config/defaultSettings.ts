@@ -36,7 +36,9 @@ export const DEFAULT_SETTINGS = {
     /** consolidate: outstanding balance + new funds become one new loan. new_loan: separate loan for new funds only. */
     mode: 'consolidate' as 'consolidate' | 'new_loan',
     /** Which part of the existing balance is carried forward (the calculator's "Balance B/Fwd"). */
-    balanceBasis: 'outstanding_total' as 'outstanding_total' | 'outstanding_principal',
+    balanceBasis: 'liquidation_formula' as 'outstanding_total' | 'outstanding_principal' | 'liquidation_formula',
+    /** liquidation_formula: fee charged on the outstanding balance when a loan is liquidated by a top-up (%). */
+    liquidationFeeRate: 5,
     /** full_principal: interest on carried balance + new funds. new_funds_only: interest only on the new funds. */
     interestBasis: 'full_principal' as 'full_principal' | 'new_funds_only',
     /** Uses the previous loan's repayment history: minimum % of total repayment already paid. */
