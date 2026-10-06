@@ -195,4 +195,23 @@ describe('the downloaded register can be edited and uploaded back', () => {
     const after = (await Loan.findById(loan.id))!;
     expect(after.numberOfInstallments).toBe(12); expect(after.totalRepayment).toBe(1_050_000); expect(after.rateBasis).toBe('per_loan'); expect(after.interestRate).toBe(5);
   });
+
+  it('Clients ID carries the PTC prefix, the loan figures come first, and an incomplete profile (and the customer status) can be completed from the sheet', async () => {
+    const x = await mkCustomer('900004');
+    const doc = (await Customer.findById(x.id))!; doc.email = undefined as any; doc.state = undefined as any; doc.gender = undefined as any; doc.set('emergencyContact.name', undefined); await doc.save();
+    expect((await Customer.findById(x.id))!.profileMissing).toEqual(expect.arrayContaining(['Email', 'State', 'Gender', 'Next of kin name']));
+    const wb = await download(); const ws = wb.worksheets[0]!; const h = headerRow(ws);
+    const labels = ws.getRow(h).values as string[];
+    expect(labels.indexOf('EMI')).toBeLessThan(labels.indexOf('BVN')); expect(labels.indexOf('Principal')).toBeLessThan(labels.indexOf('NIN')); expect(labels.indexOf('Gross Payment')).toBeLessThan(labels.indexOf('Customer status'));
+    let target = 0; ws.eachRow((row, n) => { if (n > h && String(row.getCell(colOf(ws, h, 'IPPIS NO')).value) === '900004') target = n; });
+    expect(String(ws.getCell(target, colOf(ws, h, 'Clients ID')).value)).toBe(x.customerId); // PTC-000###
+    expect(String(ws.getCell(target, colOf(ws, h, 'Profile (missing details)')).value)).toMatch(/Missing: .*Email/);
+    const set = (label: string, v: unknown) => { ws.getCell(target, colOf(ws, h, label)).value = v as any; };
+    set('Email', 'filled@example.com'); set('State', 'Kano'); set('Gender', 'Female'); set('NEXT OF KIN NAME', 'Ada Okafor'); set('Customer status', 'Inactive');
+    const r = (await send('?filename=complete.xlsx', await save(wb))).body.data.result.rows.find((q: any) => q.name === x.fullName);
+    expect(r.status).toBe('updated');
+    const after = (await Customer.findById(x.id))!;
+    expect([after.email, after.state, after.gender, after.emergencyContact?.name, after.status]).toEqual(['filled@example.com', 'Kano', 'female', 'Ada Okafor', 'inactive']);
+    expect(after.profileMissing).toEqual([]);
+  });
 });

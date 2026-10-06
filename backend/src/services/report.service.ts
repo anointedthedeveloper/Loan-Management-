@@ -108,21 +108,21 @@ async function customerRegister(q: ReportQuery): Promise<RunResult> {
   const customers = await Customer.find({ isArchived: false, ...range(q, 'registrationDate') }).sort({ customerId: 1 }).limit(q.limit + 1);
   const loans = await Loan.find({ customer: { $in: customers.map((x) => x._id) }, status: { $in: [...LIVE_LOAN_STATUSES] } }).sort({ startDate: 1, loanId: 1 });
   const current = new Map<string, any>(); for (const l of loans) current.set(String(l.customer), l); // latest open loan wins (a customer has one)
-  // Same columns as the monthly upload sheet (plus read-only info columns at the end), so this file can be edited and uploaded back.
+  // Same columns as the monthly upload sheet. The loan figures come first; the customer's profile details (editable, to complete a profile) are at the end.
   const columns: Col[] = [
     c('sn', 'S/N', 'number'), c('clientId', 'Clients ID'), c('clientName', 'Clients Name'), c('ippis', 'IPPIS NO'), c('ministry', 'MINISTRY'),
-    c('phone', 'phone no'), c('address', 'Address'), c('nin', 'NIN'), c('bvn', 'BVN'), c('dob', 'DATE OF BIRTH', 'date'), c('marital', 'MARITAL STATUS'), c('nokPhone', 'NEXT OF KIN PHONE NO'),
     c('tenor', 'Tenor', 'number'), c('paymentDate', 'Payment Date', 'date'), c('balanceBF', 'Balance B/Fwd', 'money'), c('bankPayment', 'Bank payment', 'money'),
     c('grossPayment', 'Gross Payment', 'money'), c('principal', 'Principal', 'money'), c('interest', 'Interest', 'money'), c('grossLoan', 'Gross Loan', 'money'), c('emi', 'EMI', 'money'),
-    c('startDate', 'Start Date', 'date'), c('endDate', 'End date', 'date'), c('type', 'Status'), c('loanId', 'Loan ID'),
-    c('customerStatus', 'Customer status', 'status'), c('workerType', 'Worker type'), c('profile', 'Profile'), c('loanStatus', 'Loan status', 'status'), c('paid', 'Repaid to date', 'money'), c('outstanding', 'Outstanding', 'money'),
+    c('startDate', 'Start Date', 'date'), c('endDate', 'End date', 'date'), c('type', 'Status'), c('loanId', 'Loan ID'), c('loanStatus', 'Loan status', 'status'), c('paid', 'Repaid to date', 'money'), c('outstanding', 'Outstanding', 'money'),
+    c('customerStatus', 'Customer status', 'status'), c('workerType', 'Worker type'), c('phone', 'phone no'), c('email', 'Email'), c('address', 'Address'), c('state', 'State'), c('gender', 'Gender'), c('marital', 'MARITAL STATUS'),
+    c('dob', 'DATE OF BIRTH', 'date'), c('nin', 'NIN'), c('bvn', 'BVN'), c('nokName', 'NEXT OF KIN NAME'), c('nokPhone', 'NEXT OF KIN PHONE NO'), c('profile', 'Profile (missing details)'),
   ];
   const rows: Row[] = customers.map((x: any, i) => {
     const l = current.get(String(x._id)); const sector = x.employment?.sector ?? (x.employment?.ippisNumber ? 'government' : '');
     return {
-      sn: i + 1, clientId: String(parseInt(String(x.customerId).replace(/\D/g, ''), 10) || x.customerId), clientName: x.fullName, ippis: x.employment?.ippisNumber ?? '', ministry: x.employment?.ministry ?? '',
+      sn: i + 1, clientId: x.customerId, clientName: x.fullName, ippis: x.employment?.ippisNumber ?? '', ministry: x.employment?.ministry ?? '',
       phone: x.phone ?? '', address: x.address ?? '', nin: x.nin ?? '', bvn: x.bvn ?? '', dob: x.dateOfBirth ?? null, marital: x.maritalStatus ? x.maritalStatus.charAt(0).toUpperCase() + x.maritalStatus.slice(1) : '', nokPhone: x.emergencyContact?.phone ?? '',
-      workerType: sector === 'government' ? 'Government' : sector === 'non_government' ? 'Non-government' : '', customerStatus: x.status, profile: (x.profileMissing?.length ?? 0) ? `Incomplete (${x.profileMissing.length})` : 'Complete',
+      workerType: sector === 'government' ? 'Government' : sector === 'non_government' ? 'Non-government' : '', customerStatus: x.status, profile: (x.profileMissing?.length ?? 0) ? `Missing: ${x.profileMissing.join(', ')}` : 'Complete', email: x.email ?? '', state: x.state ?? '', gender: x.gender ? x.gender.charAt(0).toUpperCase() + x.gender.slice(1) : '', nokName: x.emergencyContact?.name ?? '',
       loanId: l?.loanId ?? '', loanStatus: l?.status ?? 'no active loan', tenor: l ? (l.frequency === 'monthly' ? l.numberOfInstallments : l.duration?.value ?? l.numberOfInstallments) : null, paymentDate: l?.startDate ?? null,
       balanceBF: l ? l.carriedBalance ?? 0 : null, bankPayment: l?.amount ?? null, grossPayment: l?.grossAmount ?? null, principal: l?.principal ?? null, interest: l?.interestAmount ?? null, grossLoan: l?.totalRepayment ?? null, emi: l?.installmentAmount ?? null,
       startDate: l ? l.firstPaymentDate ?? l.startDate : null, endDate: l?.dueDate ?? null, type: l ? (l.loanType === 'topup' ? 'TOP UP' : l.loanType === 'renewal' ? 'RENEWAL' : 'NEW') : '', paid: l?.amountPaid ?? null, outstanding: l?.outstandingBalance ?? null,

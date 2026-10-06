@@ -51,11 +51,13 @@ function date(v: unknown): Date | null {
 }
 const sameDay = (a?: Date | null, b?: Date | null) => !!a && !!b && a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+/** Client numbers are accepted as 641 or PTC-000641. */
+const clientNo = (raw: string) => { const m = /^(?:PTC[-\s]?)?0*(\d+)$/i.exec(raw.trim()); return m ? +m[1]! : null; };
 const maritalOf = (s: string) => { const t = s.toLowerCase(); return MARITAL_STATUSES.find((m) => t.startsWith(m.value.slice(0, 4)))?.value; };
 const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s\-'/])([a-z])/g, (_m, a, b) => a + b.toUpperCase());
 
 interface SheetRow {
-  row: number; clientId: number | null; name: string; ippis: string; ministry: string; phone: string; address: string; nin: string; bvn: string; dob: Date | null; marital: string; nok: string
+  row: number; clientId: number | null; name: string; ippis: string; ministry: string; phone: string; address: string; nin: string; bvn: string; dob: Date | null; marital: string; nok: string; nokName: string; email: string; state: string; gender: string; custStatus: string; worker: string
   tenor: number | null; paymentDate: Date | null; bf: number | null; bank: number | null; emi: number | null; gross: number | null; principal: number | null; interest: number | null; loan: number | null
   firstPayment: Date | null; status: string; product: string; loanId: string
 }
@@ -69,7 +71,7 @@ async function readSheet(buf: Buffer): Promise<SheetRow[]> {
   if (!headRow) throw AppError.badRequest('Could not find the header row (a "Clients Name" column). Download the register or template to see the format.', 'UPLOAD_BAD_FILE');
   const head = new Map<string, number>(); ws.getRow(headRow).eachCell((c, i) => head.set(clean(c.value).toLowerCase(), i));
   const find = (...needles: string[]) => { for (const n of needles) { const exact = head.get(n); if (exact) return exact; } for (const [k, i] of head) if (needles.some((n) => k.startsWith(n))) return i; return undefined; };
-  const c = { id: find('clients id', 'client id'), name: find('clients name', 'client name'), ippis: find('ippis'), min: find('ministry'), phone: find('phone no', 'phone'), addr: find('address'), nin: find('nin'), bvn: find('bvn'), dob: find('date of birth'), ms: find('marital status'), nok: find('next of kin phone'),
+  const c = { id: find('clients id', 'client id'), name: find('clients name', 'client name'), ippis: find('ippis'), min: find('ministry'), phone: find('phone no', 'phone'), addr: find('address'), nin: find('nin'), bvn: find('bvn'), dob: find('date of birth'), ms: find('marital status'), nok: find('next of kin phone'), nokName: find('next of kin name'), email: find('email'), state: find('state'), gender: find('gender'), custStatus: find('customer status'), worker: find('worker type'),
     tenor: find('tenor'), pay: find('payment date'), bf: find('balance b/fwd', 'balance'), bank: find('bank payment'), emi: find('emi'), gross: find('gross payment'), principal: find('principal'), interest: find('interest'), loan: find('gross loan'), start: find('start date'), status: find('status'), product: find('product'), loanId: find('loan id') };
   if (!c.id && !c.ippis) throw AppError.badRequest('The sheet needs a Clients ID or IPPIS NO column.', 'UPLOAD_BAD_FILE');
   const out: SheetRow[] = [];
@@ -79,7 +81,7 @@ async function readSheet(buf: Buffer): Promise<SheetRow[]> {
     const name = clean(g(c.name)); const idRaw = clean(g(c.id)); const ippis = clean(g(c.ippis)).toUpperCase();
     if (!name && !idRaw && !ippis) return;
     if (/^(total|generated)/i.test(name) || /^(total|generated)/i.test(clean(g(1)))) return; // totals and footer rows of the register
-    out.push({ row: n, clientId: /^\d+$/.test(idRaw) ? +idRaw : null, name, ippis, ministry: clean(g(c.min)), phone: clean(g(c.phone)), address: clean(g(c.addr)), nin: clean(g(c.nin)).replace(/\D/g, ''), bvn: clean(g(c.bvn)).replace(/\D/g, ''), dob: date(g(c.dob)), marital: clean(g(c.ms)), nok: clean(g(c.nok)),
+    out.push({ row: n, clientId: clientNo(idRaw), name, ippis, ministry: clean(g(c.min)), phone: clean(g(c.phone)), address: clean(g(c.addr)), nin: clean(g(c.nin)).replace(/\D/g, ''), bvn: clean(g(c.bvn)).replace(/\D/g, ''), dob: date(g(c.dob)), marital: clean(g(c.ms)), nok: clean(g(c.nok)), nokName: clean(g(c.nokName)), email: clean(g(c.email)).toLowerCase(), state: clean(g(c.state)), gender: clean(g(c.gender)).toLowerCase(), custStatus: clean(g(c.custStatus)).toLowerCase(), worker: clean(g(c.worker)).toLowerCase(),
       tenor: num(g(c.tenor)), paymentDate: date(g(c.pay)), bf: num(g(c.bf)), bank: num(g(c.bank)), emi: num(g(c.emi)), gross: num(g(c.gross)), principal: num(g(c.principal)), interest: num(g(c.interest)), loan: num(g(c.loan)),
       firstPayment: date(g(c.start)), status: clean(g(c.status)).toUpperCase().replace(/[-_]/g, ' '), product: clean(g(c.product)), loanId: clean(g(c.loanId)).toUpperCase() });
   });
@@ -135,6 +137,19 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     if (ms && ms !== cust.maritalStatus) { custInput.maritalStatus = ms; p.customerChanges.push('Marital status'); }
     const nok = s.nok ? normalizePhone(s.nok) : null; if (s.nok && !nok) p.warnings.push('Next of kin phone is not valid; ignored.');
     if (nok && nok !== cust.emergencyContact?.phone) { ec.phone = nok; p.customerChanges.push('Next of kin phone'); }
+    if (s.email) { if (!/^\S+@\S+\.\S+$/.test(s.email)) p.warnings.push('Email is not valid; ignored.'); else if (s.email !== cust.email) { custInput.email = s.email; p.customerChanges.push('Email'); } }
+    if (s.state && s.state !== cust.state) { custInput.state = s.state; p.customerChanges.push('State'); }
+    if (s.gender) { const g = s.gender.startsWith('m') ? 'male' : s.gender.startsWith('f') ? 'female' : null; if (!g) p.warnings.push(`Gender "${s.gender}" not understood; ignored.`); else if (g !== cust.gender) { custInput.gender = g; p.customerChanges.push('Gender'); } }
+    if (s.nokName && s.nokName !== cust.emergencyContact?.name) { ec.name = s.nokName; p.customerChanges.push('Next of kin name'); }
+    if (s.worker) {
+      const sector = s.worker.startsWith('gov') ? 'government' : s.worker.startsWith('non') ? 'non_government' : null;
+      if (!sector) p.warnings.push(`Worker type "${s.worker}" not understood; ignored.`);
+      else if (sector !== (cust.employment?.sector ?? (cust.employment?.ippisNumber ? 'government' : undefined))) {
+        if (sector === 'government' && !s.ippis && !cust.employment?.ippisNumber) p.warnings.push('Worker type Government needs an IPPIS number; ignored.');
+        else { emp.sector = sector; p.customerChanges.push(`Worker type: ${sector === 'government' ? 'Government' : 'Non-government'}`); }
+      }
+    }
+    if (s.custStatus) { const st = CUSTOMER_STATUSES.find((x) => x.value === s.custStatus || x.label.toLowerCase() === s.custStatus); if (!st) p.warnings.push(`Customer status "${s.custStatus}" not understood; ignored.`); else if (st.value !== cust.status) { custInput.status = st.value; p.customerChanges.push(`Status: ${cust.status} → ${st.value}`); } }
     if (Object.keys(emp).length) custInput.employment = emp; if (Object.keys(ec).length) custInput.emergencyContact = ec;
     if (p.customerChanges.length && !perms.canUpdateCustomers) { p.warnings.push('Customer detail changes were ignored: you need the permission to update customers.'); p.customerChanges = []; for (const k of Object.keys(custInput)) delete custInput[k]; }
 
@@ -279,20 +294,25 @@ export async function getMonthlyUpload(id: string) {
 /** An empty copy of the register: the same columns, with the book's formulas ready, for loans that are not in the portal yet. */
 export async function monthlyTemplate(company: string): Promise<Buffer> {
   const wb = new ExcelJS.Workbook(); wb.creator = company; const ws = wb.addWorksheet('Monthly sheet');
-  const heads = ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'phone no', 'Address', 'NIN', 'BVN', 'DATE OF BIRTH', 'MARITAL STATUS', 'NEXT OF KIN PHONE NO', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Bank payment', 'Gross Payment', 'Principal', 'Interest', 'Gross Loan', 'EMI', 'Start Date', 'End date', 'Status', 'Loan ID'];
+  const heads = ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Bank payment', 'Gross Payment', 'Principal', 'Interest', 'Gross Loan', 'EMI', 'Start Date', 'End date', 'Status', 'Loan ID',
+    'Customer status', 'Worker type', 'phone no', 'Email', 'Address', 'State', 'Gender', 'MARITAL STATUS', 'DATE OF BIRTH', 'NIN', 'BVN', 'NEXT OF KIN NAME', 'NEXT OF KIN PHONE NO'];
   xlTitleBlock(ws, company, 'Monthly sheet', 'One row per customer. Leave Loan ID empty for a new loan (Status NEW, TOP UP or RENEWAL). Delete the example rows.', heads.length);
   const h = ws.addRow(heads); xlHeaderRow(h, heads.length);
   const first = ws.rowCount + 1;
   const D = (s: string) => new Date(`${s}T00:00:00Z`);
-  const ex: unknown[][] = [[1, 551, 'EXAMPLE CLIENT (TOP UP)', 434590, 'OSGF', null, null, null, null, null, null, null, 12, D('2026-08-04'), 36012.38, 96000, null, null, null, null, null, D('2026-09-01'), null, 'TOP UP', null], [2, 637, 'EXAMPLE CLIENT (NEW)', 480210, 'LABOUR', null, null, null, null, null, null, null, 12, D('2026-08-05'), null, 240000, null, null, null, null, null, D('2026-09-01'), null, 'NEW', null]];
+  const blank = (n: number) => Array(n).fill(null);
+  const ex: unknown[][] = [
+    [1, 'PTC-000551', 'EXAMPLE CLIENT (TOP UP)', 434590, 'OSGF', 12, D('2026-08-04'), 36012.38, 96000, null, null, null, null, null, D('2026-09-01'), null, 'TOP UP', null, ...blank(12)],
+    [2, 'PTC-000637', 'EXAMPLE CLIENT (NEW)', 480210, 'LABOUR', 12, D('2026-08-05'), null, 240000, null, null, null, null, null, D('2026-09-01'), null, 'NEW', null, ...blank(12)],
+  ];
   ex.forEach((r) => ws.addRow(r));
-  for (let n = first; n < first + ex.length; n++) { // the book's formulas
-    ws.getCell(`Q${n}`).value = { formula: `ROUND(P${n}/0.96,2)` }; ws.getCell(`R${n}`).value = { formula: `ROUND(O${n}+Q${n},2)` };
-    ws.getCell(`S${n}`).value = { formula: `ROUND(R${n}*5%*M${n},2)` }; ws.getCell(`T${n}`).value = { formula: `ROUND(R${n}+S${n},2)` }; ws.getCell(`U${n}`).value = { formula: `ROUND(T${n}/M${n},2)` };
+  for (let n = first; n < first + ex.length; n++) { // the book's formulas (Gross, Principal, Interest, Gross Loan, EMI)
+    ws.getCell(`J${n}`).value = { formula: `ROUND(I${n}/0.96,2)` }; ws.getCell(`K${n}`).value = { formula: `ROUND(H${n}+J${n},2)` };
+    ws.getCell(`L${n}`).value = { formula: `ROUND(K${n}*5%*F${n},2)` }; ws.getCell(`M${n}`).value = { formula: `ROUND(K${n}+L${n},2)` }; ws.getCell(`N${n}`).value = { formula: `ROUND(M${n}/F${n},2)` };
   }
-  xlStyleBody(ws, first, first + ex.length - 1, ['number', 'number', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'date', 'text', 'text', 'number', 'date', 'money', 'money', 'money', 'money', 'money', 'money', 'money', 'date', 'date', 'text', 'text']);
-  [6, 10, 30, 12, 18, 14, 24, 14, 14, 14, 14, 18, 7, 14, 15, 15, 16, 16, 15, 16, 14, 14, 14, 12, 12].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-  xlFooter(ws, 'Clients are matched by Clients ID and IPPIS NO. The EMI is respected (total loan = EMI x tenor); if it is empty the sheet formulas are used.', heads.length);
+  xlStyleBody(ws, first, first + ex.length - 1, ['number', 'text', 'text', 'text', 'text', 'number', 'date', 'money', 'money', 'money', 'money', 'money', 'money', 'money', 'date', 'date', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'date', 'text', 'text', 'text', 'text']);
+  [6, 12, 30, 12, 18, 7, 14, 15, 15, 16, 16, 15, 16, 14, 14, 14, 12, 12, 14, 16, 14, 24, 24, 14, 10, 14, 14, 14, 14, 22, 18].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
+  xlFooter(ws, 'Clients are matched by Clients ID (641 or PTC-000641) and IPPIS NO. The EMI is respected (total loan = EMI x tenor); if it is empty the sheet formulas are used. Fill the profile columns (right) to complete a customer profile.', heads.length);
   ws.views = [{ showGridLines: false, state: 'frozen', ySplit: h.number }]; xlPrint(ws, { company, headerRow: h.number });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

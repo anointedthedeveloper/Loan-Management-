@@ -62,7 +62,7 @@ async function readRows(buf: Buffer): Promise<Row[]> {
   ws.eachRow((r, n) => {
     if (n === 1) return;
     const name = clean(get(r, cName)); if (!name) return;
-    const idRaw = clean(get(r, cId)); const idNum = /^\d+$/.test(idRaw) && +idRaw > 0 ? +idRaw : null;
+    const idRaw = clean(get(r, cId)).replace(/^PTC[-\s]?/i, ''); const idNum = /^\d+$/.test(idRaw) && +idRaw > 0 ? +idRaw : null;
     rows.push({ row: n, id: idNum, name, ippis: clean(get(r, cIppis)).toUpperCase(), ministry: normMinistry(clean(get(r, cMin))), phone: clean(get(r, cPhone)), address: clean(get(r, cAddr)), nin: clean(get(r, cNin)).replace(/\D/g, ''), bvn: clean(get(r, cBvn)).replace(/\D/g, ''), dob: get(r, cDob), marital: clean(get(r, cMs)), nokPhone: clean(get(r, cNok)) });
   });
   return rows;
