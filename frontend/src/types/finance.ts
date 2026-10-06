@@ -68,7 +68,9 @@ export interface Transaction {
 }
 export interface Attachment { id: string; filename: string; mimeType: string; size: number; createdAt: string }
 
+export interface Liquidation { loanTaken: number; revisedTenor: number; revisedCost: number; paidToDate: number; outstanding: number; feeRate: number; fee: number; amountDue: number }
 export interface TopUpCalc {
+  liquidation?: Liquidation
   mode: string; carriedBalance: number; newFunds: number; percentRepaid: number; eligible: boolean; ineligibleReason?: string
   terms: Terms; existingLoan: string; existingOutstanding: number; settledOnExistingLoan: number; waivedOnExistingLoan: number
 }

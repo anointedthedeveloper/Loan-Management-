@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, Landmark, CheckCircle2, Package, Banknote, ReceiptText, ArrowUpRight, BarChart3, ScrollText, Settings, UserCog, LogOut, Menu, X, ChevronRight } from 'lucide-react'
+import { FileSpreadsheet, LayoutDashboard, Users, Landmark, CheckCircle2, Package, Banknote, ReceiptText, ArrowUpRight, BarChart3, ScrollText, Settings, UserCog, LogOut, Menu, X, ChevronRight } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { Logo } from '../components/ui/Logo'
 import { dashboardPathFor } from '../routes/ProtectedRoute'
@@ -26,6 +26,7 @@ export default function AppLayout() {
     { label: 'Dashboard', to: dashboardPathFor(user.role), icon: LayoutDashboard },
     { label: 'Customers', to: '/customers', icon: Users, permission: PERM.customers.read },
     { label: 'Loans', to: '/loans', icon: Landmark, permission: PERM.loans.view, end: true },
+    { label: 'Monthly upload', to: '/monthly', icon: FileSpreadsheet, permission: PERM.loans.create },
     { label: 'Completed loans', to: '/loans/completed', icon: CheckCircle2, permission: PERM.loans.view },
     { label: 'Loan products', to: '/products', icon: Package, permission: PERM.products.manage },
     { label: 'Repayments', to: '/repayments', icon: Banknote, permission: PERM.repayments.view },
@@ -39,7 +40,7 @@ export default function AppLayout() {
   const visible = items.filter((i) => !i.permission || can(i.permission))
   const crumbs = loc.pathname.split('/').filter(Boolean)
   const titleOf = (seg: string) =>
-    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', loans: 'Loans', repayments: 'Repayments', transactions: 'Transactions', topups: 'Top-ups', reports: 'Reports', audit: 'Audit log', settings: 'Settings', products: 'Loan products', statement: 'Statement', new: 'New', edit: 'Edit', completed: 'Completed' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
+    ({ ceo: 'Dashboard', accountant: 'Dashboard', staff: 'Staff & Permissions', customers: 'Customers', loans: 'Loans', repayments: 'Repayments', transactions: 'Transactions', topups: 'Top-ups', reports: 'Reports', audit: 'Audit log', settings: 'Settings', products: 'Loan products', statement: 'Statement', new: 'New', edit: 'Edit', completed: 'Completed', monthly: 'Monthly upload' } as Record<string, string>)[seg] ?? (/^[a-f\d]{24}$/i.test(seg) ? 'Details' : seg)
 
   const sidebar = (
     <div className="flex h-full flex-col bg-brand-900 text-white">

@@ -1,4 +1,4 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { FileSpreadsheet, Landmark, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { ApiError } from '../../../services/api'
@@ -28,8 +28,9 @@ export default function LoansPage({ completed = false }: { completed?: boolean }
     try { await reportService.export('loan-book', 'xlsx', {}) } catch (e) { toast('error', e instanceof ApiError ? e.message : 'Export failed') } finally { setExporting(false) }
   }
   const nav = useNavigate()
+  const [search] = useSearchParams()
   const meta = useLoanMeta()
-  const list = useServerList(completed ? loanService.listCompleted : loanService.list, { q: '', status: '', repaymentStatus: '', from: '', to: '', minAmount: '', maxAmount: '' }, { key: 'createdAt', order: 'desc' })
+  const list = useServerList(completed ? loanService.listCompleted : loanService.list, { q: '', status: search.get('status') ?? '', repaymentStatus: '', from: '', to: '', minAmount: '', maxAmount: '' }, { key: 'createdAt', order: 'desc' })
   const defs: FilterDef[] = [
     { key: 'q', type: 'search', placeholder: 'Search loan ID, customer name, phone or ID' },
     ...(completed ? [] : [
