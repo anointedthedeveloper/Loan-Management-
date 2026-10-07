@@ -65,6 +65,14 @@ describe('opening balances', () => {
     expect(nl).toMatchObject({ carriedBalance: 150000, principal: 250000, applicationFee: 4000 });
   });
 
+  it('Client ID works with or without the PTC prefix (text or number, any zero padding)', async () => {
+    const x = await mk('720020'); const n = Number(x.customerId.replace(/\D/g, ''));
+    for (const id of [n, String(n), `PTC-${n}`, x.customerId, `ptc ${String(n).padStart(6, '0')}`]) {
+      const row = (await send('/balances/preview', await sheet([[id, 'x', null, 'OSGF', 1000]]))).body.data.plan.rows[0];
+      expect(row, String(id)).toMatchObject({ action: 'opening-balance', customerRef: x.customerId });
+    }
+  });
+
   it('an accountant\'s balances wait for the CEO to approve', async () => {
     const x = await mk('720010');
     const r = (await send('/balances', await sheet([[null, x.fullName, 720010, 'OSGF', 80000]]), acct)).body.data.result;
