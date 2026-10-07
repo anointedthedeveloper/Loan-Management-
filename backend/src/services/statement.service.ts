@@ -43,7 +43,7 @@ async function loanStatement(loanId: Types.ObjectId | string, from?: Date, to?: 
   if (!loan) throw AppError.notFound('Loan not found', 'LOAN_NOT_FOUND');
   const all = await Transaction.find({ loan: loan._id }).sort({ date: 1, createdAt: 1, _id: 1 });
   const byId = new Map(all.map((t) => [String(t._id), t]));
-  const opening = all.find((t) => t.type === 'disbursement' || (t.type === 'topup' && t.isCash));
+  const opening = all.find((t) => t.type === 'disbursement' || t.type === 'opening_balance' || (t.type === 'topup' && t.isCash));
 
   type Raw = { date: Date; ref: string; desc: string; dr: number; cr: number };
   const raw: Raw[] = [{

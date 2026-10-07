@@ -17,4 +17,4 @@ export const TopUpStatusBadge = ({ status }: { status: string }) => <Badge tone=
 
 export const TxStateBadge = ({ state }: { state: string }) => <Badge tone={state === 'reversed' ? 'red' : 'green'}>{titleCase(state)}</Badge>
 
-export const LoanTypeBadge = ({ type }: { type?: string }) => (type === 'renewal' ? <Badge tone="blue">Renewal</Badge> : type === 'topup' ? <Badge tone="blue">Top-up</Badge> : null)
+export const LoanTypeBadge = ({ type }: { type?: string }) => (type === 'opening' ? <Badge tone="amber">Opening balance</Badge> : type === 'renewal' ? <Badge tone="blue">Renewal</Badge> : type === 'topup' ? <Badge tone="blue">Top-up</Badge> : null)

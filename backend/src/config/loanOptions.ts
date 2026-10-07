@@ -46,6 +46,7 @@ export const TRANSACTION_TYPES = [
   { value: 'disbursement', label: 'Loan disbursement', direction: 'out', manual: false, reversible: false },
   { value: 'repayment', label: 'Repayment', direction: 'in', manual: false, reversible: true },
   { value: 'topup', label: 'Top-up', direction: 'out', manual: false, reversible: false },
+  { value: 'opening_balance', label: 'Opening balance', direction: 'none', manual: false, reversible: false },
   { value: 'adjustment', label: 'Adjustment', direction: 'none', manual: true, reversible: true },
   { value: 'fee', label: 'Fee', direction: 'in', manual: true, reversible: true },
   { value: 'refund', label: 'Refund', direction: 'out', manual: true, reversible: true },

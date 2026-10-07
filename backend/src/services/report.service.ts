@@ -86,7 +86,7 @@ async function loanBook(q: ReportQuery): Promise<RunResult> {
     const row: Row = {
       sn: i + 1, clientId: l.customer?.legacyId || l.customer?.customerId || '', clientName: l.customer?.fullName ?? '', ippis: l.customer?.employment?.ippisNumber ?? '', ministry: l.customer?.employment?.ministry ?? '',
       tenor: l.frequency === 'monthly' ? l.numberOfInstallments : l.duration?.unit === 'months' ? l.duration.value : l.numberOfInstallments, paymentDate: l.startDate, balanceBF: l.carriedBalance ?? 0, loanAmount: l.amount, applicationFee: l.applicationFee, principal: l.principal,
-      interest: l.interestAmount, grossLoan: l.totalRepayment, emi: l.installmentAmount, startDate: l.firstPaymentDate ?? l.startDate, endDate: l.dueDate, type: (l.loanType === 'topup' ? 'TOP UP' : l.loanType === 'renewal' ? 'RENEWAL' : 'NEW'),
+      interest: l.interestAmount, grossLoan: l.totalRepayment, emi: l.installmentAmount, startDate: l.firstPaymentDate ?? l.startDate, endDate: l.dueDate, type: (l.loanType === 'opening' ? 'OPENING' : l.loanType === 'topup' ? 'TOP UP' : l.loanType === 'renewal' ? 'RENEWAL' : 'NEW'),
       repaid: 0, balance: 0, loanStatus: l.status, loanId: l.loanId,
     };
     let repaid = 0;
@@ -125,7 +125,7 @@ async function customerRegister(q: ReportQuery): Promise<RunResult> {
       workerType: sector === 'government' ? 'Government' : sector === 'non_government' ? 'Non-government' : '', customerStatus: x.status, profile: (x.profileMissing?.length ?? 0) ? `Missing: ${x.profileMissing.join(', ')}` : 'Complete', email: x.email ?? '', state: x.state ?? '', gender: x.gender ? x.gender.charAt(0).toUpperCase() + x.gender.slice(1) : '', nokName: x.emergencyContact?.name ?? '',
       loanId: l?.loanId ?? '', loanStatus: l?.status ?? 'no active loan', tenor: l ? (l.frequency === 'monthly' ? l.numberOfInstallments : l.duration?.value ?? l.numberOfInstallments) : null, paymentDate: l?.startDate ?? null,
       balanceBF: l ? l.carriedBalance ?? 0 : null, loanAmount: l?.amount ?? null, applicationFee: l?.applicationFee ?? null, principal: l?.principal ?? null, interest: l?.interestAmount ?? null, grossLoan: l?.totalRepayment ?? null, emi: l?.installmentAmount ?? null,
-      startDate: l ? l.firstPaymentDate ?? l.startDate : null, endDate: l?.dueDate ?? null, type: l ? (l.loanType === 'topup' ? 'TOP UP' : l.loanType === 'renewal' ? 'RENEWAL' : 'NEW') : '', paid: l?.amountPaid ?? null, outstanding: l?.outstandingBalance ?? null,
+      startDate: l ? l.firstPaymentDate ?? l.startDate : null, endDate: l?.dueDate ?? null, type: l ? (l.loanType === 'opening' ? 'OPENING' : l.loanType === 'topup' ? 'TOP UP' : l.loanType === 'renewal' ? 'RENEWAL' : 'NEW') : '', paid: l?.amountPaid ?? null, outstanding: l?.outstandingBalance ?? null,
       ...(l && !q.from && !q.to ? ({ _calc: calcMeta(l) } as any) : {}),
     };
   });

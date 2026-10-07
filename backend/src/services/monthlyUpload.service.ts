@@ -216,7 +216,7 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     if (s.loanId) { // ---- an existing loan: apply the changes
       const cur = theirs.find((l) => l.loanId === s.loanId);
       if (!cur) { err(`Loan ${s.loanId} is not ${cust.fullName}'s current loan${theirs[0] ? ` (it is ${theirs[0].loanId})` : ' (they have no open loan)'}. Clear the Loan ID cell to create a new loan.`); continue; }
-      p.loanRef = cur.loanId; p.type = cur.loanType === 'topup' ? 'TOP UP' : cur.loanType === 'renewal' ? 'RENEWAL' : 'NEW';
+      p.loanRef = cur.loanId; p.type = cur.loanType === 'opening' ? 'NEW' : cur.loanType === 'topup' ? 'TOP UP' : cur.loanType === 'renewal' ? 'RENEWAL' : 'NEW';
       // what did the person change? compare the sheet's inputs with what is stored (no re-pricing, so untouched rows can never drift)
       const ch = p.loanChanges; const emiSame = !s.emi || Math.abs(s.emi - cur.installmentAmount) <= 0.02;
       if (s.tenor !== cur.numberOfInstallments) ch.push(`Tenor: ${cur.numberOfInstallments} → ${s.tenor}`);

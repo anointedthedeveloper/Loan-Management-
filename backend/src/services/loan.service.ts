@@ -185,9 +185,9 @@ export async function updateLoan(id: string, input: Partial<PricingInput> & { no
   await RepaymentSchedule.updateOne({ loan: loan._id }, { $set: { installments: d.schedule.map((s) => ({ ...s, paidPrincipal: 0, paidInterest: 0, amountPaid: 0, remaining: s.expectedAmount, status: 'upcoming' })) } });
   if (running) {
     // The payout entry follows the loan's amount and start date (same ledger row, change recorded in the audit trail).
-    const payout = await Transaction.findOne({ loan: loan._id, type: 'disbursement', reversedAt: { $exists: false } });
+    const payout = await Transaction.findOne({ loan: loan._id, type: { $in: ['disbursement', 'opening_balance'] }, reversedAt: { $exists: false } });
     const today = todayLagos();
-    if (payout) await Transaction.updateOne({ _id: payout._id }, { amount: loan.amount, date: loan.startDate < today ? loan.startDate : today });
+    if (payout) await Transaction.updateOne({ _id: payout._id }, { amount: loan.amount, date: loan.openingBalance || loan.startDate < today ? loan.startDate : today });
     await recalculateLoan(loan._id);
   }
   const fresh = running ? await Loan.findById(loan._id) : loan;
@@ -217,7 +217,8 @@ export async function disburseLoan(id: string, actor: Actor) {
   if (loan.status !== 'approved') throw AppError.conflict(`Only approved loans can be disbursed (this loan is ${loan.status})`, 'INVALID_LOAN_STATE');
   // The payout is dated the loan's payment (start) date; a future start date is paid out now.
   const today = todayLagos();
-  await postTransaction({ customer: loan.customer, loan: loan._id, type: 'disbursement', amount: loan.amount, date: loan.startDate < today ? loan.startDate : today, description: `Loan disbursement ${loan.loanId}`, createdBy: actor.id });
+  if (loan.openingBalance) await postTransaction({ customer: loan.customer, loan: loan._id, type: 'opening_balance', amount: loan.amount, date: loan.startDate, isCash: false, description: `Opening balance brought into the portal (${loan.loanId})`, createdBy: actor.id });
+  else await postTransaction({ customer: loan.customer, loan: loan._id, type: 'disbursement', amount: loan.amount, date: loan.startDate < today ? loan.startDate : today, description: `Loan disbursement ${loan.loanId}`, createdBy: actor.id });
   loan.status = 'active'; loan.disbursedAt = new Date(); await loan.save();
   await recalculateLoan(loan._id);
   if (loan.topUpOf) { const { settleOldLoanOnActivation } = await import('./topup.service.js'); await settleOldLoanOnActivation(loan._id, actor); } // a top-up loan liquidates the previous loan once it is live

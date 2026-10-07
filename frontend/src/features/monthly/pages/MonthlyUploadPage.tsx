@@ -8,6 +8,7 @@ import { useToast } from '../../../context/ToastContext'
 import { Button } from '../../../components/ui/Button'
 import { reportService } from '../../reports/services/reportService'
 import { formatDateTime, formatMoney } from '../../../utils/format'
+import { OpeningBalances } from '../components/OpeningBalances'
 import { monthlyService, type Plan, type PlanRow, type UploadHistory, type UploadResult } from '../services/monthlyService'
 
 const Card = ({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) => (
@@ -112,6 +113,8 @@ export default function MonthlyUploadPage() {
           </div>
         )}
       </Card>
+
+      <OpeningBalances onDone={() => void loadHistory()} />
 
       <Card title="Recent uploads">
         {!history ? <p className="text-sm text-slate-500">Loading…</p> : history.length === 0 ? <p className="text-sm text-slate-500">No uploads yet.</p> : (
