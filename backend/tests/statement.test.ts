@@ -10,14 +10,14 @@ const api = (m: 'get' | 'post' | 'put', url: string, t = ceo) => (request(app) a
 const bin = (res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); };
 beforeAll(async () => {
   await setupDb(); ceo = await ceoToken(); acct = await accountantToken();
-  product = (await api('post', '/api/loan-products').send({ name: 'Salary Advance', code: 'SAL', category: 'Salary advance', interestRate: 5, rateBasis: 'per_month', bankDeductionRate: 4, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
+  product = (await api('post', '/api/loan-products').send({ name: 'Salary Advance', code: 'SAL', category: 'Salary advance', interestRate: 5, rateBasis: 'per_month', applicationFeeRate: 4, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
   const c = await api('post', '/api/customers').send(customerPayload({ firstName: 'Omoloro', middleName: '', lastName: 'Sylvia', employment: { sector: 'government', ippisNumber: '437602', ministry: 'OSGF', occupation: 'Clerk' } }));
   cust = c.body.data.customer.id;
 });
 afterAll(teardownDb);
 
 /** Protech loan-book row 3: ₦192,000 taken -> ₦200,000 principal, ₦120,000 interest, ₦320,000 total, EMI ₦26,666.67. */
-const newLoan = async () => (await api('post', '/api/loans').send({ customerId: cust, productId: product, amount: 192000, duration: { value: 12, unit: 'months' }, startDate: '2026-01-05', firstPaymentDate: '2026-02-01' })).body.data.loan;
+const newLoan = async () => (await api('post', '/api/loans').send({ customerId: cust, productId: product, amount: 200000, duration: { value: 12, unit: 'months' }, startDate: '2026-01-05', firstPaymentDate: '2026-02-01' })).body.data.loan;
 const pay = (loanId: string, amount: number, date: string, reference?: string) => api('post', '/api/repayments').send({ loanId, amount, date, method: 'bank_transfer', reference: reference ?? `R-${loanId.slice(-3)}-${amount}-${date}` });
 const stmt = async (path: string, qs = '') => (await api('get', `${path}/statement${qs}`)).body.data.statement;
 
@@ -28,7 +28,7 @@ describe('loan statement (DR / CR / balance from the ledger)', () => {
     const s = await stmt(`/api/loans/${l.id}`);
     expect(s.client).toMatchObject({ name: 'Omoloro Sylvia', ippisNumber: '437602', ministry: 'OSGF' });
     const loan = s.loans[0].loan;
-    expect(loan).toMatchObject({ amountTaken: 192000, principal: 200000, interest: 120000, totalLoan: 320000, emi: 26666.67, numberOfInstallments: 12 });
+    expect(loan).toMatchObject({ applicationFee: 8000, principal: 200000, interest: 120000, totalLoan: 320000, emi: 26666.67, numberOfInstallments: 12 });
     expect(loan.paymentDate.slice(0, 10)).toBe('2026-01-05'); expect(loan.firstRepaymentDate.slice(0, 10)).toBe('2026-02-01');
     const rows = s.loans[0].rows;
     expect(rows).toHaveLength(4);
@@ -105,7 +105,7 @@ describe('statement downloads and access', () => {
     expect(csv.headers['content-type']).toMatch(/text\/csv/);
     expect(csv.text).toContain('Transaction Date,Reference Number,Description,Debit (DR),Credit (CR),Balance');
     expect(csv.text).toContain('IPPIS Number,437602'); expect(csv.text).toContain('Client Name,Omoloro Sylvia'); expect(csv.text).toContain('Ministry / Organization,OSGF');
-    expect(csv.text).toContain('Amount Taken'); expect(csv.text).toContain('EMI');
+    expect(csv.text).toContain('Application Fee'); expect(csv.text).toContain('EMI');
     const pdf = await api('get', `/api/loans/${l.id}/statement?format=pdf`).buffer(true).parse(bin);
     expect(pdf.headers['content-type']).toMatch(/pdf/); expect(pdf.body.subarray(0, 4).toString()).toBe('%PDF');
     const xlsx = await api('get', `/api/loans/${l.id}/statement?format=xlsx`).buffer(true).parse(bin);

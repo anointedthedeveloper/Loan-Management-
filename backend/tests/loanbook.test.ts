@@ -12,7 +12,7 @@ const ym = (monthsAgo: number) => { const d = new Date(); d.setUTCMonth(d.getUTC
 
 beforeAll(async () => {
   await setupDb(); ceo = await ceoToken(); acct = await accountantToken();
-  product = (await api('post', '/api/loan-products').send({ name: 'Salary Advance', code: 'SAL', category: 'Salary advance', interestRate: 5, rateBasis: 'per_month', bankDeductionRate: 4, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
+  product = (await api('post', '/api/loan-products').send({ name: 'Salary Advance', code: 'SAL', category: 'Salary advance', interestRate: 5, rateBasis: 'per_month', applicationFeeRate: 4, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
 });
 afterAll(teardownDb);
 
@@ -40,8 +40,8 @@ describe("loan book (Protech's monthly-breakdown layout)", () => {
   beforeAll(async () => {
     const a = await client('Omoloro Sylvia', '437602', 'OSGF', '473');
     const b = await client('Rafiu Akeem', '168029', 'SALARIES', '333');
-    const l1 = await loan(a, 144000, 12, `${ym(3)}-04`, `${ym(2)}-01`);     // sheet row 1 shape: 144,000 bank payment -> 150,000 gross
-    const l2 = await loan(b, 192000, 12, `${ym(2)}-12`, `${ym(1)}-01`);     // sheet row 3 shape: 192,000 -> 200,000 gross, EMI 26,666.67
+    const l1 = await loan(a, 150000, 12, `${ym(3)}-04`, `${ym(2)}-01`);     // sheet row 1 shape: 150,000 loan amount (fee 6,000, principal 150,000)
+    const l2 = await loan(b, 200000, 12, `${ym(2)}-12`, `${ym(1)}-01`);     // sheet row 3 shape: 200,000 loan amount, EMI 26,666.67
     ids = [l1.id, l2.id];
     await pay(l1.id, 12500, `${ym(2)}-05`); await pay(l1.id, 12500, `${ym(1)}-05`); await pay(l1.id, 5000, `${ym(1)}-20`);
     await pay(l2.id, 26666.67, `${ym(1)}-03`);
@@ -50,10 +50,10 @@ describe("loan book (Protech's monthly-breakdown layout)", () => {
   it('JSON: one row per loan with the calculator columns and one column per month', async () => {
     const r = (await api('get', '/api/reports/loan-book')).body.data;
     const keys = r.columns.map((c: any) => c.label);
-    for (const k of ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Bank payment', 'Gross Payment', 'Principal', 'Interest', 'Gross Loan', 'Monthly repayment (EMI)', 'Start Date', 'End date', 'Status', 'Repayment to date', 'Balance (Gross loan - repayment)']) expect(keys).toContain(k);
+    for (const k of ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Loan amount', 'Application Fee', 'Principal', 'Interest', 'Gross Loan', 'Monthly repayment (EMI)', 'Start Date', 'End date', 'Status', 'Repayment to date', 'Balance (Gross loan - repayment)']) expect(keys).toContain(k);
     expect(r.columns.filter((c: any) => c.key.startsWith('m_')).length).toBeGreaterThanOrEqual(3);
     const row = r.rows.find((x: any) => x.clientName === 'Omoloro Sylvia');
-    expect(row).toMatchObject({ clientId: '473', ippis: '437602', ministry: 'OSGF', tenor: 12, bankPayment: 144000, grossPayment: 150000, principal: 150000, interest: 90000, grossLoan: 240000, emi: 20000, type: 'NEW' });
+    expect(row).toMatchObject({ clientId: '473', ippis: '437602', ministry: 'OSGF', tenor: 12, loanAmount: 150000, applicationFee: 6000, principal: 150000, interest: 90000, grossLoan: 240000, emi: 20000, type: 'NEW' });
     expect(row[`m_${ym(2)}`]).toBe(12500); expect(row[`m_${ym(1)}`]).toBe(17500);
     expect(row.repaid).toBe(30000); expect(row.balance).toBe(210000);
     expect(JSON.stringify(r.rows)).not.toContain('_calc');
@@ -75,10 +75,10 @@ describe("loan book (Protech's monthly-breakdown layout)", () => {
     const valueAt = (ref: string): number => { const c = ws.getCell(ref).value as any; return typeof c === 'object' && c ? Number(c.result) : Number(c); };
     for (const n of rows) {
       const get = (label: string) => ws.getCell(`${letter(col(label))}${n}`);
-      expect(String((get('Gross Payment').value as any).formula)).toMatch(/^ROUND\(/);           // =ROUND(I3/0.96,2)
-      expect(String((get('Gross Payment').value as any).formula)).toContain('0.96');
+      expect(String((get('Application Fee').value as any).formula)).toMatch(/^ROUND\(/);        // =ROUND(I3*4%,2): the fee stands alone
+      expect(String((get('Principal').value as any).formula)).not.toContain(letter(col('Application Fee'))); // principal never includes the fee
       expect(String((get('Interest').value as any).formula)).toContain('5%');                    // =ROUND(K3*5%*F3,2)
-      for (const label of ['Gross Payment', 'Principal', 'Interest', 'Gross Loan', 'Monthly repayment (EMI)', 'Repayment to date', 'Balance (Gross loan - repayment)']) {
+      for (const label of ['Application Fee', 'Principal', 'Interest', 'Gross Loan', 'Monthly repayment (EMI)', 'Repayment to date', 'Balance (Gross loan - repayment)']) {
         const cell = get(label).value as any;
         expect(cell.formula, label).toBeTruthy();
         expect(evalFormula(cell.formula, valueAt), `${label} row ${n}`).toBeCloseTo(Number(cell.result), 2); // formula output == value the engine computed

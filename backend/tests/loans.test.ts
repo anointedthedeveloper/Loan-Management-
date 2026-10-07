@@ -14,13 +14,13 @@ const today = todayLagos();
 const api = (m: 'get' | 'post' | 'patch' | 'put' | 'delete', url: string, t = ceo) => (request(app) as any)[m](url).set(as(t));
 beforeAll(async () => {
   await setupDb(); ceo = await ceoToken(); acct = await accountantToken();
-  salary = (await api('post', '/api/loan-products').send({ name: 'Salary Advance', code: 'SAL', interestRate: 5, rateBasis: 'per_month', bankDeductionRate: 4, minAmount: 10000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 12, durationUnit: 'months', allowedFrequencies: ['monthly', 'weekly'], defaultFrequency: 'monthly' })).body.data.product.id;
+  salary = (await api('post', '/api/loan-products').send({ name: 'Salary Advance', code: 'SAL', interestRate: 5, rateBasis: 'per_month', applicationFeeRate: 4, minAmount: 10000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 12, durationUnit: 'months', allowedFrequencies: ['monthly', 'weekly'], defaultFrequency: 'monthly' })).body.data.product.id;
   customer = await newCustomer();
 });
 afterAll(teardownDb);
 
 const newCustomer = async () => { n++; return (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id as string; };
-const loanBody = (over: Record<string, unknown> = {}) => ({ customerId: customer, productId: salary, amount: 960000, duration: { value: 6, unit: 'months' }, startDate: isoDate(today), ...over });
+const loanBody = (over: Record<string, unknown> = {}) => ({ customerId: customer, productId: salary, amount: 1000000, duration: { value: 6, unit: 'months' }, startDate: isoDate(today), ...over });
 /** The CEO creates a loan: approvers skip the approval step, so it is approved and disbursed immediately. */
 async function activeLoan(over: Record<string, unknown> = {}) {
   const c = await api('post', '/api/loans').send(loanBody(over));
@@ -78,7 +78,7 @@ describe('loan creation and calculation (done by the backend)', () => {
   it('previews terms from the central engine', async () => {
     const r = await api('post', '/api/loans/preview').send(loanBody());
     expect(r.status).toBe(200);
-    expect(r.body.data.terms).toMatchObject({ grossAmount: 1_000_000, interestAmount: 300_000, totalRepayment: 1_300_000, numberOfInstallments: 6 });
+    expect(r.body.data.terms).toMatchObject({ applicationFee: 40_000, principal: 1_000_000, interestAmount: 300_000, totalRepayment: 1_300_000, numberOfInstallments: 6 });
     expect(r.body.data.schedule).toHaveLength(6);
   });
   it('an accountant creates a pending loan with a schedule, and audits it', async () => {
@@ -118,9 +118,9 @@ describe('loan creation and calculation (done by the backend)', () => {
   });
   it('edits a pending loan (recomputing terms) but not an active one', async () => {
     const c = { body: { data: await pendingLoan() } };
-    const e = await api('patch', `/api/loans/${c.body.data.loan.id}`).send({ amount: 480000, duration: { value: 3, unit: 'months' } });
+    const e = await api('patch', `/api/loans/${c.body.data.loan.id}`).send({ amount: 500000, duration: { value: 3, unit: 'months' } });
     expect(e.status).toBe(200);
-    expect(e.body.data.loan).toMatchObject({ amount: 480000, principal: 500000, interestAmount: 75000, numberOfInstallments: 3 });
+    expect(e.body.data.loan).toMatchObject({ amount: 500000, principal: 500000, interestAmount: 75000, numberOfInstallments: 3 });
     expect(e.body.data.schedule).toHaveLength(3);
     expect(await AuditLog.countDocuments({ action: 'LOAN_UPDATED', entityId: c.body.data.loan.id })).toBe(1);
     const active = await activeLoan();
@@ -129,15 +129,15 @@ describe('loan creation and calculation (done by the backend)', () => {
     await User.updateOne({ username: 'accountant' }, { permissions: [] });
   });
   it('the CEO can edit a running loan: terms re-priced, repayments replayed, payout and audit updated', async () => {
-    const l = await activeLoan(); // 960,000 net -> 1,000,000 principal, 300,000 interest, 6 x 216,666.67
+    const l = await activeLoan(); // 1,000,000 principal, 300,000 interest, 6 x 216,666.67
     await pay(l.id, 216666.67, { method: 'cash' });
-    const e = await api('patch', `/api/loans/${l.id}`).send({ amount: 480000, duration: { value: 3, unit: 'months' }, reason: 'Customer asked for a smaller loan' });
+    const e = await api('patch', `/api/loans/${l.id}`).send({ amount: 500000, duration: { value: 3, unit: 'months' }, reason: 'Customer asked for a smaller loan' });
     expect(e.status).toBe(200);
-    expect(e.body.data.loan).toMatchObject({ amount: 480000, principal: 500000, interestAmount: 75000, numberOfInstallments: 3 });
+    expect(e.body.data.loan).toMatchObject({ amount: 500000, principal: 500000, interestAmount: 75000, numberOfInstallments: 3 });
     expect(e.body.data.schedule).toHaveLength(3);
     expect(e.body.data.loan.amountPaid).toBeCloseTo(216666.67, 2); // the recorded repayment is kept and replayed
     expect(e.body.data.loan.outstandingBalance).toBeCloseTo(575000 - 216666.67, 2);
-    expect((await Transaction.findOne({ loan: l.id, type: 'disbursement' }))!.amount).toBe(480000);
+    expect((await Transaction.findOne({ loan: l.id, type: 'disbursement' }))!.amount).toBe(500000);
     const log = await AuditLog.findOne({ action: 'LOAN_UPDATED', entityId: l.id });
     expect(log).toBeTruthy();
     expect(JSON.stringify(log!.after)).toContain('Customer asked for a smaller loan');
@@ -147,7 +147,7 @@ describe('loan creation and calculation (done by the backend)', () => {
     const e = await api('patch', `/api/loans/${l.id}`).send({ interestRate: 4 });
     expect(e.status).toBe(200);
     expect(e.body.data.loan.interestAmount).toBe(240000);
-    expect((await api('patch', `/api/loans/${l.id}`).send({ amount: 960000 })).status).toBe(200);
+    expect((await api('patch', `/api/loans/${l.id}`).send({ amount: 1000000 })).status).toBe(200);
     await pay(l.id, e.body.data.loan.outstandingBalance + 0, {});
     const g = await api('get', `/api/loans/${l.id}`);
     if (g.body.data.loan.status === 'completed') expect((await api('patch', `/api/loans/${l.id}`).send({ amount: 1000 })).body.code).toBe('LOAN_NOT_EDITABLE');
@@ -157,13 +157,13 @@ describe('loan creation and calculation (done by the backend)', () => {
 describe("loan-book conventions (first payment date, loan type)", () => {
   it('repayments can start on a chosen date, and edits keep it', async () => {
     const c = await newCustomer();
-    const body = loanBody({ customerId: c, amount: 144000, duration: { value: 12, unit: 'months' }, startDate: '2025-12-04', firstPaymentDate: '2026-01-01' });
+    const body = loanBody({ customerId: c, amount: 150000, duration: { value: 12, unit: 'months' }, startDate: '2025-12-04', firstPaymentDate: '2026-01-01' });
     const pv = await api('post', '/api/loans/preview').send(body);
     expect(pv.body.data.schedule[0].dueDate.slice(0, 10)).toBe('2026-01-01');
     expect(pv.body.data.schedule[11].dueDate.slice(0, 10)).toBe('2026-12-01');
     const made = await api('post', '/api/loans', acct).send(body);
     expect(made.body.data.loan).toMatchObject({ loanType: 'new', firstPaymentDateIsCustom: true });
-    const edited = await api('patch', `/api/loans/${made.body.data.loan.id}`).send({ amount: 192000 });
+    const edited = await api('patch', `/api/loans/${made.body.data.loan.id}`).send({ amount: 200000 });
     expect(edited.body.data.schedule[0].dueDate.slice(0, 10)).toBe('2026-01-01');
     expect(edited.body.data.loan.totalRepayment).toBe(320000); // 192,000 net -> 200,000 gross + 120,000 interest (sheet row 3)
     expect(edited.body.data.loan.installmentAmount).toBe(26666.67);
@@ -171,7 +171,7 @@ describe("loan-book conventions (first payment date, loan type)", () => {
   });
   it('tags a customer\'s next loan as a renewal', async () => {
     const c = await newCustomer();
-    const first = await activeLoan({ customerId: c, amount: 96000 });
+    const first = await activeLoan({ customerId: c, amount: 100000 });
     expect(first.loanType).toBe('new');
     const second = (await api('post', '/api/loans').send(loanBody({ customerId: c }))).body.data.loan;
     expect(second.loanType).toBe('renewal');
@@ -184,7 +184,7 @@ describe('approval workflow and disbursement', () => {
     expect(l.status).toBe('active');
     const tx = await Transaction.find({ loan: l.id });
     expect(tx).toHaveLength(1);
-    expect(tx[0]).toMatchObject({ type: 'disbursement', amount: 960000, direction: 'out' });
+    expect(tx[0]).toMatchObject({ type: 'disbursement', amount: 1000000, direction: 'out' });
     expect(l.outstandingBalance).toBe(1_300_000);
     expect(await AuditLog.countDocuments({ action: 'LOAN_APPROVED', entityId: l.id })).toBe(1);
     expect((await api('post', `/api/loans/${l.id}/approve`)).status).toBe(409);
@@ -231,7 +231,7 @@ describe('repayments (ledger first, balances derived)', () => {
     expect(await AuditLog.countDocuments({ action: 'REPAYMENT_RECORDED', entityId: l.id })).toBe(1);
   });
   it('completing the loan marks it completed and stops further payments', async () => {
-    const l = await activeLoan({ amount: 96000 });
+    const l = await activeLoan({ amount: 100000 });
     expect(l.totalRepayment).toBe(130000);
     const r = await pay(l.id, 130000);
     expect(r.body.data.loan).toMatchObject({ status: 'completed', outstandingBalance: 0, amountPaid: 130000 });
@@ -239,7 +239,7 @@ describe('repayments (ledger first, balances derived)', () => {
     expect((await pay(l.id, 1)).body.code).toBe('REPAYMENT_NOT_ALLOWED');
   });
   it('rejects overpayment by default, accepts it as credit when configured', async () => {
-    const l = await activeLoan({ amount: 96000 });
+    const l = await activeLoan({ amount: 100000 });
     const over = await pay(l.id, 131000.01); // more than ₦1,000 above what is owed
     expect(over.status).toBe(400);
     expect(over.body.code).toBe('OVERPAYMENT');
@@ -249,7 +249,7 @@ describe('repayments (ledger first, balances derived)', () => {
     await api('put', '/api/settings/repayment').send({ allocationOrder: 'oldest_first', withinInstallment: 'interest_first', overpaymentPolicy: 'reject', allowFutureDatedPayments: false });
   });
   it('allows a small overpayment (up to ₦1,000 by default), e.g. 30,000 sent for 29,999.82', async () => {
-    const l = await activeLoan({ amount: 96000 }); // owes 130,000.00
+    const l = await activeLoan({ amount: 100000 }); // owes 130,000.00
     const r = await pay(l.id, 130000.18 + 0.82); // 130,001.00: within the tolerance
     expect(r.status).toBe(201);
     expect(r.body.data.loan).toMatchObject({ status: 'completed' });
@@ -412,7 +412,7 @@ describe('overdue detection and automation', () => {
 
 describe('transaction ledger', () => {
   it('lists with filters, creates manual entries and reverses payments (never deletes)', async () => {
-    const l = await activeLoan({ amount: 96000 });
+    const l = await activeLoan({ amount: 100000 });
     const p = (await pay(l.id, 30000)).body.data.transaction;
     const fee = await api('post', '/api/transactions').send({ type: 'fee', loanId: l.id, amount: 500, description: 'Processing fee', method: 'cash' });
     expect(fee.status).toBe(201);
@@ -442,10 +442,10 @@ describe('transaction ledger', () => {
 describe('customer financial endpoints now return real data', () => {
   it('summary, loans, repayments and transactions come from the ledger; history blocks deletion', async () => {
     const c = await newCustomer();
-    const l = await activeLoan({ customerId: c, amount: 96000 });
+    const l = await activeLoan({ customerId: c, amount: 100000 });
     await pay(l.id, 30000);
     const s = await api('get', `/api/customers/${c}/summary`);
-    expect(s.body.data).toMatchObject({ available: true, metrics: { totalBorrowed: 96000, totalRepaid: 30000, outstandingBalance: 100000, activeLoans: 1, completedLoans: 0, overdueLoans: 0 } });
+    expect(s.body.data).toMatchObject({ available: true, metrics: { totalBorrowed: 100000, totalRepaid: 30000, outstandingBalance: 100000, activeLoans: 1, completedLoans: 0, overdueLoans: 0 } });
     expect((await api('get', `/api/customers/${c}/loans`)).body.pagination.total).toBe(1);
     expect((await api('get', `/api/customers/${c}/repayments`)).body.pagination.total).toBe(1);
     expect((await api('get', `/api/customers/${c}/transactions`)).body.pagination.total).toBe(2);

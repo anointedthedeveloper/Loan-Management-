@@ -23,7 +23,7 @@ import type { Actor } from '../types/index.js';
  * Each row is matched to a customer by Clients ID and IPPIS NO, then:
  *  - customer details that differ from the portal (name, IPPIS, ministry, phone, address, NIN, BVN, date of birth, marital status, next of kin phone) are updated;
  *    blank cells never erase anything;
- *  - a row WITH a Loan ID refers to that customer's current loan: changed loan figures (tenor, bank payment, B/Fwd, dates, EMI) update it;
+ *  - a row WITH a Loan ID refers to that customer's current loan: changed loan figures (tenor, loan amount, B/Fwd, dates, EMI) update it;
  *  - a row WITHOUT a Loan ID that has loan figures is a new loan: NEW / RENEWAL (no open loan) or TOP UP (liquidates the running loan);
  *  - the EMI written in the sheet decides the interest (total = EMI x tenor); a blank EMI is calculated with the sheet formulas.
  * Uploaders without loans.approve create PENDING loans for the CEO to approve; changing a running loan needs loans.editActive.
@@ -33,7 +33,7 @@ export type RowAction = 'new-loan' | 'top-up' | 'update-loan' | 'update-customer
 export interface PlannedRow {
   row: number; name: string; clientId: string | null; ippis: string; type: 'NEW' | 'TOP UP' | 'RENEWAL' | null; action: RowAction
   customerId?: string; customerRef?: string; matchedName?: string; topUpOfRef?: string; loanRef?: string
-  tenor?: number; bank?: number; carried?: number; gross?: number; principal?: number; interest?: number; total?: number; emi?: number
+  tenor?: number; bank?: number; carried?: number; fee?: number; principal?: number; interest?: number; total?: number; emi?: number
   isNewCustomer?: boolean; customerChanges: string[]; loanChanges: string[]; errors: string[]; warnings: string[]
   _work?: { customer: any; newCustomer?: { name: string }; custInput?: Record<string, any>; draft?: any; oldLoan?: any; loan?: any; extra?: any; ratesForEdit?: any; firstPayment?: Date }
 }
@@ -50,6 +50,8 @@ function date(v: unknown): Date | null {
   m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s); return m ? new Date(Date.UTC(+m[1]!, +m[2]! - 1, +m[3]!)) : null;
 }
 const sameDay = (a?: Date | null, b?: Date | null) => !!a && !!b && a.toISOString().slice(0, 10) === b.toISOString().slice(0, 10);
+/** IPPIS numbers: spaces removed, a trailing ".0" from numeric cells dropped, upper-cased. */
+const ippisOf = (v: unknown) => clean(v).replace(/\s+/g, '').replace(/\.0+$/, '').toUpperCase();
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 /** Client numbers are accepted as 641 or PTC-000641. */
 const clientNo = (raw: string) => { const m = /^(?:PTC[-\s]?)?0*(\d+)$/i.exec(raw.trim()); return m ? +m[1]! : null; };
@@ -58,7 +60,7 @@ const titleCase = (s: string) => s.toLowerCase().replace(/(^|[\s\-'/])([a-z])/g,
 
 interface SheetRow {
   row: number; clientId: number | null; name: string; ippis: string; ministry: string; phone: string; address: string; nin: string; bvn: string; dob: Date | null; marital: string; nok: string; nokName: string; email: string; state: string; gender: string; custStatus: string; worker: string
-  tenor: number | null; paymentDate: Date | null; bf: number | null; bank: number | null; emi: number | null; gross: number | null; principal: number | null; interest: number | null; loan: number | null
+  tenor: number | null; paymentDate: Date | null; bf: number | null; bank: number | null; emi: number | null; fee: number | null; principal: number | null; interest: number | null; loan: number | null
   firstPayment: Date | null; status: string; product: string; loanId: string
 }
 
@@ -67,23 +69,24 @@ async function readSheet(buf: Buffer): Promise<SheetRow[]> {
   try { await wb.xlsx.load(buf as any); } catch { throw AppError.badRequest('This is not a valid Excel (.xlsx) file', 'UPLOAD_BAD_FILE'); }
   const ws = wb.worksheets[0]; if (!ws) throw AppError.badRequest('The workbook has no sheets', 'UPLOAD_BAD_FILE');
   // the header row is the first row that contains a "Clients Name" cell (the register has a title banner above it)
-  let headRow = 0; ws.eachRow((r, n) => { if (!headRow) r.eachCell((c) => { if (!headRow && clean(c.value).toLowerCase() === 'clients name') headRow = n; }); });
-  if (!headRow) throw AppError.badRequest('Could not find the header row (a "Clients Name" column). Download the register or template to see the format.', 'UPLOAD_BAD_FILE');
+  let headRow = 0; const HEADS = ['clients name', 'client name', 'ippis no', 'ippis', 'clients id', 'client id'];
+  ws.eachRow((r, n) => { if (!headRow) r.eachCell((c) => { if (!headRow && HEADS.includes(clean(c.value).toLowerCase())) headRow = n; }); });
+  if (!headRow) throw AppError.badRequest('Could not find the header row (an "IPPIS NO", "Clients ID" or "Clients Name" column). Download the register or template to see the format.', 'UPLOAD_BAD_FILE');
   const head = new Map<string, number>(); ws.getRow(headRow).eachCell((c, i) => head.set(clean(c.value).toLowerCase(), i));
   const find = (...needles: string[]) => { for (const n of needles) { const exact = head.get(n); if (exact) return exact; } for (const [k, i] of head) if (needles.some((n) => k.startsWith(n))) return i; return undefined; };
-  const c = { id: find('clients id', 'client id'), name: find('clients name', 'client name'), ippis: find('ippis'), min: find('ministry'), phone: find('phone no', 'phone'), addr: find('address'), nin: find('nin'), bvn: find('bvn'), dob: find('date of birth'), ms: find('marital status'), nok: find('next of kin phone'), nokName: find('next of kin name'), email: find('email'), state: find('state'), gender: find('gender'), custStatus: find('customer status'), worker: find('worker type'),
-    tenor: find('tenor'), pay: find('payment date'), bf: find('balance b/fwd', 'balance'), bank: find('bank payment'), emi: find('emi'), gross: find('gross payment'), principal: find('principal'), interest: find('interest'), loan: find('gross loan'), start: find('start date'), status: find('status'), product: find('product'), loanId: find('loan id') };
+  const c = { id: find('clients id', 'client id'), name: find('clients name', 'client name', 'name', 'full name', 'customer name'), ippis: find('ippis'), min: find('ministry'), phone: find('phone no', 'phone'), addr: find('address'), nin: find('nin'), bvn: find('bvn'), dob: find('date of birth'), ms: find('marital status'), nok: find('next of kin phone'), nokName: find('next of kin name'), email: find('email'), state: find('state'), gender: find('gender'), custStatus: find('customer status'), worker: find('worker type'),
+    tenor: find('tenor'), pay: find('payment date'), bf: find('balance b/fwd', 'balance'), bank: find('loan amount', 'bank payment', 'amount requested'), emi: find('emi'), fee: find('application fee', 'gross payment'), principal: find('principal'), interest: find('interest'), loan: find('gross loan'), start: find('start date'), status: find('status'), product: find('product'), loanId: find('loan id') };
   if (!c.id && !c.ippis) throw AppError.badRequest('The sheet needs a Clients ID or IPPIS NO column.', 'UPLOAD_BAD_FILE');
   const out: SheetRow[] = [];
   ws.eachRow((r, n) => {
     if (n <= headRow) return;
     const g = (i?: number) => (i ? r.getCell(i).value : null);
-    const name = clean(g(c.name)); const idRaw = clean(g(c.id)); const ippis = clean(g(c.ippis)).toUpperCase();
+    const name = clean(g(c.name)); const idRaw = clean(g(c.id)); const ippis = ippisOf(g(c.ippis));
     if (!name && !idRaw && !ippis) return;
     if (/^(total|generated)/i.test(name) || /^(total|generated)/i.test(clean(g(1)))) return; // totals and footer rows of the register
     if (name.length > 80 || (name && name.toLowerCase() === clean(g(c.ippis)).toLowerCase() && name.length > 20)) return; // a merged note row (e.g. the template's footer)
     out.push({ row: n, clientId: clientNo(idRaw), name, ippis, ministry: clean(g(c.min)), phone: clean(g(c.phone)), address: clean(g(c.addr)), nin: clean(g(c.nin)).replace(/\D/g, ''), bvn: clean(g(c.bvn)).replace(/\D/g, ''), dob: date(g(c.dob)), marital: clean(g(c.ms)), nok: clean(g(c.nok)), nokName: clean(g(c.nokName)), email: clean(g(c.email)).toLowerCase(), state: clean(g(c.state)), gender: clean(g(c.gender)).toLowerCase(), custStatus: clean(g(c.custStatus)).toLowerCase(), worker: clean(g(c.worker)).toLowerCase(),
-      tenor: num(g(c.tenor)), paymentDate: date(g(c.pay)), bf: num(g(c.bf)), bank: num(g(c.bank)), emi: num(g(c.emi)), gross: num(g(c.gross)), principal: num(g(c.principal)), interest: num(g(c.interest)), loan: num(g(c.loan)),
+      tenor: num(g(c.tenor)), paymentDate: date(g(c.pay)), bf: num(g(c.bf)), bank: num(g(c.bank)), emi: num(g(c.emi)), fee: num(g(c.fee)), principal: num(g(c.principal)), interest: num(g(c.interest)), loan: num(g(c.loan)),
       firstPayment: date(g(c.start)), status: clean(g(c.status)).toUpperCase().replace(/[-_]/g, ' '), product: clean(g(c.product)), loanId: clean(g(c.loanId)).toUpperCase() });
   });
   if (!out.length) throw AppError.badRequest('The sheet has no rows', 'UPLOAD_EMPTY');
@@ -109,8 +112,9 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     rows.push(p); const err = (m: string) => p.errors.push(m);
     // ---- who is this? client number and IPPIS must not point to two different people
     const a = s.clientId ? byRef.get(pad(s.clientId)) ?? byLegacy.get(String(s.clientId)) : undefined; const b = s.ippis ? byIppis.get(s.ippis) : undefined;
-    if (a && b && String(a._id) !== String(b._id)) { err(`Client ${s.clientId} is ${a.fullName}, but IPPIS ${s.ippis} belongs to ${b.fullName}. Check the row.`); continue; }
-    let cust: any = a ?? b; let isNew = false;
+    // IPPIS is the primary identity; the client number is used when the row has no IPPIS (or the IPPIS is not in the portal yet)
+    if (a && b && String(a._id) !== String(b._id)) p.warnings.push(`Client ${s.clientId} belongs to ${a.fullName}, but IPPIS ${s.ippis} is ${b.fullName}'s. The IPPIS decides, so this row is for ${b.fullName}.`);
+    let cust: any = b ?? a; let isNew = false;
     if (!cust) {
       if (s.clientId) { err(`No customer with client number ${s.clientId}${s.ippis ? ` or IPPIS ${s.ippis}` : ''} in the portal. Leave Clients ID empty to add them as a new customer, or fix the number.`); continue; }
       if (!s.name) { err('The row has no client number, IPPIS or name.'); continue; }
@@ -126,7 +130,7 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
       else { isNew = true; cust = { _id: new Types.ObjectId(), fullName: titleCase(s.name), status: 'active', employment: {}, emergencyContact: {}, customerId: undefined }; p.isNewCustomer = true; }
     }
     p.customerId = String(cust._id); p.customerRef = isNew ? 'New customer' : cust.customerId; p.matchedName = cust.fullName;
-    if (!isNew && !a && s.clientId) p.warnings.push(`Client number ${s.clientId} was not found; matched by IPPIS.`);
+    if (!isNew && !a && b && s.clientId) p.warnings.push(`Client number ${s.clientId} was not found; matched by IPPIS.`);
     if (seen.has(String(cust._id))) { err('This customer appears twice in the sheet. Only one row per customer is allowed.'); continue; }
     seen.add(String(cust._id));
 
@@ -184,12 +188,11 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     if (s.bf !== null && s.bf < 0) { err('Balance B/Fwd cannot be negative.'); continue; }
     if (!products.length) { err('Create an active monthly loan product first (Loan products).'); continue; }
     const product = (s.product && products.find((x) => x.code.toLowerCase() === s.product.toLowerCase() || x.name.toLowerCase() === s.product.toLowerCase())) || products[0]!;
-    const ded = (product.bankDeductionRate ?? 0) / 100;
-    const bfK = toKobo(s.bf ?? 0); const grossK = ded > 0 ? Math.round(toKobo(s.bank!) / (1 - ded)) : toKobo(s.bank!); const principalK = bfK + grossK;
+    const bfK = toKobo(s.bf ?? 0); const principalK = bfK + toKobo(s.bank!); // the requested amount is the principal; the application fee is separate
     const firstPayment = s.firstPayment && s.firstPayment >= s.paymentDate ? s.firstPayment : undefined;
-    const draftWith = (rates: { interestRate: number; bankDeductionRate: number; rateBasis: string }) => buildDraft({ productId: String(product._id), amount: s.bank!, duration: { value: s.tenor!, unit: 'months' }, frequency: 'monthly', numberOfInstallments: s.tenor!, startDate: s.paymentDate!, firstPaymentDate: firstPayment }, { carriedBalance: s.bf ?? 0, skipLimits: true, allowBackdated: true, rates });
+    const draftWith = (rates: { interestRate: number; applicationFeeRate: number; rateBasis: string }) => buildDraft({ productId: String(product._id), amount: s.bank!, duration: { value: s.tenor!, unit: 'months' }, frequency: 'monthly', numberOfInstallments: s.tenor!, startDate: s.paymentDate!, firstPaymentDate: firstPayment }, { carriedBalance: s.bf ?? 0, skipLimits: true, allowBackdated: true, rates });
     // Which interest rule produced the sheet's EMI? Prefer the loan's / product's own rule when it reproduces the EMI, otherwise the monthly rate the EMI implies.
-    type Rates = { interestRate: number; bankDeductionRate: number; rateBasis: string };
+    type Rates = { interestRate: number; applicationFeeRate: number; rateBasis: string };
     const pickRates = async (candidates: Rates[], emi: number | null) => {
       const own = candidates[0]!;
       if (!emi) return { rates: own, how: 'own' as const };
@@ -199,13 +202,13 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
         const d = await draftWith(cand).catch(() => null);
         if (d && Math.abs(d.terms.totalRepayment - totalK / 100) <= 1) return { rates: cand, how: 'own' as const };
       }
-      return { rates: { interestRate: interestK / principalK / s.tenor! * 100, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' }, how: 'implied' as const };
+      return { rates: { interestRate: interestK / principalK / s.tenor! * 100, applicationFeeRate: product.applicationFeeRate ?? 0, rateBasis: 'per_month' }, how: 'implied' as const };
     };
-    const summarise = (draft: any) => { const t = draft.terms; Object.assign(p, { tenor: t.numberOfInstallments, bank: t.amount, carried: t.carriedBalance, gross: t.grossAmount, principal: t.principal, interest: t.interestAmount, total: t.totalRepayment, emi: t.installmentAmount }); return t; };
+    const summarise = (draft: any) => { const t = draft.terms; Object.assign(p, { tenor: t.numberOfInstallments, bank: t.amount, carried: t.carriedBalance, fee: t.applicationFee, principal: t.principal, interest: t.interestAmount, total: t.totalRepayment, emi: t.installmentAmount }); return t; };
     const warnDiffs = (t: any) => {
       const diff = (label: string, theirsV: number | null, ours: number) => { if (theirsV !== null && Math.abs(theirsV - ours) > 1) p.warnings.push(`${label} in the sheet (${theirsV.toLocaleString('en-NG')}) differs from the calculated ${ours.toLocaleString('en-NG')}; the calculated figure is used.`); };
       if (s.emi && Math.abs(t.installmentAmount - s.emi) > 1) p.warnings.push(`The portal's EMI (${t.installmentAmount.toLocaleString('en-NG')}) differs from the sheet (${s.emi.toLocaleString('en-NG')}).`);
-      diff('Gross Payment', s.gross, t.grossAmount); diff('Principal', s.principal, t.principal); diff('Interest', s.interest, t.interestAmount); diff('Gross Loan', s.loan, t.totalRepayment);
+      diff('Application Fee', s.fee, t.applicationFee); diff('Principal', s.principal, t.principal); diff('Interest', s.interest, t.interestAmount); diff('Gross Loan', s.loan, t.totalRepayment);
     };
     if (s.firstPayment && !firstPayment) p.warnings.push('Start Date is before the Payment Date; the standard repayment cycle is used instead.');
 
@@ -217,7 +220,7 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
       // what did the person change? compare the sheet's inputs with what is stored (no re-pricing, so untouched rows can never drift)
       const ch = p.loanChanges; const emiSame = !s.emi || Math.abs(s.emi - cur.installmentAmount) <= 0.02;
       if (s.tenor !== cur.numberOfInstallments) ch.push(`Tenor: ${cur.numberOfInstallments} → ${s.tenor}`);
-      if (Math.abs(s.bank! - cur.amount) > 0.005) ch.push(`Bank payment: ${cur.amount.toLocaleString('en-NG')} → ${s.bank!.toLocaleString('en-NG')}`);
+      if (Math.abs(s.bank! - cur.amount) > 0.005) ch.push(`Loan amount: ${cur.amount.toLocaleString('en-NG')} → ${s.bank!.toLocaleString('en-NG')}`);
       if (Math.abs((s.bf ?? 0) - (cur.carriedBalance ?? 0)) > 0.005) ch.push(`Balance B/Fwd: ${(cur.carriedBalance ?? 0).toLocaleString('en-NG')} → ${(s.bf ?? 0).toLocaleString('en-NG')}`);
       if (!sameDay(s.paymentDate, cur.startDate)) ch.push('Payment date');
       if (firstPayment && !sameDay(firstPayment, cur.firstPaymentDate)) ch.push('Start date (first repayment)');
@@ -227,7 +230,7 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
       const running = (LIVE_LOAN_STATUSES as readonly string[]).includes(cur.status) || cur.status === 'approved';
       if (running ? !perms.canEditRunning : !perms.canEditLoans) { p.warnings.push(running ? 'Loan changes were ignored: only the CEO can change a loan that is already running.' : 'Loan changes were ignored: you need the permission to edit loans.'); p.loanChanges = []; finish(p.customerChanges.length ? 'update-customer' : 'unchanged'); continue; }
       // a stale EMI (left as it was while other figures changed) is recalculated with the loan's own rule
-      const own = { interestRate: cur.interestRate, bankDeductionRate: cur.bankDeductionRate ?? product.bankDeductionRate ?? 0, rateBasis: cur.rateBasis };
+      const own = { interestRate: cur.interestRate, applicationFeeRate: cur.applicationFeeRate ?? product.applicationFeeRate ?? 0, rateBasis: cur.rateBasis };
       try {
         const { rates } = await pickRates([own], emiSame && inputsChanged ? null : s.emi ?? null);
         const draft = await draftWith(rates); const t = summarise(draft); warnDiffs(t);
@@ -249,10 +252,10 @@ export async function planMonthlyUpload(buf: Buffer, perms: UploadPerms): Promis
     } else if (theirs.length) { err(`${cust.fullName} already has a ${theirs[0].status} loan (${theirs[0].loanId}). Mark this row TOP UP to liquidate it, or put the Loan ID in the row to change that loan.`); continue; }
     else if (type === 'NEW' && doneBefore.has(String(cust._id))) p.warnings.push('This customer has repaid loans before; saved as a renewal.');
     try {
-      const own = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: product.rateBasis };
-      const sheetRates = { interestRate: product.interestRate, bankDeductionRate: product.bankDeductionRate ?? 0, rateBasis: 'per_month' }; // an EMI written in the sheet may come from the book's monthly-rate formula
+      const own = { interestRate: product.interestRate, applicationFeeRate: product.applicationFeeRate ?? 0, rateBasis: product.rateBasis };
+      const sheetRates = { interestRate: product.interestRate, applicationFeeRate: product.applicationFeeRate ?? 0, rateBasis: 'per_month' }; // an EMI written in the sheet may come from the book's monthly-rate formula
       const { rates, how } = await pickRates([own, sheetRates], s.emi ?? null);
-      if (!s.emi) { // blank EMI: the product's interest rule fills the gaps (one-time flat interest by default), EMI = total / tenor
+      if (!s.emi) { // blank EMI: the product's interest rule fills the gaps (a flat 5% a month by default), EMI = total / tenor
         const rule = product.rateBasis === 'per_loan' ? `one-time ${product.interestRate}% of the principal` : product.rateBasis === 'per_annum' ? `${product.interestRate}% a year, pro-rated` : `${product.interestRate}% a month × ${s.tenor} months`;
         p.warnings.push(`EMI left blank: calculated with the product's interest rule (${rule}); EMI = total ÷ tenor.`);
         const draft = await draftWith(own); warnDiffs(summarise(draft)); work.draft = draft;
@@ -321,9 +324,9 @@ export async function getMonthlyUpload(id: string) {
 /** An empty copy of the register: the same columns, with the book's formulas ready, for loans that are not in the portal yet. */
 export async function monthlyTemplate(company: string): Promise<Buffer> {
   const wb = new ExcelJS.Workbook(); wb.creator = company; const ws = wb.addWorksheet('Monthly sheet');
-  const heads = ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Bank payment', 'Gross Payment', 'Principal', 'Interest', 'Gross Loan', 'EMI', 'Start Date', 'End date', 'Status', 'Loan ID',
+  const heads = ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Loan amount', 'Application Fee', 'Principal', 'Interest', 'Gross Loan', 'EMI', 'Start Date', 'End date', 'Status', 'Loan ID',
     'Customer status', 'Worker type', 'phone no', 'Email', 'Address', 'State', 'Gender', 'MARITAL STATUS', 'DATE OF BIRTH', 'NIN', 'BVN', 'NEXT OF KIN NAME', 'NEXT OF KIN PHONE NO'];
-  xlTitleBlock(ws, company, 'Monthly sheet', 'One row per customer. Fill the white columns; the portal calculates gross, principal, interest, loan and EMI. Loan ID empty = new loan (NEW, TOP UP or RENEWAL). Delete the example rows.', heads.length);
+  xlTitleBlock(ws, company, 'Monthly sheet', 'One row per customer. Fill the white columns; the portal calculates the application fee, principal, interest, gross loan and EMI. Loan ID empty = new loan (NEW, TOP UP or RENEWAL). Delete the example rows.', heads.length);
   const h = ws.addRow(heads); xlHeaderRow(h, heads.length);
   const first = ws.rowCount + 1;
   const D = (s: string) => new Date(`${s}T00:00:00Z`);
@@ -336,7 +339,7 @@ export async function monthlyTemplate(company: string): Promise<Buffer> {
   ex.forEach((r) => ws.addRow(r));
   xlStyleBody(ws, first, first + ex.length - 1, ['number', 'text', 'text', 'text', 'text', 'number', 'date', 'money', 'money', 'money', 'money', 'money', 'money', 'money', 'date', 'date', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'text', 'date', 'text', 'text', 'text', 'text']);
   [6, 12, 30, 12, 18, 7, 14, 15, 15, 16, 16, 15, 16, 14, 14, 14, 12, 12, 14, 16, 14, 24, 24, 14, 10, 14, 14, 14, 14, 22, 18].forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-  xlFooter(ws, 'Leave Gross Payment, Principal, Interest, Gross Loan and EMI empty: the portal calculates them. Clients are matched by Clients ID (641 or PTC-000641) and IPPIS NO; a row with neither is added as a new customer. Fill the profile columns (right) to complete a profile.', heads.length);
+  xlFooter(ws, 'Leave Application Fee, Principal, Interest, Gross Loan and EMI empty: the portal calculates them. Clients are matched by Clients ID (641 or PTC-000641) and IPPIS NO; a row with neither is added as a new customer. Fill the profile columns (right) to complete a profile.', heads.length);
   ws.views = [{ showGridLines: false, state: 'frozen', ySplit: h.number }]; xlPrint(ws, { company, headerRow: h.number });
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

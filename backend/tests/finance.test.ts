@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  calculateInstallment, calculateInterest, calculateLoan, calculateOutstandingBalance, calculatePrincipalBalance, calculateInterestBalance,
+  calculateInstallment, calculateInterest, calculateLoan, calculateLoanFigures, calculateOutstandingBalance, calculatePrincipalBalance, calculateInterestBalance,
   calculateOverdueAmount, calculateTotalPayable, calculateTopUp, computeLoanState, generateSchedule, resolveStatus, allocatePayment,
   type RepaymentRules, type WorkingInstallment, type LoanTermsInput,
 } from '../src/services/finance/index.js';
@@ -9,23 +9,35 @@ import { toKobo, splitEvenly } from '../src/utils/money.js';
 import { windowOpens } from '../src/config/loanOptions.js';
 
 const start = utcDate(2026, 0, 31);
-const base: LoanTermsInput = { amount: 960_000, bankDeductionRate: 4, interestRate: 5, rateBasis: 'per_month', duration: { value: 6, unit: 'months' }, frequency: 'monthly', startDate: start };
+const base: LoanTermsInput = { amount: 1_000_000, applicationFeeRate: 4, interestRate: 5, rateBasis: 'per_month', duration: { value: 6, unit: 'months' }, frequency: 'monthly', startDate: start };
 const rules: RepaymentRules = { allocationOrder: 'oldest_first', withinInstallment: 'interest_first', overpaymentPolicy: 'reject' };
 const plan = (t = calculateLoan(base), f: any = 'monthly') => generateSchedule(t, f).map((s) => ({ number: s.number, dueDate: s.dueDate, principalComponent: s.principalComponent, interestComponent: s.interestComponent }));
 
 describe('flat interest calculation (matches the reference calculator)', () => {
-  it('grosses up the bank deduction, then applies flat monthly interest', () => {
+  it('the requested amount is the principal; the application fee (4%) stands alone', () => {
     const t = calculateLoan(base);
-    expect(t.grossAmount).toBe(1_000_000); // 960,000 / 0.96
     expect(t.principal).toBe(1_000_000);
+    expect(t.applicationFee).toBe(40_000);
     expect(t.interestAmount).toBe(300_000); // 1,000,000 x 5% x 6
-    expect(t.totalRepayment).toBe(1_300_000);
+    expect(t.totalRepayment).toBe(1_300_000); // principal + interest, no fee
     expect(t.numberOfInstallments).toBe(6);
+    expect(calculateLoan({ ...base, applicationFeeRate: 0 }).totalRepayment).toBe(1_300_000); // the fee never changes what is repaid
+  });
+  it.each([
+    [500_000, 12, { applicationFee: 20_000, monthlyInterest: 25_000, totalInterest: 300_000, grossLoan: 800_000, emi: 66_666.67 }],
+    [1_000_000, 12, { applicationFee: 40_000, monthlyInterest: 50_000, totalInterest: 600_000, grossLoan: 1_600_000, emi: 133_333.33 }],
+    [500_000, 6, { applicationFee: 20_000, monthlyInterest: 25_000, totalInterest: 150_000, grossLoan: 650_000, emi: 108_333.33 }],
+    [500_000, 3, { applicationFee: 20_000, monthlyInterest: 25_000, totalInterest: 75_000, grossLoan: 575_000, emi: 191_666.67 }],
+  ])('calculateLoanFigures: %i over %i months', (principal, tenor, want) => {
+    expect(calculateLoanFigures({ principal, interestRate: 5, tenor })).toMatchObject({ principal, interestRate: 5, tenor, ...want });
+    const t = calculateLoan({ ...base, amount: principal, duration: { value: tenor, unit: 'months' } }); // the engine agrees with the plain figures
+    expect([t.applicationFee, t.monthlyInterest, t.interestAmount, t.totalRepayment, t.installmentAmount]).toEqual([want.applicationFee, want.monthlyInterest, want.totalInterest, want.grossLoan, want.emi]);
+    expect(t.principal).toBe(principal); // never inflated by the fee or divided by 0.96
   });
   it('works without a bank deduction and with other rate bases', () => {
-    expect(calculateLoan({ ...base, bankDeductionRate: 0, amount: 100_000, interestRate: 10, duration: { value: 3, unit: 'months' } }).interestAmount).toBe(30_000);
-    expect(calculateLoan({ ...base, bankDeductionRate: 0, amount: 100_000, interestRate: 24, rateBasis: 'per_annum' }).interestAmount).toBe(12_000); // 24% p.a. x 6/12
-    expect(calculateLoan({ ...base, bankDeductionRate: 0, amount: 100_000, interestRate: 12, rateBasis: 'per_loan' }).interestAmount).toBe(12_000);
+    expect(calculateLoan({ ...base, applicationFeeRate: 0, amount: 100_000, interestRate: 10, duration: { value: 3, unit: 'months' } }).interestAmount).toBe(30_000);
+    expect(calculateLoan({ ...base, applicationFeeRate: 0, amount: 100_000, interestRate: 24, rateBasis: 'per_annum' }).interestAmount).toBe(12_000); // 24% p.a. x 6/12
+    expect(calculateLoan({ ...base, applicationFeeRate: 0, amount: 100_000, interestRate: 12, rateBasis: 'per_loan' }).interestAmount).toBe(12_000);
   });
   it('exposes the individual calculation steps', () => {
     expect(calculateInterest(toKobo(1_000_000), 5, 'per_month', 6)).toBe(toKobo(300_000));
@@ -33,7 +45,7 @@ describe('flat interest calculation (matches the reference calculator)', () => {
   });
   it('rejects invalid inputs', () => {
     expect(() => calculateLoan({ ...base, amount: 0 })).toThrow();
-    expect(() => calculateLoan({ ...base, bankDeductionRate: 100 })).toThrow();
+    expect(() => calculateLoan({ ...base, applicationFeeRate: 100 })).toThrow();
   });
 });
 
@@ -56,7 +68,7 @@ describe('installments and rounding', () => {
 describe('quoted installment equals the schedule', () => {
   it('every installment but the last equals installmentAmount; the last equals finalInstallmentAmount', () => {
     for (const [amount, months, rate] of [[960_000, 6, 5], [50_000, 7, 10], [333_333.33, 5, 3.7], [1_234_567.89, 9, 4.25]] as const) {
-      const t = calculateLoan({ ...base, amount, bankDeductionRate: 0, interestRate: rate, duration: { value: months, unit: 'months' } });
+      const t = calculateLoan({ ...base, amount, applicationFeeRate: 0, interestRate: rate, duration: { value: months, unit: 'months' } });
       const s = generateSchedule(t, 'monthly');
       expect(s.slice(0, -1).every((i) => i.expectedAmount === t.installmentAmount)).toBe(true);
       expect(s[s.length - 1]!.expectedAmount).toBe(t.finalInstallmentAmount);
@@ -70,7 +82,7 @@ describe('quoted installment equals the schedule', () => {
 
 describe('installment count and tenor agree for monthly loans', () => {
   it('a stated number of installments drives the interest, so duration, interest, EMI and end date never disagree', () => {
-    const t = calculateLoan({ ...base, amount: 96000, bankDeductionRate: 4, interestRate: 5, rateBasis: 'per_month', duration: { value: 1, unit: 'months' }, numberOfInstallments: 12 });
+    const t = calculateLoan({ ...base, amount: 100000, applicationFeeRate: 4, interestRate: 5, rateBasis: 'per_month', duration: { value: 1, unit: 'months' }, numberOfInstallments: 12 });
     expect(t.principal).toBe(100000);
     expect(t.interestAmount).toBe(60000); // 100,000 x 5% x 12
     expect(t.installmentAmount).toBeCloseTo(13333.33, 2);
@@ -219,7 +231,7 @@ describe('overdue and completed loans', () => {
 
 describe('top-up calculation (configurable, not a fixed formula)', () => {
   const existing = { outstandingBalance: 300_000, principalBalance: 230_000, totalRepayment: 500_000, amountPaid: 200_000 };
-  const pricing = { bankDeductionRate: 0, interestRate: 5, rateBasis: 'per_month' as const, duration: { value: 4, unit: 'months' as const }, frequency: 'monthly' as const, startDate: start };
+  const pricing = { applicationFeeRate: 0, interestRate: 5, rateBasis: 'per_month' as const, duration: { value: 4, unit: 'months' as const }, frequency: 'monthly' as const, startDate: start };
   const rule = { mode: 'consolidate' as const, balanceBasis: 'outstanding_total' as const, interestBasis: 'full_principal' as const, minimumPercentRepaid: 0 };
 
   it('consolidate: carries the outstanding balance into a new principal (calculator B/Fwd)', () => {
@@ -254,9 +266,10 @@ describe("matches Protech's loan book", () => {
     { client: 'INYANG (renewal)', bf: 0, bank: 192_000, gross: 200_000, principal: 200_000, interest: 120_000, loan: 320_000, emi: 26_666.67 },
   ];
   for (const r of sheet) {
-    it(`${r.client}: gross payment, principal, interest, gross loan and EMI`, () => {
-      const t = calculateLoan({ ...base, amount: r.bank, carriedBalance: r.bf, duration: { value: 12, unit: 'months' }, startDate: utcDate(2026, 0, 1) });
-      expect(t.grossAmount).toBe(r.gross);
+    it(`${r.client}: principal, interest, gross loan and EMI (the sheet's gross payment is now simply the requested amount)`, () => {
+      const t = calculateLoan({ ...base, amount: r.gross, carriedBalance: r.bf, duration: { value: 12, unit: 'months' }, startDate: utcDate(2026, 0, 1) });
+      expect(t.amount).toBe(r.gross);
+      expect(t.applicationFee).toBeCloseTo(r.gross * 0.04, 2);
       expect(t.principal).toBe(r.principal);
       expect(t.interestAmount).toBe(r.interest);
       expect(t.totalRepayment).toBe(r.loan);
@@ -269,7 +282,7 @@ describe("matches Protech's loan book", () => {
     });
   }
   it('repayments begin on a chosen first-payment date (sheet: payout 4 Dec 2025, first repayment 1 Jan 2026)', () => {
-    const t = calculateLoan({ ...base, amount: 144_000, duration: { value: 12, unit: 'months' }, startDate: utcDate(2025, 11, 4), firstPaymentDate: utcDate(2026, 0, 1) });
+    const t = calculateLoan({ ...base, amount: 150_000, duration: { value: 12, unit: 'months' }, startDate: utcDate(2025, 11, 4), firstPaymentDate: utcDate(2026, 0, 1) });
     const s = generateSchedule(t, 'monthly');
     expect(s[0]!.dueDate.toISOString().slice(0, 10)).toBe('2026-01-01');
     expect(s[11]!.dueDate.toISOString().slice(0, 10)).toBe('2026-12-01');
@@ -314,9 +327,9 @@ describe('marking one installment paid, and waived interest', () => {
 });
 
 describe("the calculator site's worked example (OKOH ABBA EMMANUEL)", () => {
-  it('Gross Payment 100,000.00 -> Principal 136,012.38 -> Interest 81,607.43 -> Gross Loan 217,619.81 -> EMI 18,134.98', () => {
-    const t = calculateLoan({ ...base, amount: 96_000, carriedBalance: 36_012.38, duration: { value: 12, unit: 'months' } });
-    expect(t.grossAmount).toBe(100_000);
+  it('Loan amount 100,000.00 -> Principal 136,012.38 -> Interest 81,607.43 -> Gross Loan 217,619.81 -> EMI 18,134.98', () => {
+    const t = calculateLoan({ ...base, amount: 100_000, carriedBalance: 36_012.38, duration: { value: 12, unit: 'months' } });
+    expect(t.applicationFee).toBe(4_000);
     expect(t.principal).toBe(136_012.38);
     expect(t.monthlyInterest).toBe(6_800.62); // principal x 5%
     expect(t.interestAmount).toBe(81_607.43); // principal x 5% x 12, rounded once (interest is on the ORIGINAL principal, never a reducing balance)

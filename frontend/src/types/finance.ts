@@ -12,7 +12,7 @@ export interface StatementRow { date: string; reference: string; description: st
 export interface ScheduleLine { number: number; month: string; dueDate: string; emi: number; principal: number; interest: number; paid: number; remaining: number; status: string }
 export interface LoanStatement {
   schedule: ScheduleLine[]
-  loan: { id: string; loanId: string; status: string; productName: string | null; loanType: string; amountTaken: number; principal: number; interest: number; monthlyInterest: number; rateBasis: string; interestRate: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string; paymentDate: string; firstRepaymentDate: string | null; finalDueDate: string; currentOutstanding: number }
+  loan: { id: string; loanId: string; status: string; productName: string | null; loanType: string; amountTaken: number; applicationFee: number; principal: number; interest: number; monthlyInterest: number; rateBasis: string; interestRate: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string; paymentDate: string; firstRepaymentDate: string | null; finalDueDate: string; currentOutstanding: number }
   rows: StatementRow[]; totals: { debit: number; credit: number; closingBalance: number }
 }
 export interface Statement {
@@ -26,13 +26,13 @@ export interface Installment {
   paidPrincipal: number; paidInterest: number; amountPaid: number; remaining: number; status: string
 }
 export interface Terms {
-  amount: number; carriedBalance: number; bankDeductionRate: number; grossAmount: number; principal: number; interestBase: number
+  amount: number; carriedBalance: number; applicationFeeRate: number; applicationFee: number; principal: number; interestBase: number
   interestAmount: number; monthlyInterest: number; totalRepayment: number; numberOfInstallments: number; installmentAmount: number; finalInstallmentAmount: number
   durationMonths: number; startDate: string; dueDate: string
 }
 export interface Loan {
   id: string; loanId: string; status: string; customer: CustomerRef; productName?: string; product: string | null
-  amount: number; carriedBalance: number; bankDeductionRate: number; grossAmount: number; principal: number
+  amount: number; carriedBalance: number; applicationFeeRate: number; applicationFee: number; principal: number
   interestRate: number; rateBasis: string; interestAmount: number; monthlyInterest?: number; totalRepayment: number
   duration: { value: number; unit: string }; frequency: string; customIntervalDays?: number; numberOfInstallments: number; installmentAmount: number
   startDate: string; firstPaymentDate?: string | null; firstPaymentDateIsCustom?: boolean; dueDate: string; loanType?: 'new' | 'renewal' | 'topup'
@@ -44,7 +44,7 @@ export interface Loan {
 }
 export interface LoanDetail { loan: Loan; schedule: Installment[] }
 export interface LoanPreview {
-  product: { id: string; name: string; code: string; interestRate: number; rateBasis: string; bankDeductionRate: number }
+  product: { id: string; name: string; code: string; interestRate: number; rateBasis: string; applicationFeeRate: number }
   frequency: string; duration: { value: number; unit: string }; terms: Terms; schedule: Installment[]
 }
 
@@ -54,7 +54,7 @@ export interface SettlementQuote {
 }
 
 export interface Product {
-  id: string; name: string; code: string; description?: string; interestRate: number; rateBasis: string; bankDeductionRate: number
+  id: string; name: string; code: string; description?: string; interestRate: number; rateBasis: string; applicationFeeRate: number
   minAmount: number; maxAmount?: number; minDuration: number; maxDuration?: number; durationUnit: string
   allowedFrequencies: string[]; defaultFrequency: string; isActive: boolean; category?: string
 }

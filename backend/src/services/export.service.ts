@@ -25,20 +25,20 @@ export async function toXlsx(r: ReportResult, company: string): Promise<Buffer> 
   xlTitleBlock(ws, company, r.title, `Period: ${r.from ? ymd(r.from) : 'start'} to ${r.to ? ymd(r.to) : 'today'}`, r.columns.length);
   const head = ws.addRow(r.columns.map((c) => c.label)); xlHeaderRow(head, r.columns.length);
   const col = (key: string) => { const i = r.columns.findIndex((c) => c.key === key); return i < 0 ? null : ws.getColumn(i + 1).letter; };
-  const L = r.key === 'loan-book' || r.key === 'customer-register' ? { bank: col('bankPayment'), bf: col('balanceBF'), gross: col('grossPayment'), prin: col('principal'), int: col('interest'), loan: col('grossLoan'), emi: col('emi'), tenor: col('tenor'), repaid: col('repaid'), bal: col('balance'),
+  const L = r.key === 'loan-book' || r.key === 'customer-register' ? { bank: col('loanAmount'), bf: col('balanceBF'), fee: col('applicationFee'), prin: col('principal'), int: col('interest'), loan: col('grossLoan'), emi: col('emi'), tenor: col('tenor'), repaid: col('repaid'), bal: col('balance'),
     m1: r.columns.find((c) => c.key.startsWith('m_')) ? col(r.columns.find((c) => c.key.startsWith('m_'))!.key) : null, mN: [...r.columns].reverse().find((c) => c.key.startsWith('m_')) ? col([...r.columns].reverse().find((c) => c.key.startsWith('m_'))!.key) : null } : null;
   const firstDataRow = ws.rowCount + 1;
   for (const row of r.rows) {
     const x = ws.addRow(r.columns.map((c) => { const v = raw(c, row[c.key]!); if (c.type === 'date') return utcDateOf(v) ?? v; return typeof v === 'string' && /^[=+\-@]/.test(v) ? `'${v}` : v; }));
     if (!L) continue;
     // The calculator's own formulas, so the sheet can be audited and recalculated in Excel.
-    const n = x.number; const calc = (row as any)._calc as { ded: number; rate: number; once: boolean } | null; const put = (k: string | null, formula: string, key: string) => { if (k) x.getCell(k).value = { formula, result: Number(row[key]) || 0 }; };
+    const n = x.number; const calc = (row as any)._calc as { feeRate: number; rate: number; once: boolean } | null; const put = (k: string | null, formula: string, key: string) => { if (k) x.getCell(k).value = { formula, result: Number(row[key]) || 0 }; };
     if (calc) {
       const pct = `${Math.round(calc.rate * 1e6) / 1e4}%`;
-      // One-time flat interest: Principal x Rate. (The older per-month rule multiplies by the tenor as well.)
+      // Flat interest: Principal x Rate x Tenor (older one-time loans: Principal x Rate). The application fee stands alone.
       const intF = calc.once ? `${L.prin}${n}*${pct}` : `${L.prin}${n}*${pct}*${L.tenor}${n}`;
-      put(L.gross, calc.ded > 0 ? `ROUND(${L.bank}${n}/${Math.round((1 - calc.ded) * 1e6) / 1e6},2)` : `ROUND(${L.bank}${n},2)`, 'grossPayment');
-      put(L.prin, `ROUND(${L.bf}${n}+${L.gross}${n},2)`, 'principal');
+      put(L.fee, `ROUND(${L.bank}${n}*${Math.round(calc.feeRate * 1e6) / 1e4}%,2)`, 'applicationFee');
+      put(L.prin, `ROUND(${L.bf}${n}+${L.bank}${n},2)`, 'principal');
       put(L.int, `ROUND(${intF},2)`, 'interest');
       put(L.loan, `ROUND(${L.prin}${n}+${intF},2)`, 'grossLoan');
       put(L.emi, `ROUND((${L.prin}${n}+${intF})/${L.tenor}${n},2)`, 'emi');

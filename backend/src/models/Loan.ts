@@ -17,16 +17,16 @@ const schema = new Schema(
     status: { type: String, default: 'pending', validate: { validator: isLoanStatus, message: 'Unknown loan status' } },
 
     // pricing inputs and results (see LoanCalculationService)
-    amount: { type: Number, required: true }, // net amount the customer receives
+    amount: { type: Number, required: true }, // the requested amount (= principal, before any carried balance)
     carriedBalance: money,
-    bankDeductionRate: money,
-    grossAmount: money,
+    applicationFeeRate: { type: Number, default: 4 },
+    applicationFee: money,                       // requested amount x fee %; standalone, never part of principal/interest/balance
     principal: { type: Number, required: true },
     interestType: { type: String, default: 'flat' },
     interestRate: { type: Number, required: true },
-    rateBasis: { type: String, enum: opt(RATE_BASES), default: 'per_loan' },
+    rateBasis: { type: String, enum: opt(RATE_BASES), default: 'per_month' },
     interestBasis: { type: String, default: 'full_principal' },
-    interestAmount: { type: Number, required: true }, // one-time charge, fixed at the start: principal x rate x tenor
+    interestAmount: { type: Number, required: true }, // total interest, fixed at the start: principal x monthly rate x tenor
     monthlyInterest: money,                            // principal x rate for one month (shown for reference)
     totalRepayment: { type: Number, required: true },
     duration: { value: { type: Number, required: true }, unit: { type: String, enum: opt(DURATION_UNITS), required: true } },

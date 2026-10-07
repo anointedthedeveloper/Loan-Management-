@@ -10,7 +10,7 @@ const api = (m: 'get' | 'post', url: string, t = ceo) => (request(app) as any)[m
 const today = isoDate(todayLagos());
 beforeAll(async () => {
   await setupDb(); ceo = await ceoToken(); acct = await accountantToken();
-  product = (await api('post', '/api/loan-products').send({ name: 'SME', code: 'SME', interestRate: 0, rateBasis: 'per_month', bankDeductionRate: 0, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly', maxDuration: 12 })).body.data.product.id;
+  product = (await api('post', '/api/loan-products').send({ name: 'SME', code: 'SME', interestRate: 0, rateBasis: 'per_month', applicationFeeRate: 0, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly', maxDuration: 12 })).body.data.product.id;
 });
 afterAll(teardownDb);
 

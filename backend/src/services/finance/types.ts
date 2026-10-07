@@ -5,12 +5,12 @@ export type RateBasis = 'per_month' | 'per_annum' | 'per_loan';
 
 /** Everything the engine needs to price a loan. Amounts are in naira; the engine works in kobo internally. */
 export interface LoanTermsInput {
-  /** Net amount the customer receives (the calculator's "Bank payment"). */
+  /** The requested loan amount. It is the principal. */
   amount: number;
   /** Outstanding balance rolled into the new loan (the calculator's "Balance B/Fwd"). */
   carriedBalance?: number;
-  /** Deduction % grossed up so the customer still receives `amount` (calculator default 4). */
-  bankDeductionRate?: number;
+  /** Application fee % of the requested amount. A standalone charge: never part of principal, interest, EMI or the balance. */
+  applicationFeeRate?: number;
   interestRate: number;
   rateBasis: RateBasis;
   duration: { value: number; unit: DurationUnit };
@@ -27,8 +27,9 @@ export interface LoanTermsInput {
 export interface LoanTerms {
   amount: number;
   carriedBalance: number;
-  bankDeductionRate: number;
-  grossAmount: number;
+  applicationFeeRate: number;
+  /** Requested amount x application fee %. Standalone: not in principal, interest, total repayment or any balance. */
+  applicationFee: number;
   principal: number;
   interestBase: number;
   interestAmount: number;

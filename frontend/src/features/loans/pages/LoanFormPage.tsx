@@ -38,7 +38,7 @@ export default function LoanFormPage() {
   const products = useAsync(() => loanService.products(), [])
   const existing = useAsync(async () => (id ? loanService.get(id) : null), [id])
   const [customer, setCustomer] = useState<Hit | null>(null)
-  const [f, setF] = useState({ productId: '', amount: '', durationValue: '', durationUnit: 'months', frequency: '', customIntervalDays: '', numberOfInstallments: '', startDate: todayStr(), firstPaymentDate: '', notes: '', interestRate: '', bankDeductionRate: '', rateBasis: '', reason: '' })
+  const [f, setF] = useState({ productId: '', amount: '', durationValue: '', durationUnit: 'months', frequency: '', customIntervalDays: '', numberOfInstallments: '', startDate: todayStr(), firstPaymentDate: '', notes: '', interestRate: '', applicationFeeRate: '', rateBasis: '', reason: '' })
   const [openLoan, setOpenLoan] = useState<{ id: string; loanId: string; status: string } | null>(null)
   const [errs, setErrs] = useState<Record<string, string>>({})
   const [preview, setPreview] = useState<LoanPreview | null>(null)
@@ -61,7 +61,7 @@ export default function LoanFormPage() {
     const l = existing.data?.loan
     if (!l) return
     setCustomer({ id: l.customer.id, title: l.customer.fullName ?? '', sub: l.customer.customerId ?? '' })
-    setF({ productId: l.product ?? '', amount: String(l.amount), durationValue: String(l.duration.value), durationUnit: l.duration.unit, frequency: l.frequency, customIntervalDays: l.customIntervalDays ? String(l.customIntervalDays) : '', numberOfInstallments: '', startDate: l.startDate.slice(0, 10), firstPaymentDate: l.firstPaymentDateIsCustom && l.firstPaymentDate ? l.firstPaymentDate.slice(0, 10) : '', notes: l.notes ?? '', interestRate: String(l.interestRate ?? ''), bankDeductionRate: String(l.bankDeductionRate ?? ''), rateBasis: l.rateBasis ?? '', reason: '' })
+    setF({ productId: l.product ?? '', amount: String(l.amount), durationValue: String(l.duration.value), durationUnit: l.duration.unit, frequency: l.frequency, customIntervalDays: l.customIntervalDays ? String(l.customIntervalDays) : '', numberOfInstallments: '', startDate: l.startDate.slice(0, 10), firstPaymentDate: l.firstPaymentDateIsCustom && l.firstPaymentDate ? l.firstPaymentDate.slice(0, 10) : '', notes: l.notes ?? '', interestRate: String(l.interestRate ?? ''), applicationFeeRate: String(l.applicationFeeRate ?? ''), rateBasis: l.rateBasis ?? '', reason: '' })
   }, [existing.data])
   useEffect(() => { // product defaults when a product is chosen
     if (!product || editing) return
@@ -81,7 +81,7 @@ export default function LoanFormPage() {
     productId: f.productId, amount: Number(f.amount), startDate: f.startDate, firstPaymentDate: f.firstPaymentDate || undefined, frequency: f.frequency || undefined,
     duration: f.durationValue ? { value: Number(f.durationValue), unit: f.durationUnit } : undefined,
     customIntervalDays: f.customIntervalDays ? Number(f.customIntervalDays) : undefined, numberOfInstallments: f.numberOfInstallments ? Number(f.numberOfInstallments) : undefined,
-    ...(running ? { interestRate: f.interestRate ? Number(f.interestRate) : undefined, bankDeductionRate: f.bankDeductionRate !== '' ? Number(f.bankDeductionRate) : undefined, rateBasis: f.rateBasis || undefined } : {}),
+    ...(running ? { interestRate: f.interestRate ? Number(f.interestRate) : undefined, applicationFeeRate: f.applicationFeeRate !== '' ? Number(f.applicationFeeRate) : undefined, rateBasis: f.rateBasis || undefined } : {}),
   }), [f, running])
   const dBody = useDebounce(JSON.stringify(body), 500)
   useEffect(() => {
@@ -115,7 +115,7 @@ export default function LoanFormPage() {
 
   if (existing.error) return <ErrorState message={existing.error} onRetry={existing.reload} />
   if (editing && existing.loading) return <Skeleton className="h-96 w-full" />
-  const basis = (running && f.rateBasis) || preview?.product.rateBasis || 'per_loan'
+  const basis = (running && f.rateBasis) || preview?.product.rateBasis || 'per_month'
   const freqOptions = (meta?.frequencies ?? []).filter((x) => !product || product.allowedFrequencies.includes(x.value))
   return (
     <div className="space-y-5">
@@ -124,7 +124,7 @@ export default function LoanFormPage() {
       {draft.restoredAt && !editing && (
         <div className="flex animate-fade-in flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           <span className="flex items-center gap-2"><FileClock className="size-4" />Restored your unsaved draft from {new Date(draft.restoredAt).toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit' })}.</span>
-          <button type="button" className="font-medium underline" onClick={() => { draft.discard(); setCustomer(null); setF({ productId: '', amount: '', durationValue: '', durationUnit: 'months', frequency: '', customIntervalDays: '', numberOfInstallments: '', startDate: todayStr(), firstPaymentDate: '', notes: '', interestRate: '', bankDeductionRate: '', rateBasis: '', reason: '' }) }}>Discard draft</button>
+          <button type="button" className="font-medium underline" onClick={() => { draft.discard(); setCustomer(null); setF({ productId: '', amount: '', durationValue: '', durationUnit: 'months', frequency: '', customIntervalDays: '', numberOfInstallments: '', startDate: todayStr(), firstPaymentDate: '', notes: '', interestRate: '', applicationFeeRate: '', rateBasis: '', reason: '' }) }}>Discard draft</button>
         </div>
       )}
       {openLoan && (
@@ -154,7 +154,7 @@ export default function LoanFormPage() {
           {running && (
             <FormSection title="Running-loan details (administrator)">
               <Field label="Interest rate (% for this loan)" type="number" step="0.01" min="0" value={f.interestRate} onChange={set('interestRate')} error={errs.interestRate} />
-              <Field label="Bank deduction (%)" type="number" step="0.01" min="0" value={f.bankDeductionRate} onChange={set('bankDeductionRate')} error={errs.bankDeductionRate} />
+              <Field label="Application fee (%)" type="number" step="0.01" min="0" value={f.applicationFeeRate} onChange={set('applicationFeeRate')} error={errs.applicationFeeRate} />
               <div className="sm:col-span-2"><SelectField label="How the interest is charged" options={meta?.rateBases ?? []} value={f.rateBasis} onChange={set('rateBasis')} placeholder="Choose" /></div>
               <div className="sm:col-span-2"><Field label="Reason for the change *" value={f.reason} onChange={set('reason')} error={errs.reason} placeholder="e.g. Customer renegotiated the tenure" /></div>
             </FormSection>
@@ -168,9 +168,10 @@ export default function LoanFormPage() {
             {previewErr ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{previewErr}</p> : !preview ? <p className="text-sm text-slate-500">Choose a product and enter an amount to see the repayment breakdown.</p> : (
               <>
                 <dl className="space-y-2 text-sm">
-                  {([['Amount received', preview.terms.amount], ...(preview.terms.bankDeductionRate ? [[`Gross payment (÷ ${(1 - preview.terms.bankDeductionRate / 100).toFixed(2)} for the ${preview.terms.bankDeductionRate}% bank deduction)`, preview.terms.grossAmount]] : []), ...(preview.terms.carriedBalance ? [['Balance brought forward', preview.terms.carriedBalance]] : []), ['Principal', preview.terms.principal], ...(basis === 'per_month' ? [['Monthly interest (principal × rate)', preview.terms.monthlyInterest]] : []), [basis === 'per_loan' ? 'Interest (one-time flat, principal × rate)' : basis === 'per_month' ? 'Interest (monthly × tenor)' : 'Interest', preview.terms.interestAmount]] as [string, number][]).map(([k, v]) => <div key={k} className="flex justify-between gap-4"><dt className="text-slate-500">{k}</dt><dd className="tabular-nums">{formatMoney(v)}</dd></div>)}
-                  <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 text-base font-semibold"><dt>Total repayment</dt><dd className="tabular-nums">{formatMoney(preview.terms.totalRepayment)}</dd></div>
-                  <div className="flex justify-between gap-4"><dt className="text-slate-500">{preview.terms.numberOfInstallments} × {titleCase(preview.frequency)}</dt><dd className="tabular-nums">{formatMoney(preview.terms.installmentAmount)}</dd></div>
+                  {([['Loan amount requested', preview.terms.amount], ...(preview.terms.carriedBalance ? [['Balance brought forward', preview.terms.carriedBalance]] : []), ['Principal', preview.terms.principal], ...(basis === 'per_month' ? [['Monthly Interest (principal × rate)', preview.terms.monthlyInterest]] : []), [basis === 'per_loan' ? 'Total Interest (one-time flat)' : basis === 'per_month' ? 'Total Interest (monthly × tenor)' : 'Total Interest', preview.terms.interestAmount]] as [string, number][]).map(([k, v]) => <div key={k} className="flex justify-between gap-4"><dt className="text-slate-500">{k}</dt><dd className="tabular-nums">{formatMoney(v)}</dd></div>)}
+                  <div className="flex justify-between gap-4 border-t border-slate-200 pt-2 text-base font-semibold"><dt>Gross Loan (Total Repayment)</dt><dd className="tabular-nums">{formatMoney(preview.terms.totalRepayment)}</dd></div>
+                  {preview.terms.applicationFee > 0 && <div className="flex justify-between gap-4 rounded-lg bg-amber-50 px-2 py-1.5 text-amber-900"><dt>Application Fee ({preview.terms.applicationFeeRate}%, separate)</dt><dd className="tabular-nums">{formatMoney(preview.terms.applicationFee)}</dd></div>}
+                  <div className="flex justify-between gap-4"><dt className="text-slate-500">{preview.terms.numberOfInstallments} × {titleCase(preview.frequency)} (EMI)</dt><dd className="tabular-nums">{formatMoney(preview.terms.installmentAmount)}</dd></div>
                   <div className="flex justify-between gap-4"><dt className="text-slate-500">Final due date</dt><dd>{formatDate(preview.terms.dueDate)}</dd></div>
                 </dl>
                 <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200"><ScheduleTable rows={preview.schedule} showPaid={false} compact /></div>

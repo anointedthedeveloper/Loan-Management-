@@ -11,7 +11,7 @@ const api = (m: 'get' | 'post' | 'put', url: string, t = ceo) => (request(app) a
 const today = isoDate(todayLagos());
 beforeAll(async () => {
   await setupDb(); ceo = await ceoToken(); acct = await accountantToken();
-  product = (await api('post', '/api/loan-products').send({ name: 'SME', code: 'SME', interestRate: 5, rateBasis: 'per_month', bankDeductionRate: 0, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly', maxDuration: 12 })).body.data.product.id;
+  product = (await api('post', '/api/loan-products').send({ name: 'SME', code: 'SME', interestRate: 5, rateBasis: 'per_month', applicationFeeRate: 0, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly', maxDuration: 12 })).body.data.product.id;
 });
 afterAll(teardownDb);
 
@@ -33,7 +33,7 @@ describe('Protech liquidation formula (top-up sheet)', () => {
     const { calculateTopUp } = await import('../src/services/finance/index.js');
     // loan taken 100,000; revised tenor 2 months; 26,666 paid; fee 5%; new loan 50,000 added; repaid over 12 months
     const r = calculateTopUp({ outstandingBalance: 0, principalBalance: 0, totalRepayment: 160000, amountPaid: 26666, loanTaken: 100000, interestRate: 5, rateBasis: 'per_month', revisedTenor: 2 }, 50000,
-      { bankDeductionRate: 0, interestRate: 5, rateBasis: 'per_month', duration: { value: 12, unit: 'months' }, frequency: 'monthly', startDate: new Date('2026-03-01') },
+      { applicationFeeRate: 0, interestRate: 5, rateBasis: 'per_month', duration: { value: 12, unit: 'months' }, frequency: 'monthly', startDate: new Date('2026-03-01') },
       { mode: 'consolidate', balanceBasis: 'liquidation_formula', liquidationFeeRate: 5, interestBasis: 'full_principal', minimumPercentRepaid: 0 });
     expect(r.liquidation).toMatchObject({ loanTaken: 100000, revisedTenor: 2, revisedCost: 110000, paidToDate: 26666, outstanding: 83334, fee: 4166.7, amountDue: 87500.7 });
     expect(r.carriedBalance).toBe(87500.7);
@@ -176,5 +176,28 @@ describe('top-up approval', () => {
     expect(all.body.data.every((t: any) => t.status === 'approved')).toBe(true);
     expect((await api('get', '/api/topups', acct)).status).toBe(200);
     expect((await api('get', '/api/topups?status=weird')).status).toBe(400);
+  });
+});
+
+describe('top-up under the flat monthly model (5% a month, 4% application fee)', () => {
+  it('principal = balance carried + new funds; interest on that principal; the fee is 4% of the NEW funds only and stays out of every balance', async () => {
+    await setTopUp({});
+    const prod = (await api('post', '/api/loan-products').send({ name: 'Std', code: 'STD', interestRate: 5, allowedFrequencies: ['monthly'], defaultFrequency: 'monthly', maxDuration: 12 })).body.data.product;
+    expect([prod.rateBasis, prod.applicationFeeRate]).toEqual(['per_month', 4]);
+    const cust = (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id;
+    const loan = (await api('post', '/api/loans').send({ customerId: cust, productId: prod.id, amount: 500000, duration: { value: 12, unit: 'months' }, startDate: today })).body.data.loan;
+    expect(loan).toMatchObject({ principal: 500000, applicationFee: 20000, interestAmount: 300000, totalRepayment: 800000, outstandingBalance: 800000 });
+    await api('post', '/api/repayments').send({ loanId: loan.id, amount: 133333.34 });
+    const pv = (await api('post', '/api/topups/preview').send(topBody(loan.id, { amount: 200000, duration: { value: 6, unit: 'months' } }))).body.data.calculation;
+    const carried = pv.carriedBalance;
+    expect(carried).toBeGreaterThan(0);
+    expect(pv.terms).toMatchObject({ amount: 200000, applicationFee: 8000, principal: carried + 200000 });
+    expect(pv.terms.interestAmount).toBeCloseTo((carried + 200000) * 0.05 * 6, 1);
+    expect(pv.terms.totalRepayment).toBeCloseTo((carried + 200000) * 1.3, 1); // principal + interest; the 8,000 fee is not in it
+    const t = (await api('post', '/api/topups').send(topBody(loan.id, { amount: 200000, duration: { value: 6, unit: 'months' } }))).body.data.topUp;
+    const nl = (await Loan.findById(t.resultingLoan.id))!;
+    expect(nl).toMatchObject({ applicationFee: 8000, amount: 200000, outstandingBalance: nl.totalRepayment, loanType: 'topup' });
+    expect(nl.principal).toBeCloseTo(carried + 200000, 2);
+    expect(nl.installmentAmount).toBeCloseTo(nl.totalRepayment / 6, 1);
   });
 });

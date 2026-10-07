@@ -36,7 +36,7 @@ Demo users (development data only, `isDemoData: true`): `ceo` / `accountant`; pa
 - **Planned extension points** (Phases 3-6), each a service so rules can change without rewrites: `LoanCalculationService`, `RepaymentAllocationService`, `TopUpCalculationService`, `LoanStatusService`, `BalanceService`, `TransactionService`. Rules will be DB-backed `SystemSetting`s where possible.
 
 ## Reference calculator findings (https://flatinterestcalculator.vercel.app/)
-As published on the page: `Gross payment = Bank payment / (1 - deduction)` (default 0.96), `Principal = Balance B/Fwd + Gross payment`, `Interest = Principal x monthly flat rate x Tenor`, `Gross loan = Principal + Interest`, `EMI = Gross loan / Tenor`. It is a **monthly** flat rate, and top-ups are modelled as "Balance B/Fwd" added to principal.
+Accounting model (single source of truth, `LoanCalculationService.ts`): `Principal = requested amount (+ Balance B/Fwd on a top-up)`, `Application Fee = requested amount x 4%` (standalone: never in principal, interest, gross loan, EMI or any balance), `Monthly interest = Principal x 5%`, `Total interest = monthly interest x Tenor`, `Gross loan = Principal + Total interest`, `EMI = Gross loan / Tenor`. Example: 500,000 over 12 months -> fee 20,000, monthly interest 25,000, interest 300,000, gross loan 800,000, EMI 66,666.67. `calculateLoanFigures()` returns these plain figures. The old bank-deduction gross-up (÷ 0.96) is gone.
 
 ## Open items needing input
 1. **The Excel file was not in the repository** (it was empty). Add it so the engine can be verified against it.
@@ -74,7 +74,7 @@ Seed the first users once from your machine: `MONGODB_URI=<atlas uri> npm run se
 - **Demo data**: `npm run dev:memory` (or `npm run seed`) builds users, products, customers and loans *through the real services* (active, overdue, completed, pending and a top-up). Flagged `isDemoData`.
 
 ## Assumptions that need Protech confirmation (all isolated and configurable)
-1. **Flat interest as in the reference calculator**: gross = net / (1 - bank deduction); interest = principal x rate x months; installment = total / tenor, kobo remainder on the last installment. Rate basis (per month / per annum / per loan), the 30-day month used for days/weeks, and rounding are single functions in `LoanCalculationService.ts`.
+1. **Flat interest as in the reference calculator**: principal = requested amount; interest = principal x rate x months (the 4% application fee is separate); installment = total / tenor, kobo remainder on the last installment. Rate basis (per month / per annum / per loan), the 30-day month used for days/weeks, and rounding are single functions in `LoanCalculationService.ts`.
 2. **Repayment allocation** default: oldest installment first, interest before principal; overpayments rejected. Change in Settings.
 3. **Top-up** default: outstanding balance + new funds become one new loan (calculator "Balance B/Fwd"), old loan closed by a non-cash settlement entry, interest recalculated on the whole new principal. Alternatives (principal-only carry, interest on new funds only, separate loan, minimum % repaid) are settings.
 4. **Late penalties are NOT implemented** (no rule supplied). Grace days and auto-default days are. Fees/adjustments/refunds are recorded in the ledger but do not change loan balances until a rule exists.
@@ -112,11 +112,11 @@ It only works while the database has no users. Create the accountant afterwards 
 - Set `VITE_API_URL=https://<backend>/api` on the frontend project to call the backend directly. Without it the frontend proxies `/api` through its own host (works, but adds a hop).
 - The PDF library reads font files at runtime; `vercel.json` bundles them explicitly (`includeFiles`), otherwise PDF exports fail on Vercel.
 
-## Interest (flat, one-time)
+## Interest (flat, monthly)
 Interest is worked out once on the original principal: monthly interest = principal x rate, total interest = monthly interest x tenor (never on a reducing balance). It is added to the loan (Gross Loan) and repaid through the equal monthly installments (EMI = Gross Loan / tenor). The worked example from the calculator site (OKOH ABBA EMMANUEL: 100,000.00 / 136,012.38 / 81,607.43 / 217,619.81 / 18,134.98) is a test. A product can instead use "% of principal for the whole loan" as its rate basis if a flat single percentage is ever wanted.
 
 ## Loan book Excel
-Reports > "Loan book (monthly breakdown)" (or Loans > "Loan book (Excel)") exports one row per loan in Protech's loan-book layout with live calculator formulas (`=ROUND(I5/0.96,2)`, `=ROUND(K5*5%*F5,2)`, ...), a column per month of repayments, Repayment to date and Balance. Every loan statement's Excel also has a "Monthly breakdown" sheet.
+Reports > "Loan book (monthly breakdown)" (or Loans > "Loan book (Excel)") exports one row per loan in Protech's loan-book layout with live calculator formulas (`=ROUND(I5*4%,2)` for the application fee, `=ROUND(K5*5%*F5,2)`, ...), a column per month of repayments, Repayment to date and Balance. Every loan statement's Excel also has a "Monthly breakdown" sheet.
 
 ## Repayment cycle, proof of payment and loan rules
 
@@ -128,9 +128,9 @@ Reports > "Loan book (monthly breakdown)" (or Loans > "Loan book (Excel)") expor
 - **Admin edits:** the CEO (`loans.editActive`) can edit running loans (terms, rates); the schedule is rebuilt and recorded repayments are replayed. Accountants edit pending loans only.
 - **Customers:** NIN and BVN (11 digits each, unique) are required; government workers also need an IPPIS number (unique, searchable); non-government workers don't.
 
-## One-time interest and current-loan documents
+## Flat monthly interest and current-loan documents
 
-- **Interest is a one-time flat charge** (default rate basis `per_loan`): 5% of ₦1,000,000 = ₦50,000, total ₦1,050,000, regardless of tenor. Products saved earlier are moved to it once; the CEO can still pick another basis per product, and can switch a running loan's basis when editing it. The bank-deduction gross-up (÷ 0.96) still applies if a product sets one; set it to 0 for a plain 5% of the amount.
+- **Interest is a flat monthly rate on the principal** (default rate basis `per_month`): 5% x 12 months on ₦500,000 = ₦300,000, gross loan ₦800,000. Products saved earlier are moved to it once; `per_loan` (one-time) and `per_annum` remain selectable per product. Loans keep the rule they were created with.
 - **Downloads use current loans:** the loan book and the loan report list each customer's open loan only; a client statement shows the current loan (the latest completed one if none is open), with "Include completed loans" for the full history.
 
 ## Overpayment tolerance, previews and statements with proofs

@@ -11,11 +11,11 @@ let ceo = ''; let acct = ''; let product = '';
 const api = (m: 'get' | 'post' | 'patch', url: string, t = ceo) => (request(app) as any)[m](url).set(as(t));
 beforeAll(async () => {
   await setupDb(); ceo = await ceoToken(); acct = await accountantToken();
-  product = (await api('post', '/api/loan-products').send({ name: 'Salary Advance', code: 'SAL', interestRate: 5, bankDeductionRate: 4, minAmount: 10000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 12, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
+  product = (await api('post', '/api/loan-products').send({ name: 'Salary Advance', code: 'SAL', interestRate: 5, applicationFeeRate: 4, minAmount: 10000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 12, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
 });
 afterAll(teardownDb);
 
-const HEAD = ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Bank payment', 'Gross Payment (Column I/.96)', 'Principal (H+J)', 'Interest', 'Gross Loan (K+L)', 'EMI', 'Start Date', 'End date', 'Status'];
+const HEAD = ['S/N', 'Clients ID', 'Clients Name', 'IPPIS NO', 'MINISTRY', 'Tenor', 'Payment Date', 'Balance B/Fwd', 'Loan amount', 'Application Fee', 'Principal', 'Interest', 'Gross Loan', 'EMI', 'Start Date', 'End date', 'Status'];
 async function sheet(rows: unknown[][]) {
   const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Sheet1'); ws.addRow(HEAD); rows.forEach((r, i) => ws.addRow([i + 1, ...r]));
   return Buffer.from(await wb.xlsx.writeBuffer());
@@ -29,25 +29,26 @@ describe('monthly loans-taken upload', () => {
   it('matches clients by client number and IPPIS, honours the sheet EMI, liquidates on TOP UP, and reports problems per row', async () => {
     const a = await mkCustomer('434590'); const b = await mkCustomer('480210'); const c = await mkCustomer('15193');
     // an existing running loan for A (to be topped up)
-    const old = (await api('post', '/api/loans').send({ customerId: a.id, productId: product, amount: 96000, duration: { value: 12, unit: 'months' }, startDate: '2026-03-04' })).body.data.loan;
+    const old = (await api('post', '/api/loans').send({ customerId: a.id, productId: product, amount: 100000, duration: { value: 12, unit: 'months' }, startDate: '2026-03-04' })).body.data.loan;
     const buf = await sheet([
-      [num(a), a.fullName, 434590, 'OSGF', 12, D('2026-08-04'), 36012.38, 96000, null, null, null, null, 18134.98, D('2026-09-01'), D('2027-08-31'), 'TOP UP'],
-      [num(b), b.fullName, 480210, 'LABOUR', 12, D('2026-08-05'), null, 240000, null, null, null, null, 33333.33, D('2026-09-01'), D('2027-08-31'), 'NEW'],
-      [num(c), c.fullName, 99999, 'CCB', 12, D('2026-08-05'), null, 144000, null, null, null, null, 30000, D('2026-09-01'), D('2027-08-31'), 'NEW'], // client number says C, IPPIS says nobody -> matched by number only
+      [num(a), a.fullName, 434590, 'OSGF', 12, D('2026-08-04'), 36012.38, 100000, null, null, null, null, 18134.98, D('2026-09-01'), D('2027-08-31'), 'TOP UP'],
+      [num(b), b.fullName, 480210, 'LABOUR', 12, D('2026-08-05'), null, 250000, null, null, null, null, 33333.33, D('2026-09-01'), D('2027-08-31'), 'NEW'],
+      [num(c), c.fullName, 99999, 'CCB', 12, D('2026-08-05'), null, 150000, null, null, null, null, 30000, D('2026-09-01'), D('2027-08-31'), 'NEW'], // client number says C, IPPIS says nobody -> matched by number only
       [9999, 'NOBODY KNOWN', 111, 'CCB', 6, D('2026-08-05'), null, 50000, null, null, null, null, 10000, null, null, 'NEW'],
       [num(a), a.fullName, 480210, 'OSGF', 6, D('2026-08-05'), null, 50000, null, null, null, null, 10000, null, null, 'NEW'],  // client A but IPPIS of B
     ]);
     const pv = (await send('/preview', buf)).body.data.plan;
     expect(pv).toMatchObject({ counts: { newLoans: 3, errors: 2 }, needsApproval: false });
     expect(pv.rows[3].errors[0]).toMatch(/No customer/);
-    expect(pv.rows[4].errors[0]).toMatch(/belongs to|already belongs/);
+    expect(pv.rows[4].warnings.join(' ')).toMatch(/IPPIS decides/); // IPPIS is primary: this row is B's, who is already in the sheet
+    expect(pv.rows[4].errors[0]).toMatch(/appears twice/);
     expect(await Loan.countDocuments({ customer: b.id })).toBe(0); // preview saves nothing
 
     const r = (await send('?filename=oct.xlsx', buf)).body.data.result;
     expect(r).toMatchObject({ total: 5, created: 3, skipped: 2, needsApproval: false });
     // OKOH-style top-up row: B/Fwd 36,012.38 + 96,000/0.96 = principal 136,012.38; total = EMI x 12
     const top = (await Loan.findOne({ customer: a.id, loanType: 'topup' }))!;
-    expect({ status: top.status, bf: top.carriedBalance, gross: top.grossAmount, principal: top.principal, n: top.numberOfInstallments }).toEqual({ status: expect.stringMatching(/active|overdue/), bf: 36012.38, gross: 100000, principal: 136012.38, n: 12 });
+    expect({ status: top.status, bf: top.carriedBalance, fee: top.applicationFee, principal: top.principal, n: top.numberOfInstallments }).toEqual({ status: expect.stringMatching(/active|overdue/), bf: 36012.38, fee: 4000, principal: 136012.38, n: 12 });
     expect(top.totalRepayment).toBeCloseTo(18134.98 * 12, 1);
     expect(top.installmentAmount).toBeCloseTo(18134.98, 1);
     expect(top.firstPaymentDate!.toISOString().slice(0, 10)).toBe('2026-09-01');
@@ -62,10 +63,10 @@ describe('monthly loans-taken upload', () => {
 
   it('an accountant\'s upload creates pending loans; the CEO edits one, approves, and a top-up only liquidates on approval', async () => {
     const a = await mkCustomer('700001'); const b = await mkCustomer('700002');
-    const old = (await api('post', '/api/loans').send({ customerId: a.id, productId: product, amount: 96000, duration: { value: 6, unit: 'months' }, startDate: isoDate(todayLagos()) })).body.data.loan;
+    const old = (await api('post', '/api/loans').send({ customerId: a.id, productId: product, amount: 100000, duration: { value: 6, unit: 'months' }, startDate: isoDate(todayLagos()) })).body.data.loan;
     const buf = await sheet([
-      [num(a), a.fullName, 700001, 'OSGF', 12, D('2026-10-01'), 20000, 96000, null, null, null, null, 15000, D('2026-11-01'), null, 'TOP UP'],
-      [num(b), b.fullName, 700002, 'OSGF', 6, D('2026-10-01'), null, 96000, null, null, null, null, 20000, D('2026-11-01'), null, 'NEW'],
+      [num(a), a.fullName, 700001, 'OSGF', 12, D('2026-10-01'), 20000, 100000, null, null, null, null, 15000, D('2026-11-01'), null, 'TOP UP'],
+      [num(b), b.fullName, 700002, 'OSGF', 6, D('2026-10-01'), null, 100000, null, null, null, null, 20000, D('2026-11-01'), null, 'NEW'],
     ]);
     const r = (await send('?filename=acct.xlsx', buf, acct)).body.data.result;
     expect(r).toMatchObject({ created: 2, needsApproval: true });
@@ -74,8 +75,8 @@ describe('monthly loans-taken upload', () => {
     expect((await Loan.findById(old.id))!.status).not.toBe('completed'); // old loan untouched until approval
     expect((await api('post', `/api/loans/${lb.id}/approve`, acct)).status).toBe(403);
     // the CEO edits the pending loan he is asked to approve (a smaller amount), then approves
-    const ed = await api('patch', `/api/loans/${lb.id}`).send({ amount: 48000 });
-    expect(ed.status).toBe(200); expect(ed.body.data.loan).toMatchObject({ amount: 48000, principal: 50000 });
+    const ed = await api('patch', `/api/loans/${lb.id}`).send({ amount: 50000 });
+    expect(ed.status).toBe(200); expect(ed.body.data.loan).toMatchObject({ amount: 50000, principal: 50000 });
     expect((await api('post', `/api/loans/${lb.id}/approve`)).body.data.loan.status).toBe('active');
     expect((await api('post', `/api/loans/${la.id}/approve`)).body.data.loan.status).toBe('active');
     expect((await Loan.findById(old.id))!.status).toBe('completed'); // liquidated by the approved top-up
@@ -106,19 +107,19 @@ describe('monthly loans-taken upload', () => {
 });
 
 describe('blank columns are calculated (the sheet formulas)', () => {
-  it('a row without EMI is priced with the one-time interest rule and EMI = total / tenor; the register carries the formulas', async () => {
+  it('a row without EMI is priced with the flat monthly rule (5% x tenor) and EMI = gross loan / tenor; the register carries the formulas', async () => {
     const x = await mkCustomer('800001');
-    const buf = await sheet([[num(x), x.fullName, 800001, 'OSGF', 12, D('2026-10-01'), null, 96000, null, null, null, null, null, D('2026-11-01'), null, 'NEW']]);
+    const buf = await sheet([[num(x), x.fullName, 800001, 'OSGF', 12, D('2026-10-01'), null, 100000, null, null, null, null, null, D('2026-11-01'), null, 'NEW']]);
     const pv = (await send('/preview', buf)).body.data.plan.rows[0];
-    expect(pv).toMatchObject({ action: 'new-loan', principal: 100000, interest: 5000, total: 105000, emi: 8750 }); // one-time 5% of 100,000
-    expect(pv.warnings.join(' ')).toMatch(/EMI left blank.*one-time 5%/);
+    expect(pv).toMatchObject({ action: 'new-loan', principal: 100000, interest: 60000, total: 160000, emi: 13333.33 }); // 5% a month x 12
+    expect(pv.warnings.join(' ')).toMatch(/EMI left blank.*5% a month/);
     await send('?filename=blank.xlsx', buf);
     const xl = await api('get', '/api/reports/customer-register?format=xlsx&limit=500').buffer(true).parse((res: any, cb: any) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); });
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(xl.body) as any);
     const ws = wb.worksheets[0]!; let head = 0; ws.eachRow((row, n) => { if (!head && (row.values as any[]).includes('Clients Name')) head = n; });
     const labels = ws.getRow(head).values as any[]; const col = (l: string) => labels.indexOf(l);
     let found = false;
-    ws.eachRow((row, n) => { if (n > head && String(row.getCell(col('Clients Name')).value) === x.fullName) { found = true; const f = (l: string) => String((row.getCell(col(l)).value as any)?.formula ?? ''); expect(f('Gross Payment')).toMatch(/^ROUND\([A-Z]+\d+\/0\.96,2\)$/); expect(f('Interest')).toMatch(/^ROUND\([A-Z]+\d+\*5%,2\)$/); expect(f('EMI')).toMatch(/^ROUND\(/); } });
+    ws.eachRow((row, n) => { if (n > head && String(row.getCell(col('Clients Name')).value) === x.fullName) { found = true; const f = (l: string) => String((row.getCell(col(l)).value as any)?.formula ?? ''); expect(f('Application Fee')).toMatch(/^ROUND\([A-Z]+\d+\*4%,2\)$/); expect(f('Interest')).toMatch(/^ROUND\([A-Z]+\d+\*5%\*[A-Z]+\d+,2\)$/); expect(f('EMI')).toMatch(/^ROUND\(/); } });
     expect(found).toBe(true);
   });
 });
@@ -143,7 +144,7 @@ describe('the downloaded register can be edited and uploaded back', () => {
 
   it('edits to customer details and loan figures are applied; the accountant can only change what she may', async () => {
     const x = await mkCustomer('900001');
-    const loan = (await api('post', '/api/loans').send({ customerId: x.id, productId: product, amount: 96000, duration: { value: 6, unit: 'months' }, startDate: isoDate(todayLagos()) })).body.data.loan;
+    const loan = (await api('post', '/api/loans').send({ customerId: x.id, productId: product, amount: 100000, duration: { value: 6, unit: 'months' }, startDate: isoDate(todayLagos()) })).body.data.loan;
     const wb = await download(); const ws = wb.worksheets[0]!; const h = headerRow(ws);
     let target = 0; ws.eachRow((row, n) => { if (n > h && String(row.getCell(colOf(ws, h, 'Loan ID')).value) === loan.loanId) target = n; });
     expect(target).toBeGreaterThan(0);
@@ -172,17 +173,17 @@ describe('the downloaded register can be edited and uploaded back', () => {
     const x = await mkCustomer('900002');
     const wb = await download(); const ws = wb.worksheets[0]!; const h = headerRow(ws);
     let target = 0; ws.eachRow((row, n) => { if (n > h && row.getCell(colOf(ws, h, 'IPPIS NO')).value?.toString() === '900002') target = n; });
-    ws.getCell(target, colOf(ws, h, 'Loan ID')).value = 'LN-999999'; ws.getCell(target, colOf(ws, h, 'Bank payment')).value = 50000; ws.getCell(target, colOf(ws, h, 'Tenor')).value = 6; ws.getCell(target, colOf(ws, h, 'Payment Date')).value = new Date('2026-10-01T00:00:00Z');
+    ws.getCell(target, colOf(ws, h, 'Loan ID')).value = 'LN-999999'; ws.getCell(target, colOf(ws, h, 'Loan amount')).value = 50000; ws.getCell(target, colOf(ws, h, 'Tenor')).value = 6; ws.getCell(target, colOf(ws, h, 'Payment Date')).value = new Date('2026-10-01T00:00:00Z');
     const row = (await send('/preview', await save(wb))).body.data.plan.rows.find((r: any) => r.customerRef === x.customerId);
     expect(row.action).toBe('error'); expect(row.errors[0]).toMatch(/not .* current loan/);
     const before = (await Customer.findById(x.id))!.phone;
-    ws.getCell(target, colOf(ws, h, 'Loan ID')).value = null; ws.getCell(target, colOf(ws, h, 'Bank payment')).value = null; ws.getCell(target, colOf(ws, h, 'phone no')).value = null;
+    ws.getCell(target, colOf(ws, h, 'Loan ID')).value = null; ws.getCell(target, colOf(ws, h, 'Loan amount')).value = null; ws.getCell(target, colOf(ws, h, 'phone no')).value = null;
     await send('?filename=blank.xlsx', await save(wb));
     expect((await Customer.findById(x.id))!.phone).toBe(before);
   });
 
-  it('a one-time-interest loan survives a round trip untouched, and keeps its rule when the tenor is changed', async () => {
-    const flat = (await api('post', '/api/loan-products').send({ name: 'Flat', code: 'FLT', interestRate: 5, bankDeductionRate: 0, minAmount: 1000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 24, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
+  it('a legacy one-time-interest loan survives a round trip untouched, and keeps its rule when the tenor is changed', async () => {
+    const flat = (await api('post', '/api/loan-products').send({ name: 'Flat', code: 'FLT', interestRate: 5, rateBasis: 'per_loan', applicationFeeRate: 0, minAmount: 1000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 24, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product.id;
     const x = await mkCustomer('900003');
     const loan = (await api('post', '/api/loans').send({ customerId: x.id, productId: flat, amount: 1_000_000, duration: { value: 6, unit: 'months' }, startDate: isoDate(todayLagos()) })).body.data.loan;
     expect(loan.installmentAmount).toBe(175000);
@@ -202,7 +203,7 @@ describe('the downloaded register can be edited and uploaded back', () => {
     expect((await Customer.findById(x.id))!.profileMissing).toEqual(expect.arrayContaining(['Email', 'State', 'Gender', 'Next of kin name']));
     const wb = await download(); const ws = wb.worksheets[0]!; const h = headerRow(ws);
     const labels = ws.getRow(h).values as string[];
-    expect(labels.indexOf('EMI')).toBeLessThan(labels.indexOf('BVN')); expect(labels.indexOf('Principal')).toBeLessThan(labels.indexOf('NIN')); expect(labels.indexOf('Gross Payment')).toBeLessThan(labels.indexOf('Customer status'));
+    expect(labels.indexOf('EMI')).toBeLessThan(labels.indexOf('BVN')); expect(labels.indexOf('Principal')).toBeLessThan(labels.indexOf('NIN')); expect(labels.indexOf('Application Fee')).toBeLessThan(labels.indexOf('Customer status'));
     let target = 0; ws.eachRow((row, n) => { if (n > h && String(row.getCell(colOf(ws, h, 'IPPIS NO')).value) === '900004') target = n; });
     expect(String(ws.getCell(target, colOf(ws, h, 'Clients ID')).value)).toBe(x.customerId); // PTC-000###
     expect(String(ws.getCell(target, colOf(ws, h, 'Profile (missing details)')).value)).toMatch(/Missing: .*Email/);
@@ -221,7 +222,7 @@ describe('the downloaded register can be edited and uploaded back', () => {
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(Buffer.from(t.body) as any); const ws = wb.worksheets[0]!; const h = headerRow(ws);
     for (const n of [h + 1, h + 2, h + 3]) for (let c = 1; c <= 31; c++) ws.getCell(n, c).value = null; // remove the three examples
     const set = (c: string, v: unknown) => { ws.getCell(h + 1, colOf(ws, h, c)).value = v as any; };
-    set('S/N', 1); set('Clients ID', x.customerId); set('Clients Name', x.fullName); set('IPPIS NO', 900005); set('MINISTRY', 'OSGF'); set('Tenor', 12); set('Payment Date', new Date('2026-10-05T00:00:00Z')); set('Bank payment', 96000); set('Start Date', new Date('2026-11-01T00:00:00Z')); set('Status', 'NEW');
+    set('S/N', 1); set('Clients ID', x.customerId); set('Clients Name', x.fullName); set('IPPIS NO', 900005); set('MINISTRY', 'OSGF'); set('Tenor', 12); set('Payment Date', new Date('2026-10-05T00:00:00Z')); set('Loan amount', 100000); set('Start Date', new Date('2026-11-01T00:00:00Z')); set('Status', 'NEW');
     ws.getCell(h + 1, colOf(ws, h, 'EMI')).value = { formula: `ROUND(M${h + 1}/F${h + 1},2)`, result: 13333.33 } as any; // as Excel would have saved it
     const plan = (await send('/preview', await save(wb))).body.data.plan;
     expect(plan.rows).toHaveLength(1);
@@ -231,22 +232,42 @@ describe('the downloaded register can be edited and uploaded back', () => {
 
 describe('rows for customers that are not in the portal yet', () => {
   it('a row with no client number or IPPIS adds a new (non-government) customer and gives them the loan; calculated columns stay blank', async () => {
-    const buf = await sheet([[null, 'PERTER HARVARD SCHOOL', null, 'SCHOOL', 12, D('2026-10-05'), null, 288000, null, null, null, null, null, D('2026-11-01'), null, 'NEW']]);
+    const buf = await sheet([[null, 'PERTER HARVARD SCHOOL', null, 'SCHOOL', 12, D('2026-10-05'), null, 300000, null, null, null, null, null, D('2026-11-01'), null, 'NEW']]);
     const pv = (await send('/preview', buf)).body.data.plan;
     expect(pv.counts).toMatchObject({ newLoans: 1, newCustomers: 1, errors: 0 });
-    expect(pv.rows[0]).toMatchObject({ action: 'new-loan', isNewCustomer: true, principal: 300000, interest: 15000, total: 315000, emi: 26250 }); // one-time 5% of 300,000
+    expect(pv.rows[0]).toMatchObject({ action: 'new-loan', isNewCustomer: true, principal: 300000, interest: 180000, total: 480000, emi: 40000 }); // 5% a month x 12
     const before = await Customer.countDocuments();
     const r = (await send('?filename=newcust.xlsx', buf)).body.data.result;
     expect(r).toMatchObject({ created: 1, skipped: 0 });
     expect(await Customer.countDocuments()).toBe(before + 1);
     const c = (await Customer.findOne({ fullName: 'Perter Harvard School' }))!;
     expect(c.customerId).toMatch(/^PTC-\d{6}$/); expect(c.employment).toMatchObject({ sector: 'non_government', ministry: 'SCHOOL' }); expect(c.profileMissing!.length).toBeGreaterThan(0);
-    const loan = (await Loan.findOne({ customer: c._id }))!; expect(loan.totalRepayment).toBe(315000);
+    const loan = (await Loan.findOne({ customer: c._id }))!; expect(loan.totalRepayment).toBe(480000);
     // uploading the same row again does not create a second customer: the name matches the existing one (and they already have a loan)
     const again = (await send('/preview', buf)).body.data.plan.rows[0];
     expect(again.isNewCustomer).toBeFalsy(); expect(again.errors.join(' ')).toMatch(/already has a/);
     // an unknown client NUMBER is still an error (probably a typo)
     const typo = (await send('/preview', await sheet([[99999, 'SOMEONE', null, 'OSGF', 6, D('2026-10-05'), null, 50000, null, null, null, null, null, null, null, 'NEW']]))).body.data.plan.rows[0];
     expect(typo.action).toBe('error');
+  });
+});
+
+describe('IPPIS is the primary identity', () => {
+  const bare = async (rows: unknown[][], heads: string[]) => { const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('S'); ws.addRow(heads); rows.forEach((r) => ws.addRow(r)); return Buffer.from(await wb.xlsx.writeBuffer()); };
+  it('a sheet with only an IPPIS column (no Clients ID, no name) finds the customer and prices the loan', async () => {
+    const x = await mkCustomer('610001');
+    const buf = await bare([[610001, 12, D('2026-10-05'), 100000, 'NEW']], ['IPPIS NO', 'Tenor', 'Payment Date', 'Loan amount', 'Status']);
+    const row = (await send('/preview', buf)).body.data.plan.rows[0];
+    expect(row).toMatchObject({ action: 'new-loan', matchedName: x.fullName, customerRef: x.customerId, principal: 100000, total: 160000 });
+    expect((await send('?filename=ippis.xlsx', buf)).body.data.result).toMatchObject({ created: 1, skipped: 0 });
+    expect(await Loan.countDocuments({ customer: x.id })).toBe(1);
+  });
+  it('IPPIS wins over a different Clients ID; with no IPPIS the Clients ID is used', async () => {
+    const a = await mkCustomer('610002'); const b = await mkCustomer('610003');
+    const heads = ['Clients ID', 'Clients Name', 'IPPIS NO', 'Tenor', 'Payment Date', 'Loan amount', 'Status'];
+    const clash = (await send('/preview', await bare([[num(a), 'whoever', 610003, 6, D('2026-10-05'), 50000, 'NEW']], heads))).body.data.plan.rows[0];
+    expect(clash).toMatchObject({ action: 'new-loan', matchedName: b.fullName }); expect(clash.warnings.join(' ')).toMatch(/IPPIS decides/);
+    const byId = (await send('/preview', await bare([[num(a), a.fullName, null, 6, D('2026-10-05'), 50000, 'NEW']], heads))).body.data.plan.rows[0];
+    expect(byId).toMatchObject({ action: 'new-loan', matchedName: a.fullName });
   });
 });

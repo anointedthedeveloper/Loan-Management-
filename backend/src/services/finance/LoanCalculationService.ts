@@ -4,16 +4,17 @@ import type { LoanTerms, LoanTermsInput, RateBasis, ScheduleInstallment, Working
 import { REPAYMENT_CYCLE, type Frequency } from '../../config/loanOptions.js';
 
 /**
- * Flat-interest loan pricing, modelled on the reference calculator
- * (https://flatinterestcalculator.vercel.app/):
- *   gross payment = bank payment / (1 - deduction)
- *   principal     = balance b/fwd + gross payment
- *   interest      = principal x monthly flat rate x tenor
- *   gross loan    = principal + interest
- *   installment   = gross loan / tenor
+ * Protech accounting model (single source of truth):
+ *   principal        = the requested amount (+ any balance carried into a top-up)
+ *   application fee  = requested amount x 4%  (standalone: never in principal, interest, gross loan, EMI or any balance)
+ *   monthly interest = principal x 5%         (flat, on the original principal)
+ *   total interest   = monthly interest x tenor
+ *   gross loan       = principal + total interest   (what the customer repays)
+ *   EMI              = gross loan / tenor
  * Every rule that Protech may change (rate basis, month length, rounding, installment count)
  * is isolated in the small functions below.
  */
+export const APPLICATION_FEE_RATE = 4; // % of the requested amount
 export const DAYS_PER_MONTH = 30; // convention used to express days/weeks as months
 
 export function durationInMonths(d: LoanTermsInput['duration']): number {
@@ -65,15 +66,34 @@ export function installmentDueDate(start: Date, frequency: Frequency, k: number,
   return frequency === 'monthly' ? monthDay(start, k, REPAYMENT_CYCLE.dueDay) : addDays(start, k * stepDays(frequency, customDays));
 }
 
+/** The application fee for a requested amount, in naira (kobo-exact). */
+export const calculateApplicationFee = (amount: number, ratePercent: number = APPLICATION_FEE_RATE) => fromKobo(Math.round((toKobo(amount) * ratePercent) / 100));
+
+/**
+ * The plain accounting figures for a flat monthly-interest loan. The frontend shows what the backend returns here.
+ * Example: 500,000 at 5% for 12 months -> fee 20,000, monthly interest 25,000, interest 300,000, gross 800,000, EMI 66,666.67.
+ */
+export function calculateLoanFigures(i: { principal: number; interestRate: number; tenor: number; applicationFeeRate?: number }) {
+  if (!(i.principal > 0)) throw new Error('Loan amount must be greater than zero');
+  if (!(i.tenor > 0)) throw new Error('Tenor must be at least one month');
+  const principalKobo = toKobo(i.principal);
+  const monthlyKobo = Math.round((principalKobo * i.interestRate) / 100);
+  const interestKobo = monthlyKobo * i.tenor;
+  const grossKobo = principalKobo + interestKobo;
+  return {
+    principal: fromKobo(principalKobo), applicationFee: calculateApplicationFee(i.principal, i.applicationFeeRate), monthlyInterest: fromKobo(monthlyKobo),
+    totalInterest: fromKobo(interestKobo), grossLoan: fromKobo(grossKobo), emi: round2(fromKobo(grossKobo) / i.tenor), tenor: i.tenor, interestRate: i.interestRate,
+  };
+}
+
 export function calculateLoan(input: LoanTermsInput): LoanTerms {
-  const ded = input.bankDeductionRate ?? 0;
+  const fee = input.applicationFeeRate ?? APPLICATION_FEE_RATE;
   if (!(input.amount > 0)) throw new Error('Loan amount must be greater than zero');
-  if (ded < 0 || ded >= 100) throw new Error('Bank deduction must be between 0 and 100%');
-  const netKobo = toKobo(input.amount);
-  const grossKobo = ded > 0 ? Math.round(netKobo / (1 - ded / 100)) : netKobo;
+  if (fee < 0 || fee >= 100) throw new Error('Application fee must be between 0 and 100%');
+  const amountKobo = toKobo(input.amount);
   const carriedKobo = toKobo(input.carriedBalance ?? 0);
-  const principalKobo = carriedKobo + grossKobo;
-  const baseKobo = input.interestBasis === 'new_funds_only' ? grossKobo : principalKobo;
+  const principalKobo = carriedKobo + amountKobo; // the requested amount IS the principal; the application fee is never added to it
+  const baseKobo = input.interestBasis === 'new_funds_only' ? amountKobo : principalKobo;
   // Monthly repayments: the number of installments IS the tenor, so a stated installment count always drives the interest.
   const months = input.frequency === 'monthly' && input.numberOfInstallments ? input.numberOfInstallments : durationInMonths(input.duration);
   const interestKobo = calculateInterest(baseKobo, input.interestRate, input.rateBasis, months);
@@ -81,8 +101,8 @@ export function calculateLoan(input: LoanTermsInput): LoanTerms {
   const n = deriveInstallmentCount(input);
   const inst = calculateInstallment(totalKobo, n);
   return {
-    amount: round2(input.amount), carriedBalance: fromKobo(carriedKobo), bankDeductionRate: ded,
-    grossAmount: fromKobo(grossKobo), principal: fromKobo(principalKobo), interestBase: fromKobo(baseKobo),
+    amount: round2(input.amount), carriedBalance: fromKobo(carriedKobo), applicationFeeRate: fee, applicationFee: calculateApplicationFee(input.amount, fee),
+    principal: fromKobo(principalKobo), interestBase: fromKobo(baseKobo),
     interestAmount: fromKobo(interestKobo), monthlyInterest: fromKobo(input.rateBasis === 'per_month' ? Math.round((baseKobo * input.interestRate) / 100) : months > 0 ? Math.round(interestKobo / months) : interestKobo), totalRepayment: fromKobo(totalKobo), numberOfInstallments: n,
     installmentAmount: fromKobo(inst.regular), finalInstallmentAmount: fromKobo(inst.last), durationMonths: months,
     startDate: input.startDate,

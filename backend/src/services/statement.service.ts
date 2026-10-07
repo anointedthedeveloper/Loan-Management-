@@ -19,7 +19,7 @@ export interface ScheduleLine { number: number; month: string; dueDate: Date; em
 export interface LoanStatement {
   loan: {
     id: string; loanId: string; status: string; productName: string | null; loanType: string
-    amountTaken: number; principal: number; interest: number; monthlyInterest: number; rateBasis: string; interestRate: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string
+    amountTaken: number; applicationFee: number; principal: number; interest: number; monthlyInterest: number; rateBasis: string; interestRate: number; totalLoan: number; emi: number; numberOfInstallments: number; frequency: string
     paymentDate: Date; firstRepaymentDate: Date | null; finalDueDate: Date; currentOutstanding: number
   }
   rows: StatementRow[]
@@ -82,7 +82,7 @@ async function loanStatement(loanId: Types.ObjectId | string, from?: Date, to?: 
   return {
     loan: {
       id: String(loan._id), loanId: loan.loanId, status: loan.status, productName: loan.productName ?? null, loanType: loan.loanType ?? 'new',
-      amountTaken: loan.amount, principal: loan.principal, interest: loan.interestAmount, monthlyInterest: loan.monthlyInterest || Math.round((loan.interestAmount / Math.max(1, loan.duration?.unit === 'months' ? loan.duration.value! : (loan.numberOfInstallments ?? 1))) * 100) / 100, rateBasis: loan.rateBasis ?? 'per_loan', interestRate: loan.interestRate, totalLoan: loan.totalRepayment, emi: loan.installmentAmount,
+      amountTaken: loan.amount, applicationFee: loan.applicationFee ?? 0, principal: loan.principal, interest: loan.interestAmount, monthlyInterest: loan.monthlyInterest || Math.round((loan.interestAmount / Math.max(1, loan.duration?.unit === 'months' ? loan.duration.value! : (loan.numberOfInstallments ?? 1))) * 100) / 100, rateBasis: loan.rateBasis ?? 'per_month', interestRate: loan.interestRate, totalLoan: loan.totalRepayment, emi: loan.installmentAmount,
       numberOfInstallments: loan.numberOfInstallments, frequency: loan.frequency, paymentDate: loan.startDate,
       firstRepaymentDate: loan.firstPaymentDate ?? null, finalDueDate: loan.dueDate, currentOutstanding: loan.outstandingBalance,
     },

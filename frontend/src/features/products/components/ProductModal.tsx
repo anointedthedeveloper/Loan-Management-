@@ -17,7 +17,7 @@ export function ProductModal({ product, categories, onClose, onDone }: { product
   const meta = useLoanMeta()
   const [f, setF] = useState({
     name: product?.name ?? '', code: product?.code ?? '', category: product?.category ?? '', description: product?.description ?? '', interestRate: String(product?.interestRate ?? ''), rateBasis: product?.rateBasis ?? 'per_loan',
-    bankDeductionRate: String(product?.bankDeductionRate ?? 0), minAmount: String(product?.minAmount ?? 0), maxAmount: product?.maxAmount ? String(product.maxAmount) : '',
+    applicationFeeRate: String(product?.applicationFeeRate ?? 4), minAmount: String(product?.minAmount ?? 0), maxAmount: product?.maxAmount ? String(product.maxAmount) : '',
     minDuration: String(product?.minDuration ?? 1), maxDuration: product?.maxDuration ? String(product.maxDuration) : '', durationUnit: product?.durationUnit ?? 'months',
     allowedFrequencies: product?.allowedFrequencies ?? ['monthly'], defaultFrequency: product?.defaultFrequency ?? 'monthly', isActive: product?.isActive ?? true,
   })
@@ -28,7 +28,7 @@ export function ProductModal({ product, categories, onClose, onDone }: { product
 
   async function submit(e: FormEvent) {
     e.preventDefault(); setBusy(true); setErrs({})
-    const body = { ...f, category: f.category.trim() || 'General', interestRate: Number(f.interestRate), bankDeductionRate: Number(f.bankDeductionRate), minAmount: Number(f.minAmount), minDuration: Number(f.minDuration) }
+    const body = { ...f, category: f.category.trim() || 'General', interestRate: Number(f.interestRate), applicationFeeRate: Number(f.applicationFeeRate), minAmount: Number(f.minAmount), minDuration: Number(f.minDuration) }
     try { product ? await productService.update(product.id, body) : await productService.create(body); toast('success', product ? 'Product updated' : 'Product created'); onDone() }
     catch (err) { if (err instanceof ApiError && err.fields) setErrs(err.fields); toast('error', err instanceof ApiError ? err.message : 'Could not save product') }
     finally { setBusy(false) }
@@ -45,8 +45,8 @@ export function ProductModal({ product, categories, onClose, onDone }: { product
           </div>
           <div className="sm:col-span-2"><TextareaField label="Description" value={f.description} onChange={set('description')} /></div>
           <Field label="Interest rate (%)" type="number" step="0.01" min="0" value={f.interestRate} onChange={set('interestRate')} error={errs.interestRate} />
-          <div><SelectField label="Rate basis" options={meta?.rateBases ?? []} value={f.rateBasis} onChange={set('rateBasis')} placeholder="Basis" /><p className="mt-1 text-xs text-slate-500">Interest is a <b>one-time flat charge</b>: 5% of a ₦1,000,000 loan is ₦50,000, so the customer repays ₦1,050,000 in equal installments, whatever the tenor. Choose the other options only for a rate that must be multiplied by the number of months.</p></div>
-          <Field label="Bank deduction (%)" type="number" step="0.01" min="0" value={f.bankDeductionRate} onChange={set('bankDeductionRate')} error={errs.bankDeductionRate} />
+          <div><SelectField label="Rate basis" options={meta?.rateBases ?? []} value={f.rateBasis} onChange={set('rateBasis')} placeholder="Basis" /><p className="mt-1 text-xs text-slate-500">Interest is a <b>flat monthly rate on the principal</b>: 5% a month on ₦500,000 over 12 months is ₦25,000 × 12 = ₦300,000, so the customer repays ₦800,000 in 12 equal installments (EMI ₦66,666.67). The application fee is separate.</p></div>
+          <Field label="Application fee (% of the amount requested)" type="number" step="0.01" min="0" value={f.applicationFeeRate} onChange={set('applicationFeeRate')} error={errs.applicationFeeRate} />
           <div />
           <MoneyField label="Minimum amount" value={f.minAmount} onChange={(v) => setF((s) => ({ ...s, minAmount: v }))} /><MoneyField label="Maximum amount" value={f.maxAmount} onChange={(v) => { setF((s) => ({ ...s, maxAmount: v })); setErrs((x) => ({ ...x, maxAmount: '' })) }} error={errs.maxAmount} placeholder="No maximum" />
           <Field label="Minimum duration" type="number" min="1" value={f.minDuration} onChange={set('minDuration')} /><Field label="Maximum duration" type="number" min="1" value={f.maxDuration} onChange={set('maxDuration')} error={errs.maxDuration} placeholder="No maximum" />

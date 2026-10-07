@@ -27,7 +27,14 @@ export const tokenStore = {
   set: (t: string, remember: boolean) => {
     try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); (remember ? localStorage : sessionStorage).setItem(KEY, t) } catch { /* storage unavailable */ }
   },
-  clear: () => { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY) } catch { /* ignore */ } },
+  clear: () => { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); localStorage.removeItem(USER_KEY); sessionStorage.removeItem(USER_KEY) } catch { /* ignore */ } },
+}
+
+/** The signed-in user is cached beside the token so a reload shows the app at once; it is re-checked with the server in the background. */
+const USER_KEY = 'protech.user'
+export const userCache = {
+  get: <T,>(): T | null => { try { const raw = localStorage.getItem(USER_KEY) ?? sessionStorage.getItem(USER_KEY); return raw ? (JSON.parse(raw) as T) : null } catch { return null } },
+  set: (u: unknown) => { try { const s = localStorage.getItem(KEY) ? localStorage : sessionStorage; s.setItem(USER_KEY, JSON.stringify(u)) } catch { /* storage unavailable */ } },
 }
 
 let onUnauthorized: (() => void) | null = null

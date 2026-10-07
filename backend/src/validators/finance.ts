@@ -20,8 +20,8 @@ const productBody = (create: boolean) => ({
   description: text(300),
   category: dflt(z.string().trim().min(1, 'Enter a category').max(60), 'General', create),
   interestRate: z.coerce.number().min(0, 'Rate cannot be negative').max(100),
-  rateBasis: dflt(z.enum(vals(RATE_BASES)), 'per_loan', create),
-  bankDeductionRate: dflt(z.coerce.number().min(0).max(99), 0, create),
+  rateBasis: dflt(z.enum(vals(RATE_BASES)), 'per_month', create),
+  applicationFeeRate: dflt(z.coerce.number().min(0).max(99), 4, create),
   minAmount: dflt(z.coerce.number().min(0), 0, create),
   maxAmount: z.preprocess(blank, z.coerce.number().positive().optional()),
   minDuration: dflt(z.coerce.number().int().min(1), 1, create),
@@ -56,15 +56,15 @@ const pricing = {
 export const previewLoanSchema = z.object({
   ...pricing, customerId: objectId.optional(), loanId: objectId.optional(),
   interestRate: z.preprocess(blank, z.coerce.number().min(0).max(100).optional()),
-  bankDeductionRate: z.preprocess(blank, z.coerce.number().min(0).max(99).optional()),
+  applicationFeeRate: z.preprocess(blank, z.coerce.number().min(0).max(99).optional()),
   rateBasis: z.preprocess(blank, z.enum(vals(RATE_BASES)).optional()),
 });
 export const createLoanSchema = z.object({ ...pricing, customerId: objectId, notes: text(1000) });
-/** `interestRate` / `bankDeductionRate` / `rateBasis` override the loan's own rates when editing it; a running loan also needs loans.editActive and a `reason`. */
+/** `interestRate` / `applicationFeeRate` / `rateBasis` override the loan's own rates when editing it; a running loan also needs loans.editActive and a `reason`. */
 export const updateLoanSchema = z.object({
   ...pricing, notes: text(1000),
   interestRate: z.preprocess(blank, z.coerce.number().min(0).max(100).optional()),
-  bankDeductionRate: z.preprocess(blank, z.coerce.number().min(0).max(99).optional()),
+  applicationFeeRate: z.preprocess(blank, z.coerce.number().min(0).max(99).optional()),
   rateBasis: z.preprocess(blank, z.enum(vals(RATE_BASES)).optional()),
   reason: text(300),
 }).partial();

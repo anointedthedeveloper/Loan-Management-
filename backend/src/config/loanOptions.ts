@@ -29,8 +29,8 @@ export const isFrequency = (v: string): v is Frequency => FREQUENCIES.some((f) =
 
 export const DURATION_UNITS = [{ value: 'days', label: 'Days' }, { value: 'weeks', label: 'Weeks' }, { value: 'months', label: 'Months' }] as const;
 export const RATE_BASES = [
+  { value: 'per_month', label: '% per month, flat on the principal (5% x 12 months = 60% of the principal)' },
   { value: 'per_loan', label: '% one-time flat charge on the principal (e.g. 5% of ₦1,000,000 = ₦50,000)' },
-  { value: 'per_month', label: '% per month, multiplied by the number of months' },
   { value: 'per_annum', label: '% per annum, pro-rated' },
 ] as const;
 
