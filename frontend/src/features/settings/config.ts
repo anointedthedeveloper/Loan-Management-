@@ -31,6 +31,7 @@ export const SETTING_SECTIONS: SettingSection[] = [
     { key: 'overpaymentPolicy', label: 'Payment above the balance', type: 'select', options: [{ value: 'reject', label: 'Reject the payment' }, { value: 'credit', label: 'Accept and hold the excess as credit' }] },
     { key: 'overpaymentTolerance', label: 'Allowed overpayment (₦)', type: 'number', help: 'A payment may exceed what is owed by up to this amount, e.g. ₦30,000 sent for ₦29,999.82. The loan is cleared and the small excess is held as credit.' },
     { key: 'allowFutureDatedPayments', label: 'Allow future-dated payments', type: 'toggle' },
+    { key: 'terminationFeeRate', label: 'Early termination fee (%)', type: 'number', help: 'Charged on what is still owed when a customer terminates a loan before its tenor ends (the interest for months not used is not charged). Default 10.' },
     { key: 'earlySettlement', label: 'Early settlement (paying a loan off before its term ends)', type: 'select', options: [{ value: 'full_balance', label: 'Pay everything still owed' }, { value: 'waive_future_interest', label: 'Waive interest on installments not yet due' }], help: 'Waiving interest can only be done by someone with loan approval rights.' } ] },
   { key: 'latePayment', label: 'Late payment', description: 'Overdue and default timing. Penalty calculation is not enabled until Protech’s rule is configured.', fields: [
     { key: 'graceDays', label: 'Grace days before an installment is overdue', type: 'number' },

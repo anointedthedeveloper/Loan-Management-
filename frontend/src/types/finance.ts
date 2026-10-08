@@ -48,6 +48,10 @@ export interface LoanPreview {
   frequency: string; duration: { value: number; unit: string }; terms: Terms; schedule: Installment[]
 }
 
+export interface TerminationQuote {
+  loanId: string; date: string; monthsUsed: number; feeRate: number; totalOwed: number; interestWaived: number; outstanding: number; fee: number; amountToPay: number
+  waivers: { number: number; interest: number }[]
+}
 export interface SettlementQuote {
   loanId: string; date: string; mode: 'full_balance' | 'waive_future_interest'; outstandingBalance: number
   interestWaived: number; amountToPay: number; installmentsRemaining: number; waivers: { number: number; interest: number }[]

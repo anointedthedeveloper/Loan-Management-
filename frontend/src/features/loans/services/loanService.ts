@@ -1,5 +1,5 @@
 import { api, apiPage, qs } from '../../../services/api'
-import type { Loan, LoanDetail, LoanPreview, Product, SettlementQuote, Transaction } from '../../../types/finance'
+import type { Loan, LoanDetail, LoanPreview, Product, SettlementQuote, TerminationQuote, Transaction } from '../../../types/finance'
 
 export const loanService = {
   list: (p: Record<string, string | number>) => apiPage<Loan>(`/loans${qs(p)}`),
@@ -13,6 +13,8 @@ export const loanService = {
     api<LoanDetail>(`/loans/${id}/${action}`, { method: 'POST', body: reason ? { reason } : undefined }),
   markInstallmentPaid: (id: string, number: number, body: unknown) => api<LoanDetail>(`/loans/${id}/installments/${number}/pay`, { method: 'POST', body }),
   settlementQuote: (id: string, date?: string) => api<{ quote: SettlementQuote }>(`/loans/${id}/settlement-quote${date ? `?date=${date}` : ''}`).then((r) => r.quote),
+  terminationQuote: (id: string, date?: string) => api<{ quote: TerminationQuote }>(`/loans/${id}/termination-quote${date ? `?date=${date}` : ''}`).then((r) => r.quote),
+  terminate: (id: string, body: unknown) => api<LoanDetail>(`/loans/${id}/terminate`, { method: 'POST', body }),
   settle: (id: string, body: unknown) => api<LoanDetail>(`/loans/${id}/settle`, { method: 'POST', body }),
   transactions: (id: string) => apiPage<Transaction>(`/loans/${id}/transactions`),
   products: () => api<{ products: Product[] }>('/loan-products').then((r) => r.products),

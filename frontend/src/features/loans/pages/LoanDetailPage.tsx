@@ -16,7 +16,7 @@ import { formatDate, formatMoney, titleCase } from '../../../utils/format'
 import { loanService } from '../services/loanService'
 import { ScheduleTable } from '../components/ScheduleTable'
 import { RecordRepaymentModal } from '../components/RecordRepaymentModal'
-import { MarkInstallmentPaidModal, SettleLoanModal } from '../components/MarkPaidModals'
+import { MarkInstallmentPaidModal, SettleLoanModal, TerminateLoanModal } from '../components/MarkPaidModals'
 import type { Installment } from '../../../types/finance'
 import { LoanRepaymentsList } from '../components/LoanRepaymentsList'
 import { TransactionsTable } from '../../transactions/components/TransactionsTable'
@@ -33,7 +33,7 @@ export default function LoanDetailPage() {
   const { data, error, loading, reload } = useAsync(() => loanService.get(id), [id])
   const tx = useAsync(() => loanService.transactions(id), [id])
   const [tab, setTab] = useState('schedule')
-  const [modal, setModal] = useState<'repay' | 'topup' | 'settle' | 'change' | Action | null>(null)
+  const [modal, setModal] = useState<'repay' | 'topup' | 'settle' | 'terminate' | 'change' | Action | null>(null)
   const [marking, setMarking] = useState<Installment | null>(null)
   const [busy, setBusy] = useState(false)
   const [dl, setDl] = useState<string | null>(null)
@@ -78,6 +78,7 @@ export default function LoanDetailPage() {
           {live && can(PERM.repayments.record) && <Button onClick={() => setModal('repay')}><Banknote className="size-4" />Record repayment</Button>}
           {!['pending', 'rejected', 'cancelled'].includes(l.status) && <Link to={`/loans/${l.id}/statement`}><Button variant="secondary"><FileText className="size-4" />Generate statement</Button></Link>}
           {live && (can(PERM.repayments.record) || can(PERM.loans.approve)) && <Button variant="secondary" onClick={() => setModal('settle')}><Flag className="size-4" />Settle loan</Button>}
+          {live && (can(PERM.repayments.record) || can(PERM.loans.approve)) && <Button variant="ghost" onClick={() => setModal('terminate')}><Ban className="size-4" />{can(PERM.loans.approve) ? 'Terminate early' : 'Request early termination'}</Button>}
           {live && can(PERM.topups.request) && <Button variant="secondary" onClick={() => setModal('topup')}><ArrowUpRight className="size-4" />Top-up</Button>}
           {['active', 'overdue'].includes(l.status) && can(PERM.loans.approve) && <Button variant="ghost" className="text-red-600" onClick={() => setModal('default')}><ShieldAlert className="size-4" />Mark defaulted</Button>}
         </div>
@@ -137,6 +138,7 @@ export default function LoanDetailPage() {
       </div>
 
       {marking && <MarkInstallmentPaidModal loan={l} installment={marking} onClose={() => setMarking(null)} onDone={() => { setMarking(null); done() }} />}
+      {modal === 'terminate' && <TerminateLoanModal loan={l} onClose={() => setModal(null)} onDone={done} />}
       {modal === 'settle' && <SettleLoanModal loan={l} onClose={() => setModal(null)} onDone={done} />}
       {modal === 'repay' && <RecordRepaymentModal loan={l} onClose={() => setModal(null)} onDone={done} />}
       {modal === 'change' && <RequestLoanChangeModal loanId={l.id} amount={l.amount} months={l.duration?.unit === 'months' ? l.duration.value : undefined} onClose={() => setModal(null)} onDone={() => setModal(null)} />}

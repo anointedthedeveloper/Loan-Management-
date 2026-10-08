@@ -35,6 +35,8 @@ loansRouter.post('/:id/default', perm('loans.approve'), body(v.reasonSchema), c.
 loansRouter.post('/:id/recalculate', perm('loans.edit', 'loans.approve'), c.loanRecalculate);
 loansRouter.post('/:id/installments/:number/pay', perm('repayments.record'), body(v.markPaidSchema), c.installmentPay);
 loansRouter.get('/:id/settlement-quote', perm('repayments.record', 'loans.approve'), query(v.settlementQuerySchema), c.settlementQuote);
+loansRouter.get('/:id/termination-quote', perm('repayments.record', 'loans.approve'), query(v.settlementQuerySchema), c.terminationQuote);
+loansRouter.post('/:id/terminate', perm('loans.approve'), body(v.settleSchema), c.loanTerminate);
 loansRouter.post('/:id/settle', perm('repayments.record', 'loans.approve'), body(v.settleSchema), c.loanSettle);
 loansRouter.get('/:id/statement', perm('loans.view'), query(v.statementQuerySchema), c.loanStatement);
 loansRouter.get('/:id/schedule/export', perm('loans.view'), query(v.scheduleExportSchema), c.loanScheduleExport);

@@ -56,6 +56,8 @@ export const loanRecalculate = asyncHandler(async (req, res) => { const l = awai
 /* mark a month paid / settle early */
 export const installmentPay = asyncHandler(async (req, res) => ok(res, await repayments.markInstallmentPaid(id(req), Number(req.params.number), req.body, actorOf(req)), `Installment ${req.params.number} marked as paid`, 201));
 export const settlementQuote = asyncHandler(async (req, res) => ok(res, { quote: await settlement.quoteSettlement(id(req), res.locals.query.date) }));
+export const terminationQuote = asyncHandler(async (req, res) => ok(res, { quote: await settlement.quoteTermination(id(req), res.locals.query.date) }));
+export const loanTerminate = asyncHandler(async (req, res) => ok(res, await settlement.terminateLoan(id(req), req.body, actorOf(req)), 'Loan terminated'));
 export const loanSettle = asyncHandler(async (req, res) => ok(res, await settlement.settleLoan(id(req), req.body, actorOf(req), req.auth!.permissions.includes('loans.approve')), 'Loan settled'));
 
 /* repayments & transactions */

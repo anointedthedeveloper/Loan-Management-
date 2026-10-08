@@ -5,17 +5,17 @@ import { validateBody } from '../middleware/validate.js';
 import { asyncHandler, ok } from '../utils/http.js';
 import { sendPage } from '../utils/pagination.js';
 import { actorOf } from '../controllers/customerController.js';
-import { editRepaymentSchema, reasonSchema, updateLoanSchema } from '../validators/finance.js';
+import { editRepaymentSchema, reasonSchema, settleSchema, updateLoanSchema } from '../validators/finance.js';
 import { AppError } from '../utils/AppError.js';
 import { approveRequest, cancelRequest, createRequest, listRequests, rejectRequest, type ApprovalKind } from '../services/approval.service.js';
 
 /** Change requests: staff without a sensitive permission ask, the CEO (approvals.decide) carries the change out. */
 const r = Router();
 r.use(authenticate);
-const kinds = ['repayment_edit', 'transaction_reverse', 'loan_edit', 'customer_delete'] as const;
+const kinds = ['repayment_edit', 'transaction_reverse', 'loan_edit', 'loan_terminate', 'customer_delete'] as const;
 // Permission the requester needs just to see the thing they are asking to change.
-const NEEDS: Record<ApprovalKind, string[]> = { repayment_edit: ['repayments.view', 'transactions.view'], transaction_reverse: ['transactions.view', 'repayments.view'], loan_edit: ['loans.view', 'loans.edit'], customer_delete: ['customers.read'] };
-const schemaFor: Record<ApprovalKind, z.ZodType<any>> = { repayment_edit: editRepaymentSchema, transaction_reverse: reasonSchema, loan_edit: updateLoanSchema, customer_delete: z.object({ reason: z.string().trim().max(500).optional() }) };
+const NEEDS: Record<ApprovalKind, string[]> = { repayment_edit: ['repayments.view', 'transactions.view'], transaction_reverse: ['transactions.view', 'repayments.view'], loan_edit: ['loans.view', 'loans.edit'], loan_terminate: ['repayments.record', 'repayments.view', 'loans.view'], customer_delete: ['customers.read'] };
+const schemaFor: Record<ApprovalKind, z.ZodType<any>> = { repayment_edit: editRepaymentSchema, transaction_reverse: reasonSchema, loan_edit: updateLoanSchema, loan_terminate: settleSchema, customer_delete: z.object({ reason: z.string().trim().max(500).optional() }) };
 const reqSchema = z.object({ kind: z.enum(kinds), targetId: z.string().min(1), reason: z.string().trim().max(500).optional(), payload: z.record(z.string(), z.any()).optional() });
 
 r.get('/', asyncHandler(async (req, res) => {

@@ -7,7 +7,7 @@ import { Schema, model } from 'mongoose';
 const schema = new Schema(
   {
     requestId: { type: String, required: true, unique: true, immutable: true },
-    kind: { type: String, enum: ['repayment_edit', 'transaction_reverse', 'loan_edit', 'customer_delete'], required: true, index: true },
+    kind: { type: String, enum: ['repayment_edit', 'transaction_reverse', 'loan_edit', 'loan_terminate', 'customer_delete'], required: true, index: true },
     targetId: { type: Schema.Types.ObjectId, required: true },
     targetLabel: String, // e.g. TXN-000123, LN-000007, PTC-000201 Name
     loanRef: String,

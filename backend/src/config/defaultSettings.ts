@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS = {
     overpaymentTolerance: 1000,
     allowFutureDatedPayments: false,
     /** full_balance: an early settlement pays everything still owed. waive_future_interest: interest on installments not yet due is waived. */
+    terminationFeeRate: 10, // % of what is still owed, charged when a customer terminates a loan before its tenor ends
     earlySettlement: 'full_balance' as 'full_balance' | 'waive_future_interest',
   },
   latePayment: {

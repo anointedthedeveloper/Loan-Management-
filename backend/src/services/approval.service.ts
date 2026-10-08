@@ -11,10 +11,11 @@ import { auditAs } from './AuditService.js';
 import { editRepayment } from './repayment.service.js';
 import { reverseTransaction } from './transaction.service.js';
 import { updateLoan } from './loan.service.js';
+import { terminateLoan, quoteTermination } from './settlement.service.js';
 import { deleteCustomer } from './customer.service.js';
 import type { Actor } from '../types/index.js';
 
-export type ApprovalKind = 'repayment_edit' | 'transaction_reverse' | 'loan_edit' | 'customer_delete';
+export type ApprovalKind = 'repayment_edit' | 'transaction_reverse' | 'loan_edit' | 'loan_terminate' | 'customer_delete';
 const nextId = async () => `REQ-${String(await nextSequence('approval')).padStart(6, '0')}`;
 const naira = (n: number) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -34,6 +35,12 @@ export async function createRequest(kind: ApprovalKind, targetId: string, payloa
     if (kind === 'repayment_edit' && tx.type !== 'repayment') throw AppError.badRequest('Only repayments can be corrected', 'NOT_EDITABLE');
     targetLabel = tx.transactionId; loanRef = (tx.loan as any)?.loanId;
     summary = kind === 'repayment_edit' ? `Change ${tx.transactionId} (${naira(tx.amount)}) to ${naira(payload.amount)}${payload.date ? ` dated ${new Date(payload.date).toISOString().slice(0, 10)}` : ''}` : `Reverse ${tx.transactionId} (${naira(tx.amount)})`;
+  } else if (kind === 'loan_terminate') {
+    const loan = await Loan.findById(targetId);
+    if (!loan) throw AppError.notFound('Loan not found', 'LOAN_NOT_FOUND');
+    const q = await quoteTermination(targetId, payload.date ? new Date(payload.date) : undefined);
+    targetLabel = loan.loanId; loanRef = loan.loanId;
+    summary = `Terminate ${loan.loanId} early: pay ${naira(q.outstanding)} + ${q.feeRate}% fee ${naira(q.fee)} = ${naira(q.amountToPay)} (${naira(q.interestWaived)} interest not charged)`;
   } else if (kind === 'loan_edit') {
     const loan = await Loan.findById(targetId);
     if (!loan) throw AppError.notFound('Loan not found', 'LOAN_NOT_FOUND');
@@ -73,6 +80,7 @@ export async function approveRequest(id: string, actor: Actor) {
   const target = String(r.targetId);
   if (r.kind === 'repayment_edit') await editRepayment(target, { ...p, date: p.date ? new Date(p.date) : undefined, reason: p.reason ?? r.reason ?? `Requested by ${r.requestedByName}` }, actor);
   else if (r.kind === 'transaction_reverse') await reverseTransaction(target, p.reason ?? r.reason ?? 'Approved request', actor);
+  else if (r.kind === 'loan_terminate') await terminateLoan(target, { date: p.date ? new Date(p.date) : undefined, method: p.method, reference: p.reference, description: p.description }, actor);
   else if (r.kind === 'loan_edit') await updateLoan(target, { ...p, startDate: p.startDate ? new Date(p.startDate) : undefined, firstPaymentDate: p.firstPaymentDate ? new Date(p.firstPaymentDate) : undefined, reason: p.reason ?? r.reason }, actor, true);
   else await deleteCustomer(target, actor);
   r.status = 'approved'; r.decidedBy = new Types.ObjectId(actor.id); r.decidedByName = actor.name; r.decidedAt = new Date(); r.decisionNote = 'Carried out';

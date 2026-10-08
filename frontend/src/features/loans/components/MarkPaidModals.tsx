@@ -11,7 +11,8 @@ import { AttachmentPicker } from '../../attachments/AttachmentComponents'
 import { SelectField } from '../../../components/ui/FormControls'
 import { Modal, ModalActions } from '../../../components/ui/Modal'
 import { formatDate, formatMoney } from '../../../utils/format'
-import type { Attachment, Installment, Loan, SettlementQuote } from '../../../types/finance'
+import { approvalService } from '../../approvals/approvalService'
+import type { Attachment, Installment, Loan, SettlementQuote, TerminationQuote } from '../../../types/finance'
 import { loanService } from '../services/loanService'
 
 function usePayFields() {
@@ -103,6 +104,61 @@ export function SettleLoanModal({ loan, onClose, onDone }: { loan: Loan; onClose
         <AttachmentPicker value={files} onChange={setFiles} loanId={loan.id} />
         <p className="text-xs text-slate-500">The loan is marked completed and every remaining installment is closed. This is recorded in the ledger and audit log.</p>
         <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" loading={busy} loadingText="Settling…" disabled={!quote || needsApproval}>Settle loan</Button></ModalActions>
+      </form>
+    </Modal>
+  )
+}
+
+/** Ends a loan before its tenor is done: unused interest is not charged, and a termination fee (10% by default) is added. The CEO does it; an accountant sends a request. */
+export function TerminateLoanModal({ loan, onClose, onDone }: { loan: Loan; onClose: () => void; onDone: () => void }) {
+  const toast = useToast()
+  const { can } = useAuth()
+  const { meta, f, errs, setErrs, set } = usePayFields()
+  const [quote, setQuote] = useState<TerminationQuote | null>(null)
+  const [qErr, setQErr] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [files, setFiles] = useState<Attachment[]>([])
+  const direct = can(PERM.loans.approve)
+
+  useEffect(() => {
+    let live = true
+    setQuote(null); setQErr('')
+    loanService.terminationQuote(loan.id, f.date || undefined).then((q) => { if (live) setQuote(q) }).catch((e) => { if (live) setQErr(e instanceof ApiError ? e.message : 'Could not calculate') })
+    return () => { live = false }
+  }, [loan.id, f.date])
+
+  async function submit(e: FormEvent) {
+    e.preventDefault(); setBusy(true); setErrs({})
+    const body = { date: f.date || undefined, method: f.method || undefined, reference: f.reference || undefined, attachmentIds: files.length ? files.map((a) => a.id) : undefined }
+    try {
+      if (direct) { await loanService.terminate(loan.id, body); toast('success', `${loan.loanId} terminated`) }
+      else { await approvalService.request('loan_terminate', loan.id, 'Customer asked to terminate early', { date: f.date || undefined, method: f.method || undefined, reference: f.reference || undefined }); toast('success', 'Sent to the CEO for approval') }
+      onDone()
+    } catch (err) { if (err instanceof ApiError && err.fields) setErrs(err.fields); toast('error', err instanceof ApiError ? err.message : 'Could not terminate the loan') }
+    finally { setBusy(false) }
+  }
+  return (
+    <Modal open onClose={onClose} title={`${direct ? 'Terminate' : 'Request termination of'} ${loan.loanId} early`}>
+      <form onSubmit={submit} className="space-y-4" noValidate>
+        {qErr ? <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{qErr}</p> : !quote ? <p className="text-sm text-slate-500">Calculating the termination figure…</p> : (
+          <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Calculated by the server · cost for the {quote.monthsUsed} month(s) used</p>
+            <div className="flex justify-between"><span className="text-slate-500">Still owed on the loan</span><span className="tabular-nums">{formatMoney(quote.totalOwed)}</span></div>
+            <div className="flex justify-between text-brand-700"><span>Interest not charged (months not used)</span><span className="tabular-nums">− {formatMoney(quote.interestWaived)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Outstanding to pay</span><span className="tabular-nums">{formatMoney(quote.outstanding)}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Termination fee ({quote.feeRate}%)</span><span className="tabular-nums">+ {formatMoney(quote.fee)}</span></div>
+            <div className="flex justify-between border-t border-slate-200 pt-2 text-lg font-bold"><span>Amount to pay now</span><span className="tabular-nums">{formatMoney(quote.amountToPay)}</span></div>
+          </div>
+        )}
+        {!direct && <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">Terminating a loan early needs the CEO. This sends a request; nothing changes until it is approved.</p>}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Termination date" type="date" value={f.date} onChange={set('date')} error={errs.date} />
+          <SelectField label="Method" options={meta?.paymentMethods ?? []} value={f.method} onChange={set('method')} placeholder="Choose method" error={errs.method} />
+        </div>
+        <Field label="Reference" value={f.reference} onChange={set('reference')} error={errs.reference} placeholder="Transfer / receipt reference" />
+        {direct && <AttachmentPicker value={files} onChange={setFiles} loanId={loan.id} />}
+        <p className="text-xs text-slate-500">The loan is marked completed. The fee is recorded on its own in the ledger and is not part of the loan balance. Everything is in the audit log.</p>
+        <ModalActions><Button type="button" variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" variant="danger" loading={busy} loadingText="Saving…" disabled={!quote}>{direct ? 'Terminate loan' : 'Send for approval'}</Button></ModalActions>
       </form>
     </Modal>
   )

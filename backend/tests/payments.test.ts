@@ -196,3 +196,33 @@ describe('statement with uploaded proofs (PDF only)', () => {
     expect((await api('get', `/api/loans/${l.id}/statement?format=csv&includeUploads=true`)).status).toBe(400);
   });
 });
+
+describe('premature termination (10% fee)', () => {
+  it('quotes revised cost for the months used, writes off the unused interest, charges 10% of what is left as a separate fee, and completes the loan', async () => {
+    const p = (await api('post', '/api/loan-products').send({ name: 'Term', code: 'TERM', interestRate: 5, minAmount: 10000, maxAmount: 5_000_000, minDuration: 1, maxDuration: 12, durationUnit: 'months', allowedFrequencies: ['monthly'], defaultFrequency: 'monthly' })).body.data.product;
+    const customerId = (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id;
+    const loan = (await api('post', '/api/loans').send({ customerId, productId: p.id, amount: 500_000, duration: { value: 12, unit: 'months' }, startDate: isoDate(todayLagos()) })).body.data.loan;
+    expect(loan.totalRepayment).toBe(800_000);
+    await api('post', '/api/repayments').send({ loanId: loan.id, amount: 66_666.67 });
+    // month 1 of 12: revised cost = 500,000 x (1 + 5% x 1) = 525,000; outstanding = 525,000 - 66,666.67 = 458,333.33; fee 10% = 45,833.33
+    const q = (await api('get', `/api/loans/${loan.id}/termination-quote`)).body.data.quote;
+    expect(q).toMatchObject({ monthsUsed: 1, feeRate: 10, totalOwed: 733_333.33, interestWaived: 275_000, outstanding: 458_333.33, fee: 45_833.33, amountToPay: 504_166.66 });
+    expect((await api('post', `/api/loans/${loan.id}/terminate`, acct).send({})).status).toBe(403); // accountants ask the CEO instead
+    const t = await api('post', `/api/loans/${loan.id}/terminate`).send({ method: 'bank_transfer', reference: 'TERM-1' });
+    expect(t.status).toBe(200);
+    expect(t.body.data.loan).toMatchObject({ status: 'completed', outstandingBalance: 0, principalBalance: 0, interestBalance: 0 });
+    const tx = await Transaction.find({ loan: loan.id, reversedAt: { $exists: false } }).sort({ createdAt: 1 });
+    expect(tx.map((x) => [x.type, x.amount, x.isCash, x.affectsLoanBalance])).toEqual([['disbursement', 500_000, true, false], ['repayment', 66_666.67, true, true], ['waiver', 275_000, false, true], ['repayment', 458_333.33, true, true], ['fee', 45_833.33, true, false]]);
+  });
+
+  it('an accountant requests it and the CEO approves; nothing changes before that', async () => {
+    const p = (await api('get', '/api/loan-products')).body.data.products.find((x: any) => x.code === 'TERM');
+    const customerId = (await api('post', '/api/customers').send(customerPayload())).body.data.customer.id;
+    const loan = (await api('post', '/api/loans').send({ customerId, productId: p.id, amount: 100_000, duration: { value: 6, unit: 'months' }, startDate: isoDate(todayLagos()) })).body.data.loan;
+    const r = await api('post', '/api/approvals', acct).send({ kind: 'loan_terminate', targetId: loan.id, reason: 'Customer wants out' });
+    expect(r.status).toBe(201); expect(r.body.data.request.summary).toMatch(/Terminate .* early/);
+    expect((await api('get', `/api/loans/${loan.id}`)).body.data.loan.status).toBe('active');
+    expect((await api('post', `/api/approvals/${r.body.data.request.id}/approve`)).status).toBe(200);
+    expect((await api('get', `/api/loans/${loan.id}`)).body.data.loan.status).toBe('completed');
+  });
+});

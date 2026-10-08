@@ -1,6 +1,6 @@
 import { api, apiPage, qs } from '../../services/api'
 
-export type ApprovalKind = 'repayment_edit' | 'transaction_reverse' | 'loan_edit' | 'customer_delete'
+export type ApprovalKind = 'repayment_edit' | 'transaction_reverse' | 'loan_edit' | 'loan_terminate' | 'customer_delete'
 export interface ApprovalRequest {
   id: string; requestId: string; kind: ApprovalKind; targetLabel: string; loanRef?: string; summary: string; reason?: string
   status: 'pending' | 'approved' | 'rejected' | 'cancelled'; requestedByName: string; decidedByName?: string; decidedAt?: string; decisionNote?: string; createdAt: string

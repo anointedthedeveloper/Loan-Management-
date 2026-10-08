@@ -13,7 +13,7 @@ import { formatDateTime } from '../../../utils/format'
 import { approvalService, type ApprovalRequest } from '../approvalService'
 
 const TONE = { pending: 'amber', approved: 'green', rejected: 'red', cancelled: 'slate' } as const
-const KIND = { repayment_edit: 'Payment correction', transaction_reverse: 'Reversal', loan_edit: 'Loan change', customer_delete: 'Customer deletion' }
+const KIND = { repayment_edit: 'Payment correction', transaction_reverse: 'Reversal', loan_edit: 'Loan change', loan_terminate: 'Early termination', customer_delete: 'Customer deletion' }
 
 /** The CEO decides requests here; an accountant sees (and can cancel) their own. */
 export default function ApprovalsPage() {
