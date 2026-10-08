@@ -119,4 +119,13 @@ describe('opening balances', () => {
     const rec = (await api('get', `/api/monthly-uploads/${uploadId}`)).body.data.upload;
     expect(rec).toMatchObject({ total: 3, created: 3 }); expect(rec.rows).toHaveLength(3);
   });
+
+  it('dashboard totals include brought-in loans and repayments; outstanding figures are for the CEO only', async () => {
+    const c = (await api('get', '/api/dashboard/overview')).body.data.financial;
+    const a = (await api('get', '/api/dashboard/overview', acct)).body.data.financial;
+    expect(c.totalDisbursed).toBeGreaterThan(0); expect(c.totalCollected).toBeGreaterThanOrEqual(556333.33); // the opening loan and its repayments to date
+    expect(c.outstandingTotal).toBeGreaterThan(0); expect(c.outstandingByStatus).toBeTruthy();
+    for (const k of ['outstandingTotal', 'outstandingPrincipal', 'outstandingByStatus', 'totalExpected']) expect(a, k).not.toHaveProperty(k);
+    expect(a.totalCollected).toBe(c.totalCollected);
+  });
 });

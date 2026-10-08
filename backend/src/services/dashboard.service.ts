@@ -16,7 +16,7 @@ const LIVE = ['active', 'overdue', 'defaulted'];
 const sum = (rows: any[], k: string) => round2(rows.reduce((s, r) => s + (r[k] ?? 0), 0));
 
 /** Every figure is derived from the database for the signed-in user's permissions. Nothing is hard-coded. */
-export async function getOverview(permissions: Permission[]) {
+export async function getOverview(permissions: Permission[], role: string = 'ceo') {
   const has = (p: Permission) => permissions.includes(p);
   const today = todayLagos();
   const out: Record<string, unknown> = {};
@@ -40,8 +40,9 @@ export async function getOverview(permissions: Permission[]) {
       const [byStatus, [cash], monthly] = await Promise.all([
         Loan.aggregate([{ $group: { _id: '$status', count: { $sum: 1 }, principal: { $sum: '$principalBalance' }, outstanding: { $sum: '$outstandingBalance' }, overdue: { $sum: '$overdueAmount' }, expected: { $sum: '$totalRepayment' } } }]),
         Transaction.aggregate([
-          { $match: { reversedAt: { $exists: false }, isCash: true, type: { $in: ['disbursement', 'topup', 'repayment'] } } },
-          { $group: { _id: null, disbursed: { $sum: { $cond: [{ $in: ['$type', ['disbursement', 'topup']] }, '$amount', 0] } }, collected: { $sum: { $cond: [{ $eq: ['$type', 'repayment'] }, '$amount', 0] } } } },
+          // Totals include loans and repayments brought in as opening balances (no cash moved through the portal for those); the monthly chart below is cash only.
+          { $match: { reversedAt: { $exists: false }, $or: [{ isCash: true, type: { $in: ['disbursement', 'topup', 'repayment'] } }, { type: { $in: ['opening_balance', 'repayment'] } }] } },
+          { $group: { _id: null, disbursed: { $sum: { $cond: [{ $in: ['$type', ['disbursement', 'topup', 'opening_balance']] }, '$amount', 0] } }, collected: { $sum: { $cond: [{ $eq: ['$type', 'repayment'] }, '$amount', 0] } } } },
         ]),
         Transaction.aggregate([
           { $match: { reversedAt: { $exists: false }, isCash: true, date: { $gte: start }, type: { $in: ['disbursement', 'topup', 'repayment'] } } },
@@ -62,6 +63,8 @@ export async function getOverview(permissions: Permission[]) {
         outstandingByStatus: LIVE.map((s) => ({ value: s, label: LOAN_STATUSES.find((x) => x.value === s)!.label, amount: round2(byStatus.find((r) => r._id === s)?.outstanding ?? 0) })),
         monthly: months.map((m) => ({ month: m, collected: pick(m, 'collected'), disbursed: pick(m, 'disbursed') })),
       };
+      // Outstanding balances are for the CEO only.
+      if (role !== 'ceo') { const f = out.financial as Record<string, unknown>; delete f.outstandingPrincipal; delete f.outstandingTotal; delete f.outstandingByStatus; delete f.totalExpected; }
     });
     add(async () => { out.recentLoans = (await listLoans({ page: 1, limit: 5, sort: 'createdAt', order: 'desc' })).items; });
     add(async () => {
