@@ -48,7 +48,7 @@ export function TopUpRequestModal({ loan, onClose, onDone }: { loan?: { id: stri
   const approver = can(PERM.topups.approve) // approvers (CEO) skip the approval step
   const meta = useLoanMeta()
   const [picked, setPicked] = useState<Hit | null>(loan ? { id: loan.id, title: loan.loanId, sub: `Outstanding ${formatMoney(loan.outstandingBalance)}` } : null)
-  const [f, setF] = useState({ amount: '', durationValue: String(loan?.duration?.value ?? 6), durationUnit: loan?.duration?.unit ?? 'months', revisedTenor: '', frequency: loan?.frequency ?? 'monthly', customIntervalDays: '', interestRate: '', notes: '' })
+  const [f, setF] = useState({ amount: '', durationValue: '12', durationUnit: 'months', revisedTenor: '', frequency: loan?.frequency ?? 'monthly', customIntervalDays: '', interestRate: '', notes: '' })
   const [errs, setErrs] = useState<Record<string, string>>({})
   const [calc, setCalc] = useState<TopUpCalc | null>(null)
   const [calcErr, setCalcErr] = useState('')

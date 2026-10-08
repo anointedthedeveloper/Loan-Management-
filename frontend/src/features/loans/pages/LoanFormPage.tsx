@@ -26,6 +26,9 @@ import { ScheduleTable } from '../components/ScheduleTable'
 const todayStr = () => new Date().toISOString().slice(0, 10)
 
 /** New / edit loan. Every figure in the right-hand panel is calculated by the backend engine via /loans/preview. */
+/** Loans default to 12 months (within the product's limits). */
+const defaultTenor = (p: { durationUnit: string; minDuration: number; maxDuration?: number | null }) => (p.durationUnit !== 'months' ? p.minDuration : Math.min(Math.max(12, p.minDuration), p.maxDuration ?? 12))
+
 export default function LoanFormPage() {
   const { id } = useParams()
   const editing = !!id
@@ -65,7 +68,7 @@ export default function LoanFormPage() {
   }, [existing.data])
   useEffect(() => { // product defaults when a product is chosen
     if (!product || editing) return
-    setF((s) => ({ ...s, durationUnit: product.durationUnit, durationValue: s.durationValue || String(product.minDuration), frequency: product.allowedFrequencies.includes(s.frequency) ? s.frequency : product.defaultFrequency }))
+    setF((s) => ({ ...s, durationUnit: product.durationUnit, durationValue: s.durationValue || String(defaultTenor(product)), frequency: product.allowedFrequencies.includes(s.frequency) ? s.frequency : product.defaultFrequency }))
   }, [product?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const running = editing && !!existing.data && existing.data.loan.status !== 'pending' // running loans are edited by the CEO only

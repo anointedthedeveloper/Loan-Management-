@@ -86,7 +86,7 @@ export default function DashboardPage({ variant }: { variant: 'ceo' | 'accountan
           {fin && (
             <div className="grid gap-6 lg:grid-cols-3">
               {ceo && <div className="lg:col-span-2"><ChartCard title="Monthly collections and disbursements"><GroupedBarChart data={fin.monthly as unknown as Record<string, number | string>[]} labelKey="month" series={[{ key: 'collected', label: 'Collected', color: '#14855c' }, { key: 'disbursed', label: 'Disbursed', color: '#94a3b8' }]} /></ChartCard></div>}
-              {fin.outstandingByStatus && <div><ChartCard title="Outstanding balance by status"><HorizontalBars items={fin.outstandingByStatus.map((s) => ({ label: s.label, value: s.amount }))} /></ChartCard></div>}
+              {ceo && fin.outstandingByStatus && <div><ChartCard title="Outstanding balance by status"><HorizontalBars items={fin.outstandingByStatus.map((s) => ({ label: s.label, value: s.amount }))} /></ChartCard></div>}
               <StatusBreakdown title="Loans by status" items={fin.loanStatusBreakdown} />
               {data?.customers && <StatusBreakdown title="Customers by status" items={data.customers.byStatus} />}
             </div>

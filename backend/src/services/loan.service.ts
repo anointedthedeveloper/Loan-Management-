@@ -62,7 +62,7 @@ export interface Draft { firstPaymentDate?: Date; product: ProductDoc; rates: { 
 /** Prices a loan from a product + request using the central engine. Used by preview, create and edit. */
 export async function buildDraft(input: PricingInput, extra: { carriedBalance?: number; interestBasis?: LoanTermsInput['interestBasis']; skipLimits?: boolean; allowBackdated?: boolean; rates?: { interestRate: number; applicationFeeRate: number; rateBasis: string } } = {}): Promise<Draft> {
   const product = await getProduct(input.productId);
-  let duration = (input.duration ?? { value: product.minDuration, unit: product.durationUnit }) as { value: number; unit: string };
+  let duration = (input.duration ?? { value: product.durationUnit === 'months' ? Math.min(Math.max(12, product.minDuration), product.maxDuration ?? 12) : product.minDuration, unit: product.durationUnit }) as { value: number; unit: string }; // 12 months unless the product's limits say otherwise
   const frequency = (input.frequency ?? product.defaultFrequency) as Frequency;
   // Monthly loans: an explicit installment count is the tenor in months (keeps duration, interest and schedule consistent).
   if (frequency === 'monthly' && input.numberOfInstallments) duration = { value: input.numberOfInstallments, unit: 'months' };
