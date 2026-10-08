@@ -21,9 +21,23 @@ export function OpeningBalances({ onDone }: { onDone: () => void }) {
   const [busy, setBusy] = useState('')
   const run = async (key: string, fn: () => Promise<void>, fail: string) => { setBusy(key); try { await fn() } catch (e) { toast('error', e instanceof ApiError ? e.message : fail) } finally { setBusy('') } }
   const check = (f: File, date = asAt) => run('check', async () => { setFile(f); setResult(null); setPlan(null); const p = await monthlyService.balancesPreview(f, date); setPlan(p); if (!date) setAsAt(p.asAt.slice(0, 10)) }, 'Could not read the file')
+  const [progress, setProgress] = useState('')
+  // A few rows at a time, so a long sheet never runs into the server's time limit; progress is shown and a failure says where it stopped.
   const submit = () => file && run('apply', async () => {
-    const r = await monthlyService.balancesApply(file, asAt); setResult(r); setPlan(null); setFile(null); onDone()
-    toast(r.skipped ? 'error' : 'success', `${r.created} balance(s) ${r.needsApproval ? 'sent for approval' : 'recorded'}${r.skipped ? `, ${r.skipped} skipped` : ''}`)
+    let offset = 0; let uploadId = ''; let created = 0; let skipped = 0; let needsApproval = false; const rows: UploadResult['rows'] = []
+    try {
+      for (;;) {
+        const r = await monthlyService.balancesApply(file, asAt, offset, uploadId)
+        uploadId = r.id; offset = r.nextOffset; created += r.created; skipped += r.skipped; needsApproval = r.needsApproval; rows.push(...r.rows)
+        setProgress(`Recorded ${Math.min(offset, r.count)} of ${r.count}…`)
+        if (r.done) break
+      }
+    } catch (e) {
+      setResult({ id: uploadId, filename: file.name, total: rows.length, created, updated: 0, unchanged: 0, skipped, needsApproval, rows })
+      throw new ApiError(`Stopped after ${offset} row(s): ${e instanceof ApiError ? e.message : 'the connection failed'}. ${created} loan(s) were saved. Check Loans, then upload the same file again; people who already have a loan are skipped.`, 0, 'PARTIAL')
+    } finally { setProgress(''); onDone() }
+    setResult({ id: uploadId, filename: file.name, total: rows.length, created, updated: 0, unchanged: 0, skipped, needsApproval, rows }); setPlan(null); setFile(null)
+    toast(skipped ? 'error' : 'success', `${created} loan(s) ${needsApproval ? 'sent for approval' : 'recorded'}${skipped ? `, ${skipped} skipped` : ''}`)
   }, 'Upload failed')
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -46,12 +60,13 @@ export function OpeningBalances({ onDone }: { onDone: () => void }) {
               ))}
             </ul>
           )}
-          <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setPlan(null); setFile(null) }}>Cancel</Button><Button disabled={plan.counts.balances === 0} loading={busy === 'apply'} loadingText="Saving…" onClick={submit}>{approver ? 'Record these loans' : 'Send for approval'}</Button></div>
+          <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setPlan(null); setFile(null) }}>Cancel</Button><Button disabled={plan.counts.balances === 0} loading={busy === 'apply'} loadingText={progress || 'Saving…'} onClick={submit}>{approver ? 'Record these loans' : 'Send for approval'}</Button></div>
         </div>
       )}
       {result && (
         <div className="mt-4 rounded-lg border border-slate-200 p-4 text-sm">
           <p className="font-semibold">{result.created} balance(s) {result.needsApproval ? 'waiting for the CEO' : 'recorded'}{result.skipped ? `, ${result.skipped} skipped` : ''}.</p>
+          {result.rows.some((x) => x.status === 'skipped') && <ul className="mt-2 max-h-48 space-y-0.5 overflow-y-auto text-xs text-red-700">{result.rows.filter((x) => x.status === 'skipped').map((x) => <li key={x.row}>Row {x.row} {x.name}: {x.messages.join(' ')}</li>)}</ul>}
           {result.needsApproval && result.created > 0 && <Link to="/loans?status=pending" className="mt-1 inline-block font-medium text-brand-700 hover:underline">Open the pending loans</Link>}
         </div>
       )}

@@ -25,7 +25,7 @@ r.post('/', raw, asyncHandler(async (req, res) => {
 }));
 r.post('/balances/preview', raw, asyncHandler(async (req, res) => ok(res, { plan: publicBalancePlan(await planBalances(body(req), perms(req), req.query.asAt ? String(req.query.asAt) : undefined)) }, 'Checked the file. Nothing was saved.')));
 r.post('/balances', raw, asyncHandler(async (req, res) => {
-  const result = await applyBalances(body(req), String(req.query.filename ?? 'balances.xlsx').slice(0, 120), actorOf(req), perms(req), req.query.asAt ? String(req.query.asAt) : undefined);
+  const result = await applyBalances(body(req), String(req.query.filename ?? 'balances.xlsx').slice(0, 120), actorOf(req), perms(req), req.query.asAt ? String(req.query.asAt) : undefined, { offset: Number(req.query.offset) || 0, limit: Number(req.query.limit) || undefined, uploadId: req.query.uploadId ? String(req.query.uploadId) : undefined });
   ok(res, { result }, result.needsApproval ? `${result.created} opening balance(s) submitted for approval` : `${result.created} opening balance(s) recorded`, 201);
 }));
 r.get('/:id', asyncHandler(async (req, res) => ok(res, { upload: await getMonthlyUpload(String(req.params.id)) })));

@@ -101,7 +101,7 @@ export async function planBalances(buf: Buffer, perms: UploadPerms, asAtParam?: 
     if (!cust) {
       if (!s.name) { err('The row has no client number, IPPIS or name.'); continue; }
       if (s.clientId && seenNo.has(s.clientId)) { err(`Client number ${s.clientId} is used twice in the sheet.`); continue; }
-      if (s.ippis && (seenIppis.has(s.ippis) || await Customer.exists({ isArchived: false, 'employment.ippisNumber': s.ippis }))) { err(`IPPIS ${s.ippis} is used twice.`); continue; }
+      if (s.ippis && seenIppis.has(s.ippis)) { err(`IPPIS ${s.ippis} is used twice.`); continue; }
       const same = s.ippis ? [] : await Customer.find({ isArchived: false, fullName: new RegExp(`^${titleCase(s.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}$`, 'i') });
       if (same.length > 1) { err(`More than one customer is called ${titleCase(s.name)}. Put the Client ID in the row.`); continue; }
       if (same.length === 1) { cust = same[0]; p.warnings.push('Matched by name only.'); const o = await Loan.findOne({ customer: cust._id, status: { $in: ['pending', 'approved', ...LIVE_LOAN_STATUSES] } }).select('loanId status'); if (o) openBy.set(String(cust._id), o); }
@@ -120,10 +120,16 @@ export async function planBalances(buf: Buffer, perms: UploadPerms, asAtParam?: 
 }
 export const publicBalancePlan = (p: Awaited<ReturnType<typeof planBalances>>) => ({ ...p, rows: p.rows.map(({ _work, ...r }) => r) });
 
-export async function applyBalances(buf: Buffer, filename: string, actor: Actor, perms: UploadPerms, asAtParam?: string) {
+/**
+ * Records the balances a few rows at a time (`offset`/`limit`), so a long sheet never runs into the server's time limit; the page
+ * calls this again with `nextOffset` until `done`. The first call creates the upload record and returns its id, later calls add to it.
+ */
+export async function applyBalances(buf: Buffer, filename: string, actor: Actor, perms: UploadPerms, asAtParam?: string, opts: { offset?: number; limit?: number; uploadId?: string } = {}) {
   const plan = await planBalances(buf, perms, asAtParam);
+  const offset = Math.max(0, opts.offset ?? 0); const limit = Math.max(1, Math.min(opts.limit ?? plan.rows.length, 500));
+  const slice = plan.rows.slice(offset, offset + limit);
   const results: any[] = [];
-  for (const r of plan.rows) {
+  for (const r of slice) {
     const base = { row: r.row, name: r.matchedName ?? r.name, clientId: r.customerRef ?? r.clientId ?? '', ippis: r.ippis, kind: 'OPENING BALANCE' };
     if (r.action === 'error') { results.push({ ...base, status: 'skipped', messages: r.errors }); continue; }
     if (r.action === 'skipped' || !r._work) { results.push({ ...base, status: 'unchanged', messages: r.warnings }); continue; }
@@ -146,7 +152,10 @@ export async function applyBalances(buf: Buffer, filename: string, actor: Actor,
     } catch (e: any) { results.push({ ...base, status: 'skipped', messages: [...messages, e?.message ?? 'Could not record this balance.'] }); }
   }
   const created = results.filter((x) => x.loan).length; const skipped = results.filter((x) => x.status === 'skipped').length;
-  const rec = await MonthlyUpload.create({ filename, uploadedBy: actor.id, uploadedByName: actor.name, needsApproval: !perms.canApprove, total: results.length, created, updated: 0, skipped, rows: results });
-  await auditAs(actor, { action: AUDIT.MONTHLY_UPLOAD, entity: 'MonthlyUpload', entityId: String(rec._id), entityLabel: filename, after: { openingBalances: created, skipped, asAt: plan.asAt.toISOString().slice(0, 10), pendingApproval: !perms.canApprove } });
-  return { id: String(rec._id), filename, asAt: plan.asAt, total: results.length, created, updated: 0, skipped, unchanged: results.filter((x) => x.status === 'unchanged').length, needsApproval: !perms.canApprove, rows: results };
+  const nextOffset = offset + slice.length; const done = nextOffset >= plan.rows.length;
+  let id = opts.uploadId && Types.ObjectId.isValid(opts.uploadId) ? opts.uploadId : '';
+  if (id) await MonthlyUpload.updateOne({ _id: id }, { $inc: { total: results.length, created, skipped }, $push: { rows: { $each: results } } });
+  else id = String((await MonthlyUpload.create({ filename, uploadedBy: actor.id, uploadedByName: actor.name, needsApproval: !perms.canApprove, total: results.length, created, updated: 0, skipped, rows: results }))._id);
+  if (done) await auditAs(actor, { action: AUDIT.MONTHLY_UPLOAD, entity: 'MonthlyUpload', entityId: id, entityLabel: filename, after: { openingLoans: plan.counts.balances, asAt: plan.asAt.toISOString().slice(0, 10), pendingApproval: !perms.canApprove } });
+  return { id, filename, asAt: plan.asAt, count: plan.rows.length, nextOffset, done, total: results.length, created, updated: 0, skipped, unchanged: results.filter((x) => x.status === 'unchanged').length, needsApproval: !perms.canApprove, rows: results };
 }

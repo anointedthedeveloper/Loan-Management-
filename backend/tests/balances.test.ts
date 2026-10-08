@@ -104,4 +104,19 @@ describe('opening balances', () => {
     expect(pr.liquidation).toMatchObject({ loanTaken: 1080000, revisedCost: 1080000, paidToDate: 556333.33, outstanding: 523666.67 });
     expect(pr.carriedBalance).toBeCloseTo(523666.67 * 1.05, 2);
   });
+
+  it('can be recorded a few rows at a time (so long sheets never hit the time limit) into one upload record', async () => {
+    const people = [await mk('720040'), await mk('720041'), await mk('720042')];
+    const buf = await sheet(people.map((p, i) => [null, p.fullName, 720040 + i, 'OSGF', 1000 * (i + 1)]));
+    let offset = 0; let uploadId = ''; let created = 0; let calls = 0;
+    for (;;) {
+      const r = (await send(`/balances?filename=chunk.xlsx&offset=${offset}&limit=2${uploadId ? `&uploadId=${uploadId}` : ''}`, buf)).body.data.result;
+      uploadId = r.id; created += r.created; offset = r.nextOffset; calls++;
+      if (r.done) break;
+    }
+    expect([calls, created]).toEqual([2, 3]);
+    expect(await Loan.countDocuments({ customer: { $in: people.map((p) => p.id) } })).toBe(3);
+    const rec = (await api('get', `/api/monthly-uploads/${uploadId}`)).body.data.upload;
+    expect(rec).toMatchObject({ total: 3, created: 3 }); expect(rec.rows).toHaveLength(3);
+  });
 });

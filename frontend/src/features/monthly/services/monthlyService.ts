@@ -10,6 +10,7 @@ export interface PlanRow {
 }
 export interface Plan { rows: PlanRow[]; counts: { newLoans: number; loanUpdates: number; customerUpdates: number; newCustomers: number; unchanged: number; errors: number }; needsApproval: boolean; product: string }
 export interface ResultRow { row: number; name: string; clientId: string; ippis: string; kind: string; status: 'pending' | 'active' | 'updated' | 'unchanged' | 'skipped'; loan?: string; loanRef?: string; messages: string[] }
+export interface BalanceChunk extends UploadResult { count: number; nextOffset: number; done: boolean }
 export interface UploadResult { id: string; filename: string; total: number; created: number; updated: number; unchanged: number; skipped: number; needsApproval: boolean; rows: ResultRow[] }
 export interface UploadHistory { id: string; filename: string; uploadedBy: string; createdAt: string; total: number; created: number; updated: number; skipped: number; needsApproval: boolean }
 
@@ -18,7 +19,7 @@ export interface BalancePlan { rows: BalanceRow[]; asAt: string; counts: { balan
 
 export const monthlyService = {
   balancesPreview: (file: File, asAt: string) => uploadFile<{ plan: BalancePlan }>(`/monthly-uploads/balances/preview${asAt ? `?asAt=${asAt}` : ''}`, file).then((r) => r.plan),
-  balancesApply: (file: File, asAt: string) => uploadFile<{ result: UploadResult }>(`/monthly-uploads/balances?filename=${encodeURIComponent(file.name)}${asAt ? `&asAt=${asAt}` : ''}`, file).then((r) => r.result),
+  balancesApply: (file: File, asAt: string, offset: number, uploadId: string) => uploadFile<{ result: BalanceChunk }>(`/monthly-uploads/balances?filename=${encodeURIComponent(file.name)}${asAt ? `&asAt=${asAt}` : ''}&offset=${offset}&limit=8${uploadId ? `&uploadId=${uploadId}` : ''}`, file).then((r) => r.result),
   history: () => api<{ uploads: UploadHistory[] }>('/monthly-uploads').then((r) => r.uploads),
   preview: (file: File) => uploadFile<{ plan: Plan }>('/monthly-uploads/preview', file).then((r) => r.plan),
   apply: (file: File) => uploadFile<{ result: UploadResult }>(`/monthly-uploads?filename=${encodeURIComponent(file.name)}`, file).then((r) => r.result),
