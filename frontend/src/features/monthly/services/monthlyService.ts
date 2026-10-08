@@ -14,7 +14,7 @@ export interface UploadResult { id: string; filename: string; total: number; cre
 export interface UploadHistory { id: string; filename: string; uploadedBy: string; createdAt: string; total: number; created: number; updated: number; skipped: number; needsApproval: boolean }
 
 export interface BalanceRow { row: number; name: string; clientId: string | null; ippis: string; matchedName?: string; customerRef?: string; isNewCustomer?: boolean; balance: number | null; tenor: number; action: 'opening-balance' | 'skipped' | 'error'; errors: string[]; warnings: string[] }
-export interface BalancePlan { rows: BalanceRow[]; asAt: string; counts: { balances: number; newCustomers: number; skipped: number; errors: number; total: number }; needsApproval: boolean }
+export interface BalancePlan { rows: BalanceRow[]; asAt: string; counts: { balances: number; newCustomers: number; skipped: number; errors: number; total: number; loans: number; repaid: number }; needsApproval: boolean }
 
 export const monthlyService = {
   balancesPreview: (file: File, asAt: string) => uploadFile<{ plan: BalancePlan }>(`/monthly-uploads/balances/preview${asAt ? `?asAt=${asAt}` : ''}`, file).then((r) => r.plan),

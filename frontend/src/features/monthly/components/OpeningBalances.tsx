@@ -28,7 +28,7 @@ export function OpeningBalances({ onDone }: { onDone: () => void }) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="font-semibold">Opening balances</h2>
-      <p className="mt-0.5 text-sm text-slate-500">Upload what customers owe as at a date (Client ID, Clients Name, IPPIS NO, Ministry, Balance). Each balance becomes the customer's running loan at 0% interest, so it can be repaid and topped up. No cash is paid out.</p>
+      <p className="mt-0.5 text-sm text-slate-500">Upload the loans running at a date: Client ID, Clients Name, IPPIS NO, Ministry, Loan, Repayment to date and Balance as at. The Loan becomes the customer's running loan, the Repayment to date is recorded as already paid, and the balance is what is left, so it can be repaid and topped up. No cash is paid out. A sheet with only a Balance column uses the balance as the loan.</p>
       <p className={`mt-3 rounded-lg border px-3 py-2 text-sm ${approver ? 'border-slate-200 bg-slate-50 text-slate-600' : 'border-amber-300 bg-amber-50 text-amber-900'}`}>{approver ? 'Balances go live straight away.' : 'Balances are sent to the CEO for approval.'} Customers who already have an open loan are skipped; people not in the portal are added with their Client ID.</p>
       <div className="mt-4 flex flex-wrap items-end gap-3">
         <div><label htmlFor="bal-date" className="block text-xs font-medium text-slate-600">Balance as at</label><input id="bal-date" type="date" value={asAt} onChange={(e) => { setAsAt(e.target.value); if (file) void check(file, e.target.value) }} className="mt-1 rounded-lg border border-slate-300 px-3 py-2 text-sm" /></div>
@@ -38,7 +38,7 @@ export function OpeningBalances({ onDone }: { onDone: () => void }) {
       {busy === 'check' && <p className="mt-3 text-sm text-slate-500">Checking the file…</p>}
       {plan && (
         <div className="mt-4 space-y-3">
-          <p className="text-sm"><b>{plan.counts.balances}</b> balance(s) totalling <b>{formatMoney(plan.counts.total)}</b> as at {formatDate(plan.asAt)}{plan.counts.newCustomers ? `, ${plan.counts.newCustomers} new customer(s)` : ''}{plan.counts.skipped ? `, ${plan.counts.skipped} with nothing owed` : ''}{plan.counts.errors ? `, ${plan.counts.errors} problem(s)` : ''}. <span className="text-slate-500">Nothing has been saved yet.</span></p>
+          <p className="text-sm"><b>{plan.counts.balances}</b> loan(s): <b>{formatMoney(plan.counts.loans)}</b> lent, <b>{formatMoney(plan.counts.repaid)}</b> repaid, <b>{formatMoney(plan.counts.total)}</b> still owed as at {formatDate(plan.asAt)}{plan.counts.newCustomers ? `, ${plan.counts.newCustomers} new customer(s)` : ''}{plan.counts.skipped ? `, ${plan.counts.skipped} with nothing owed (skipped)` : ''}{plan.counts.errors ? `, ${plan.counts.errors} problem(s)` : ''}. <span className="text-slate-500">Nothing has been saved yet.</span></p>
           {plan.rows.some((r) => r.errors.length || (r.warnings.length && r.action !== 'skipped')) && (
             <ul className="max-h-60 overflow-y-auto rounded-lg border border-slate-200 p-3 text-xs">
               {plan.rows.filter((r) => r.errors.length || (r.warnings.length && r.action !== 'skipped')).map((r) => (
@@ -46,7 +46,7 @@ export function OpeningBalances({ onDone }: { onDone: () => void }) {
               ))}
             </ul>
           )}
-          <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setPlan(null); setFile(null) }}>Cancel</Button><Button disabled={plan.counts.balances === 0} loading={busy === 'apply'} loadingText="Saving…" onClick={submit}>{approver ? 'Record these balances' : 'Send for approval'}</Button></div>
+          <div className="flex justify-end gap-2"><Button variant="secondary" onClick={() => { setPlan(null); setFile(null) }}>Cancel</Button><Button disabled={plan.counts.balances === 0} loading={busy === 'apply'} loadingText="Saving…" onClick={submit}>{approver ? 'Record these loans' : 'Send for approval'}</Button></div>
         </div>
       )}
       {result && (

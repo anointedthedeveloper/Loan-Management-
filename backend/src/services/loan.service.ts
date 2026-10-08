@@ -217,8 +217,9 @@ export async function disburseLoan(id: string, actor: Actor) {
   if (loan.status !== 'approved') throw AppError.conflict(`Only approved loans can be disbursed (this loan is ${loan.status})`, 'INVALID_LOAN_STATE');
   // The payout is dated the loan's payment (start) date; a future start date is paid out now.
   const today = todayLagos();
-  if (loan.openingBalance) await postTransaction({ customer: loan.customer, loan: loan._id, type: 'opening_balance', amount: loan.amount, date: loan.startDate, isCash: false, description: `Opening balance brought into the portal (${loan.loanId})`, createdBy: actor.id });
+  if (loan.openingBalance) await postTransaction({ customer: loan.customer, loan: loan._id, type: 'opening_balance', amount: loan.amount, date: loan.startDate, isCash: false, description: `Opening loan brought into the portal (${loan.loanId})`, createdBy: actor.id });
   else await postTransaction({ customer: loan.customer, loan: loan._id, type: 'disbursement', amount: loan.amount, date: loan.startDate < today ? loan.startDate : today, description: `Loan disbursement ${loan.loanId}`, createdBy: actor.id });
+  if (loan.openingBalance && loan.openingRepaid > 0) await postTransaction({ customer: loan.customer, loan: loan._id, type: 'repayment', amount: loan.openingRepaid, date: loan.startDate, isCash: false, affectsLoanBalance: true, description: `Repayments made before the portal, up to ${loan.startDate.toISOString().slice(0, 10)}`, createdBy: actor.id });
   loan.status = 'active'; loan.disbursedAt = new Date(); await loan.save();
   await recalculateLoan(loan._id);
   if (loan.topUpOf) { const { settleOldLoanOnActivation } = await import('./topup.service.js'); await settleOldLoanOnActivation(loan._id, actor); } // a top-up loan liquidates the previous loan once it is live

@@ -81,4 +81,27 @@ describe('opening balances', () => {
     expect((await api('post', `/api/loans/${l.id}/approve`)).body.data.loan.status).toBe('active');
     expect(await Transaction.countDocuments({ loan: l._id, type: 'opening_balance' })).toBe(1);
   });
+
+  it('uses the Loan column as the loan, posts Repayment to date as a non-cash repayment, and a top-up carries what is still owed', async () => {
+    const x = await mk('720030'); const y = await mk('720031'); const z = await mk('720032');
+    const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet('Sheet1');
+    ws.addRow(['S/N', 'Client ID', 'Clients Name', 'IPPIS NO', 'AAA MINISTRY2', 'Loan', 'Repayment to date', 'Balance as at 30 Sep, 2026']);
+    ws.addRow([1, null, x.fullName, 720030, 'OSGF', 1080000, 556333.33, { formula: 'F2-G2', result: 523666.67 }]);
+    ws.addRow([2, null, y.fullName, 720031, 'OSGF', 320000, 332357.36, { formula: 'F3-G3', result: -12357.36 }]); // overpaid: nothing owed
+    ws.addRow([3, null, z.fullName, 720032, 'OSGF', 1600000, 0, 1600000]);
+    const buf = Buffer.from(await wb.xlsx.writeBuffer());
+    const pv = (await send('/balances/preview', buf)).body.data.plan;
+    expect(pv.counts).toMatchObject({ balances: 2, skipped: 1, errors: 0, loans: 2680000, repaid: 556333.33 });
+    expect(pv.rows[1].warnings.join(' ')).toMatch(/Repaid more than the loan/);
+    expect((await send('/balances?filename=new.xlsx', buf)).body.data.result).toMatchObject({ created: 2, skipped: 0 });
+    const l = (await Loan.findOne({ customer: x.id }))!;
+    expect(l).toMatchObject({ status: 'active', loanType: 'opening', amount: 1080000, principal: 1080000, totalRepayment: 1080000, interestAmount: 0, amountPaid: 556333.33, outstandingBalance: 523666.67 });
+    const txs = await Transaction.find({ loan: l._id }).sort({ createdAt: 1 });
+    expect(txs.map((t) => [t.type, t.isCash, t.amount])).toEqual([['opening_balance', false, 1080000], ['repayment', false, 556333.33]]);
+    expect(await Loan.countDocuments({ customer: y.id })).toBe(0);
+    // top-up: the old loan is liquidated for what is still owed (+ the 5% liquidation fee) and carried into the new loan
+    const pr = (await api('post', '/api/topups/preview').send({ loanId: String(l._id), amount: 200000, duration: { value: 6, unit: 'months' }, frequency: 'monthly', startDate: new Date().toISOString().slice(0, 10) })).body.data.calculation;
+    expect(pr.liquidation).toMatchObject({ loanTaken: 1080000, revisedCost: 1080000, paidToDate: 556333.33, outstanding: 523666.67 });
+    expect(pr.carriedBalance).toBeCloseTo(523666.67 * 1.05, 2);
+  });
 });

@@ -39,6 +39,7 @@ const schema = new Schema(
     firstPaymentDateIsCustom: { type: Boolean, default: false },
     dueDate: { type: Date, required: true },
     /** new = first loan, renewal = customer has had a loan before, topup = created by a top-up (see the loan book's Status column). */
+    openingRepaid: { type: Number, default: 0 },    // opening loans: what had already been repaid before the portal (posted as a non-cash repayment when the loan goes live)
     openingBalance: { type: Boolean, default: false }, // an existing balance brought into the portal (no cash was paid out here)
     loanType: { type: String, enum: ['new', 'renewal', 'topup', 'opening'], default: 'new' },
 

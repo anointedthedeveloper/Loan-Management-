@@ -15,14 +15,14 @@ import type { Actor } from '../types/index.js';
 import type { UploadPerms } from './monthlyUpload.service.js';
 
 /**
- * Opening balances: "what each customer owes as at <date>", brought in without any loan history.
- * Each balance becomes a loan (type "opening") of that amount at 0% interest, so the customer can be repaid against it,
+ * Opening loans: what each customer was lent (Loan = principal + interest), what they had repaid, and the balance as at <date>.
+ * Each row becomes a loan (type "opening") for the full Loan at 0% further interest, with the repayments to date posted as non-cash repayments, so the customer can be repaid against it,
  * topped up (the balance is liquidated into the new loan) and shown in every report. No cash is paid out: the ledger gets
  * a non-cash "Opening balance" entry. Accountants' uploads wait for the CEO's approval like any other loan.
- * Sheet columns: Client ID, Clients Name, IPPIS NO, Ministry, Balance as at <date> (optional: Tenor, EMI).
+ * Sheet columns: Client ID, Clients Name, IPPIS NO, Ministry, Loan, Repayment to date, Balance as at <date> (optional: Tenor). A sheet with only a Balance uses it as the loan.
  */
-interface Line { row: number; clientId: number | null; name: string; ippis: string; ministry: string; balance: number | null; tenor: number | null }
-export interface BalanceRow { row: number; name: string; clientId: string | null; ippis: string; matchedName?: string; customerRef?: string; isNewCustomer?: boolean; balance: number | null; tenor: number; action: 'opening-balance' | 'skipped' | 'error'; errors: string[]; warnings: string[]; _work?: { customer?: any; newCustomer?: { name: string; ippis: string; ministry: string; clientNo?: number }; balance: number; tenor: number } }
+interface Line { row: number; clientId: number | null; name: string; ippis: string; ministry: string; loan: number | null; repaid: number | null; balance: number | null; tenor: number | null }
+export interface BalanceRow { row: number; name: string; clientId: string | null; ippis: string; matchedName?: string; customerRef?: string; isNewCustomer?: boolean; loan?: number; repaid?: number; balance: number | null; tenor: number; action: 'opening-balance' | 'skipped' | 'error'; errors: string[]; warnings: string[]; _work?: { customer?: any; newCustomer?: { name: string; ippis: string; ministry: string; clientNo?: number }; loan: number; repaid: number; balance: number; tenor: number } }
 
 const clean = (v: unknown) => (v === null || v === undefined ? '' : String(typeof v === 'object' && v && 'result' in (v as any) ? (v as any).result ?? '' : typeof v === 'object' && v && 'text' in (v as any) ? (v as any).text : v).replace(/\s+/g, ' ').trim());
 const num = (v: unknown) => { if (v && typeof v === 'object' && 'result' in (v as any)) v = (v as any).result; const s = clean(v).replace(/[,₦\s]/g, ''); return s === '' || isNaN(+s) ? null : +s; };
@@ -49,12 +49,12 @@ async function readBalances(buf: Buffer): Promise<{ lines: Line[]; asAt: Date | 
   if (!headRow) throw AppError.badRequest('Could not find the header row (Client ID, Clients Name, IPPIS NO, Balance).', 'UPLOAD_BAD_FILE');
   const head = new Map<string, number>(); ws.getRow(headRow).eachCell((c, i) => head.set(clean(c.value).toLowerCase(), i));
   const find = (...needles: string[]) => { for (const n of needles) { const e = head.get(n); if (e) return e; } for (const [k, i] of head) if (needles.some((n) => k.startsWith(n))) return i; return undefined; };
-  const col = { id: find('client id', 'clients id'), name: find('clients name', 'client name', 'name'), ippis: find('ippis'), min: find('ministry', 'aaa ministry'), bal: find('balance', 'outstanding'), tenor: find('tenor') };
+  const col = { id: find('client id', 'clients id'), name: find('clients name', 'client name', 'name'), ippis: find('ippis'), min: find('ministry', 'aaa ministry'), loan: find('loan', 'gross loan', 'loan amount', 'total loan'), repaid: find('repayment to date', 'repaid', 'repayment'), bal: find('balance', 'outstanding'), tenor: find('tenor') };
   // the ministry header can carry stray text ("AAA MINISTRY2"), so look for the word anywhere
   if (!col.min) for (const [k, i] of head) if (k.includes('ministry')) col.min = i;
-  if (!col.bal) throw AppError.badRequest('Could not find the balance column (a header starting with "Balance").', 'UPLOAD_BAD_FILE');
+  if (!col.bal && !col.loan) throw AppError.badRequest('Could not find the Loan or Balance column.', 'UPLOAD_BAD_FILE');
   if (!col.id && !col.ippis) throw AppError.badRequest('The sheet needs a Client ID or IPPIS NO column.', 'UPLOAD_BAD_FILE');
-  let asAt: Date | null = null; for (const [k, i] of head) if (i === col.bal) asAt = dateInHeader(k);
+  let asAt: Date | null = null; for (const [k] of head) asAt = asAt ?? dateInHeader(k);
   const lines: Line[] = [];
   ws.eachRow((r, n) => {
     if (n <= headRow) return;
@@ -62,7 +62,7 @@ async function readBalances(buf: Buffer): Promise<{ lines: Line[]; asAt: Date | 
     const name = clean(g(col.name)); const idRaw = clean(g(col.id)); const ippis = ippisOf(g(col.ippis));
     if (!name && !idRaw && !ippis) return;
     if (/^(total|generated|grand)/i.test(name)) return;
-    lines.push({ row: n, clientId: clientNo(idRaw), name, ippis, ministry: clean(g(col.min)).toUpperCase(), balance: num(g(col.bal)), tenor: num(g(col.tenor)) });
+    lines.push({ row: n, clientId: clientNo(idRaw), name, ippis, ministry: clean(g(col.min)).toUpperCase(), loan: num(g(col.loan)), repaid: num(g(col.repaid)), balance: num(g(col.bal)), tenor: num(g(col.tenor)) });
   });
   if (!lines.length) throw AppError.badRequest('The sheet has no rows', 'UPLOAD_EMPTY');
   return { lines, asAt };
@@ -84,9 +84,15 @@ export async function planBalances(buf: Buffer, perms: UploadPerms, asAtParam?: 
   for (const s of lines) {
     const p: BalanceRow = { row: s.row, name: s.name, clientId: s.clientId ? String(s.clientId) : null, ippis: s.ippis, balance: s.balance, tenor: s.tenor && Number.isInteger(s.tenor) && s.tenor > 0 ? s.tenor : 1, action: 'error', errors: [], warnings: [] };
     rows.push(p); const err = (m: string) => p.errors.push(m);
-    if (s.balance === null) { p.action = 'skipped'; p.warnings.push('No balance in the row; nothing to record.'); continue; }
-    if (s.balance < 0) { err('The balance cannot be negative.'); continue; }
-    if (s.balance === 0) { p.action = 'skipped'; p.warnings.push('Balance is 0; nothing owed, so nothing is recorded.'); continue; }
+    // The sheet's Loan is the loan (principal + interest); Repayment to date is what was already paid; Balance is what is left.
+    // An older sheet with only a Balance column uses the balance as the loan.
+    const loan = s.loan ?? s.balance; const repaid = s.loan !== null ? s.repaid ?? 0 : 0;
+    if (loan === null) { p.action = 'skipped'; p.warnings.push('No loan or balance in the row; nothing to record.'); continue; }
+    if (loan < 0 || repaid < 0) { err('The loan and repayment cannot be negative.'); continue; }
+    const balance = Math.round((loan - repaid) * 100) / 100;
+    p.loan = loan; p.repaid = repaid; p.balance = balance;
+    if (s.loan !== null && s.balance !== null && Math.abs(s.balance - balance) > 1) p.warnings.push(`The sheet's balance (${s.balance.toLocaleString('en-NG')}) differs from loan − repayment (${balance.toLocaleString('en-NG')}); loan − repayment is used.`);
+    if (balance <= 0.005) { p.action = 'skipped'; p.warnings.push(balance < -0.005 ? `Repaid more than the loan (by ${(-balance).toLocaleString('en-NG')}); nothing owed, so nothing is recorded.` : 'Nothing owed; nothing is recorded.'); continue; }
     if (s.tenor !== null && !(Number.isInteger(s.tenor) && s.tenor > 0)) p.warnings.push('Tenor is not a whole number of months; the balance is set up as one payment.');
     // IPPIS first, then the client number
     const a = s.clientId ? byRef.get(pad(s.clientId)) ?? byLegacy.get(String(s.clientId)) : undefined; const b = s.ippis ? byIppis.get(s.ippis) : undefined;
@@ -100,17 +106,17 @@ export async function planBalances(buf: Buffer, perms: UploadPerms, asAtParam?: 
       if (same.length > 1) { err(`More than one customer is called ${titleCase(s.name)}. Put the Client ID in the row.`); continue; }
       if (same.length === 1) { cust = same[0]; p.warnings.push('Matched by name only.'); const o = await Loan.findOne({ customer: cust._id, status: { $in: ['pending', 'approved', ...LIVE_LOAN_STATUSES] } }).select('loanId status'); if (o) openBy.set(String(cust._id), o); }
       else if (!perms.canCreateCustomers) { err('This customer is not in the portal and you do not have permission to register customers.'); continue; }
-      else { p.isNewCustomer = true; p.customerRef = s.clientId ? pad(s.clientId) : 'New customer'; if (s.clientId) p.warnings.push(`Client number ${s.clientId} is not in the portal; they are added with that number.`); p.matchedName = titleCase(s.name); if (s.ippis) seenIppis.add(s.ippis); if (s.clientId) seenNo.add(s.clientId); p._work = { newCustomer: { name: titleCase(s.name), ippis: s.ippis, ministry: s.ministry, clientNo: s.clientId ?? undefined }, balance: s.balance, tenor: p.tenor }; p.action = 'opening-balance'; continue; }
+      else { p.isNewCustomer = true; p.customerRef = s.clientId ? pad(s.clientId) : 'New customer'; if (s.clientId) p.warnings.push(`Client number ${s.clientId} is not in the portal; they are added with that number.`); p.matchedName = titleCase(s.name); if (s.ippis) seenIppis.add(s.ippis); if (s.clientId) seenNo.add(s.clientId); p._work = { newCustomer: { name: titleCase(s.name), ippis: s.ippis, ministry: s.ministry, clientNo: s.clientId ?? undefined }, loan, repaid, balance, tenor: p.tenor }; p.action = 'opening-balance'; continue; }
     }
     p.matchedName = cust.fullName; p.customerRef = cust.customerId;
     if (seen.has(String(cust._id))) { err('This customer appears twice in the sheet.'); continue; }
     seen.add(String(cust._id));
     const ex = openBy.get(String(cust._id));
     if (ex) { err(`${cust.fullName} already has a ${ex.status} loan (${ex.loanId}). An opening balance is only for customers with no open loan.`); continue; }
-    p._work = { customer: cust, balance: s.balance, tenor: p.tenor }; p.action = 'opening-balance';
+    p._work = { customer: cust, loan, repaid, balance, tenor: p.tenor }; p.action = 'opening-balance';
   }
   const count = (f: (r: BalanceRow) => boolean) => rows.filter(f).length;
-  return { rows, asAt, counts: { balances: count((r) => r.action === 'opening-balance'), newCustomers: count((r) => !!r.isNewCustomer && r.action === 'opening-balance'), skipped: count((r) => r.action === 'skipped'), errors: count((r) => r.action === 'error'), total: rows.reduce((a, r) => a + (r.action === 'opening-balance' ? r.balance ?? 0 : 0), 0) }, needsApproval: !perms.canApprove, productId: String(product._id) };
+  return { rows, asAt, counts: { balances: count((r) => r.action === 'opening-balance'), newCustomers: count((r) => !!r.isNewCustomer && r.action === 'opening-balance'), skipped: count((r) => r.action === 'skipped'), errors: count((r) => r.action === 'error'), total: rows.reduce((a, r) => a + (r.action === 'opening-balance' ? r.balance ?? 0 : 0), 0), loans: rows.reduce((a, r) => a + (r.action === 'opening-balance' ? r.loan ?? 0 : 0), 0), repaid: rows.reduce((a, r) => a + (r.action === 'opening-balance' ? r.repaid ?? 0 : 0), 0) }, needsApproval: !perms.canApprove, productId: String(product._id) };
 }
 export const publicBalancePlan = (p: Awaited<ReturnType<typeof planBalances>>) => ({ ...p, rows: p.rows.map(({ _work, ...r }) => r) });
 
@@ -132,9 +138,9 @@ export async function applyBalances(buf: Buffer, filename: string, actor: Actor,
         await auditAs(actor, { action: AUDIT.CUSTOMER_CREATED, entity: 'Customer', entityId: String(customer._id), entityLabel: customer.customerId, after: serializeCustomer(customer) });
         messages.unshift(`New customer registered as ${customer.customerId}; complete their profile.`);
       }
-      const draft = await buildDraft({ productId: plan.productId, amount: w.balance, duration: { value: w.tenor, unit: 'months' }, frequency: 'monthly', numberOfInstallments: w.tenor, startDate: plan.asAt }, { skipLimits: true, allowBackdated: true, rates: { interestRate: 0, applicationFeeRate: 0, rateBasis: 'per_month' } });
-      const loan = await createLoanRecord(draft, { customerId: customer._id as Types.ObjectId, status: 'pending', actorId: actor.id, notes: `Opening balance as at ${plan.asAt.toISOString().slice(0, 10)} (${filename})`, extra: { loanType: 'opening', openingBalance: true } });
-      await auditAs(actor, { action: AUDIT.LOAN_CREATED, entity: 'Loan', entityId: String(loan._id), entityLabel: loan.loanId, after: { customer: customer.customerId, openingBalance: w.balance, asAt: plan.asAt.toISOString().slice(0, 10), viaUpload: filename } });
+      const draft = await buildDraft({ productId: plan.productId, amount: w.loan, duration: { value: w.tenor, unit: 'months' }, frequency: 'monthly', numberOfInstallments: w.tenor, startDate: plan.asAt }, { skipLimits: true, allowBackdated: true, rates: { interestRate: 0, applicationFeeRate: 0, rateBasis: 'per_month' } });
+      const loan = await createLoanRecord(draft, { customerId: customer._id as Types.ObjectId, status: 'pending', actorId: actor.id, notes: `Opening balance as at ${plan.asAt.toISOString().slice(0, 10)} (${filename})`, extra: { loanType: 'opening', openingBalance: true, openingRepaid: w.repaid } });
+      await auditAs(actor, { action: AUDIT.LOAN_CREATED, entity: 'Loan', entityId: String(loan._id), entityLabel: loan.loanId, after: { customer: customer.customerId, openingLoan: w.loan, repaidBeforePortal: w.repaid, openingBalance: w.balance, asAt: plan.asAt.toISOString().slice(0, 10), viaUpload: filename } });
       let status = 'pending'; if (perms.canApprove) { await approveLoan(String(loan._id), actor, { system: true }); status = 'active'; }
       results.push({ ...base, name: customer.fullName, clientId: customer.customerId, status, loan: String(loan._id), loanRef: loan.loanId, messages });
     } catch (e: any) { results.push({ ...base, status: 'skipped', messages: [...messages, e?.message ?? 'Could not record this balance.'] }); }
